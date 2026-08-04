@@ -1,9 +1,12 @@
-# Post-WP-5A Work-Package Roadmap (Planning Draft)
+# Post-WP-5A Work-Package Roadmap
 
-**Status:** Planning draft — not approved. Requires independent review and
-explicit human approval before any listed work package may be authorized.
-This document is the authoritative roadmap proposal for all work packages
-after WP-5A; it resolves the sequencing gap recorded as F-SEQ-3.
+**Status:** Human-approved and authoritative (approval decision date
+2026-08-05; planning commit `97022a49d9029449f304a2b1e47f9dc8da4d4a89`;
+accepted final review: POST-WP-5A FINAL DOCUMENTATION SPOT CHECK:
+ACCEPTED; open findings at approval: zero). ADR-023 through ADR-027 are
+Accepted. The planning package is authoritative and closed. WP-6 is the
+next eligibility target; WP-6 implementation is **not** authorized and has
+not started.
 
 **Normative cross-references:** `project-gateway-scope-and-principles.md`
 (WP-0), ADR-002, ADR-003, ADR-006, ADR-020, ADR-022, ADR-023 (sequencing
@@ -125,7 +128,11 @@ repository). Outputs: validated ceiling/workspace configuration contract;
 the versioned `trustedExtensionSet` contract (F-F2); extended
 `PointOfUseInputs`/`EffectiveAuthorityInputs`; new AUT-* findings
 and conformance fixtures/vectors. Owned: configuration boundary, capability
-ceiling representations, the trusted extension set, evaluator extension. Prohibited: approval,
+ceiling representations, the trusted extension set, evaluator extension.
+Supported lane: Linux x86_64, POSIX filesystem semantics, UTF-8, Node.js
+22.x (F-EL3; see `trusted-workspace-and-ceiling-configuration.md`).
+Hardening: WP-6 adopts the descriptor-derived snapshot input-hardening
+invariant for runtime configuration objects (F-EL5). Prohibited: approval,
 tool inventory, MCP exposure, pi-guard activation, execution, lifecycle
 issuance. Invariants: repository content cannot alter governance; unknown
 workspace/capability fails closed; ceilings narrow only. Tests: config

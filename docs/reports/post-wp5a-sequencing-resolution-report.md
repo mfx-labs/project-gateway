@@ -1,8 +1,14 @@
-# Post-WP-5A Sequencing Resolution Report (Planning Draft)
+# Post-WP-5A Sequencing Resolution Report
 
-**Status:** Planning draft — not approved. Reports the planning package
-created to resolve F-SEQ-1, F-SEQ-2, and F-SEQ-3. This report is not an
-implementation authorization and does not close any work package.
+**Status:** Human-approved (external decision 2026-08-05; planning commit
+`97022a49d9029449f304a2b1e47f9dc8da4d4a89`; accepted final review
+POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED; open findings at
+approval: zero). This report documents the planning package created to
+resolve F-SEQ-1, F-SEQ-2, and F-SEQ-3 and its later corrections. It is not
+an implementation authorization and does not close any work package. The
+document was drafted as a planning draft; the post-commit approval-recording
+correction section below records the approval timeline without rewriting
+history.
 
 ## Baseline
 
@@ -216,6 +222,53 @@ dispositions are recorded in `post-wp5a-planning-status.md`:
   and the trusted update boundary; WP-5B validates the effective Pi surface
   against it; WP-15 owns only optional hardening; the unowned
   "or another trusted-local host configuration" alternative is removed.
+
+## Post-Commit Approval-Recording Correction (clearly labeled)
+
+The planning package was committed at `97022a49…` while its documents still
+recorded "Proposed — planning draft; not approved". This section records the
+subsequent repository status-recording correction; it does not rewrite
+history. Temporal sequence (explicit):
+
+1. **Human approval granted** (external decision; approval decision date
+   2026-08-05; accepted final review: POST-WP-5A FINAL DOCUMENTATION SPOT
+   CHECK: ACCEPTED; open findings at approval: zero).
+2. **Initial planning commit** `97022a49d9029449f304a2b1e47f9dc8da4d4a89`
+   established the planning documents (which, at commit time, still carried
+   draft status markers).
+3. **Later status-recording correction:** ADR-023 through ADR-027 status
+   updated to Accepted with the approval evidence; the roadmap and
+   planning-status documents updated to record approval and closure. This
+   correction records the externally granted approval; the documentation
+   operator did not grant it.
+
+## Final Status-Header Correction (F-EL-R1) (clearly labeled)
+
+The three authoritative contract documents
+(`capability-vocabulary.md`, `pi-guard-compatibility-and-authority-projection.md`,
+`trusted-workspace-and-ceiling-configuration.md`) previously carried
+current, unlabeled `(Planning Draft)` H1 suffixes and
+`Planning draft — not approved` status blocks even though ADR-024, ADR-025,
+and ADR-026 were Accepted and the planning package was human-approved,
+authoritative, and closed. This section records the F-EL-R1 status-header
+correction; it does not rewrite history and does not change contract
+semantics.
+
+Correction:
+
+- The three contract-document H1 suffixes indicating a planning draft were
+  removed, and their current status now states
+  `Accepted — human-approved and authoritative`.
+- The status blocks now record the same approval evidence already used by
+  the governing ADRs (external human decision 2026-08-05; planning commit
+  `97022a49d9029449f304a2b1e47f9dc8da4d4a89`; accepted final review
+  POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED; open findings at
+  approval: zero). Acceptance derives from the external human decision, not
+  from the documentation operator.
+- No contract semantics changed; implementation-scope caveats remain; no
+  open eligibility-prerequisite finding remains according to this
+  correction report. WP-6 remains unauthorized and not started; the
+  separate pi-guard-side authorization remains pending.
 
 ## Unresolved Findings
 

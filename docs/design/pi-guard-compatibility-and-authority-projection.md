@@ -1,8 +1,18 @@
-# pi-guard Compatibility, Authority Projection, and Enforcement Evidence (Planning Draft)
+# pi-guard Compatibility, Authority Projection, and Enforcement Evidence
 
-**Status:** Planning draft — not approved. Resolves F-SEQ-2 (pi-guard
-compatibility contract) and defines the WP-5B authority-projection and
-enforcement-evidence contracts. Normative decisions: ADR-026, ADR-027.
+**Status:** Accepted — human-approved and authoritative.
+
+Resolves F-SEQ-2 (pi-guard compatibility contract) and defines the WP-5B
+authority-projection and enforcement-evidence contracts. Normative decisions:
+ADR-026, ADR-027 (Accepted). Approved by the externally granted human
+approval of the Post-WP-5A planning package (approval decision date
+2026-08-05; planning commit
+`97022a49d9029449f304a2b1e47f9dc8da4d4a89`; accepted final review:
+POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED; open findings at
+approval: zero). Acceptance derives from the external human decision, not
+from the documentation operator. This document defines the authoritative
+contract only; no configuration loader, Pi integration, pi-guard
+integration, or WP-6 implementation is provided by this document.
 Cross-references: `post-wp5a-roadmap.md`, `capability-vocabulary.md`,
 `trusted-workspace-and-ceiling-configuration.md`, ADR-020, ADR-022,
 `pi-adapter-architecture.md`.

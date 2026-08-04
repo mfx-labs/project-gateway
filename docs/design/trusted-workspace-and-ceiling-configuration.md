@@ -1,10 +1,20 @@
-# Trusted Workspace and Ceiling Configuration Contract (Planning Draft)
+# Trusted Workspace and Ceiling Configuration Contract
 
-**Status:** Planning draft — not approved. Defines the contract only; no
-configuration loader is implemented. Resolves the trusted-configuration
-portion of F-SEQ-1. Normative ownership decision: ADR-024. Cross-references:
-`capability-vocabulary.md`, `post-wp5a-roadmap.md` (WP-6, WP-8, WP-12),
-`project-gateway-scope-and-principles.md` (WP-0), ADR-002, ADR-003.
+**Status:** Accepted — human-approved and authoritative.
+
+Defines the contract only; no configuration loader is implemented. Resolves
+the trusted-configuration portion of F-SEQ-1. Normative ownership decision:
+ADR-024 (Accepted). Approved by the externally granted human approval of the
+Post-WP-5A planning package (approval decision date 2026-08-05; planning
+commit `97022a49d9029449f304a2b1e47f9dc8da4d4a89`; accepted final review:
+POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED; open findings at
+approval: zero). Acceptance derives from the external human decision, not
+from the documentation operator. This document defines the authoritative
+contract only; no configuration loader, Pi integration, pi-guard
+integration, or WP-6 implementation is provided by this document.
+Cross-references: `capability-vocabulary.md`, `post-wp5a-roadmap.md`
+(WP-6, WP-8, WP-12), `project-gateway-scope-and-principles.md` (WP-0),
+ADR-002, ADR-003.
 
 ## Scope
 
@@ -239,3 +249,105 @@ For every numeric ceiling type (`globalActionCeiling`,
   rather than by omission or `Infinity`.
 - **Intersection:** the applicable limit is the minimum of the finite
   ceilings (global, workspace, grant) that are present.
+
+## Workspace Identity and Root Uniqueness (F-EL1)
+
+- Every workspace identifier must map to exactly one workspace record.
+- Duplicate workspace identifiers are malformed configuration; duplicate
+  identifiers fail the **entire** trusted configuration load. Duplicate
+  resolution by first-wins, last-wins, merge, or load order is prohibited.
+- Canonical-root comparison applies after the contract's required
+  normalization and resolution steps:
+  1. exact duplicate canonical roots are prohibited unless a future
+     reviewed aliasing contract explicitly permits them;
+  2. parent-child or otherwise overlapping workspace roots are prohibited
+     in v1;
+  3. overlap ambiguity fails the entire trusted configuration load;
+  4. a root must not contain another registered root;
+  5. symlink-resolved overlap must be checked, not only lexical overlap;
+  6. case-folding ambiguity on the supported host lane fails closed;
+  7. no first-match or longest-prefix routing is permitted.
+- The v1 prohibition prevents one filesystem object from receiving
+  different workspace ceilings depending on lookup order.
+
+## Non-Existent Paths and Rename Containment (F-EL2)
+
+**Non-existent destination paths.** A path that does not yet exist is
+contained when: (1) the nearest existing ancestor resolves under the
+trusted workspace root; (2) that existing ancestor resolves within the
+trusted root; (3) only validated remaining path components are lexically
+appended; (4) `..`, absolute resets, empty ambiguous components, or
+normalization that escapes the root are rejected; (5) any existing
+intermediate symlink that resolves outside the root is rejected; (6)
+containment is revalidated at the actual later filesystem operation; (7)
+the WP-6 decision is prospective and does not eliminate TOCTOU risk; (8)
+WP-7 or WP-11 performs point-of-use filesystem revalidation for actual
+read or write operations.
+
+**Rename or move.** A rename or move is contained only when: (1) the source
+is independently contained; (2) the destination is independently contained;
+(3) the source exists and resolves inside the trusted root; (4) the
+destination's existing ancestor resolves inside the same trusted root; (5)
+neither endpoint crosses workspace roots; (6) both endpoints belong to the
+same workspace identity unless a later reviewed cross-workspace operation
+contract exists; (7) any ambiguity fails closed.
+
+WP-6 defines and returns these containment decisions. WP-11 owns the later
+controlled mutation and point-of-use race handling.
+
+## Supported WP-6 Host Lane (F-EL3)
+
+Initial WP-6 supported lane: **Linux; x86_64; POSIX-style filesystem
+semantics; UTF-8 locale; Node.js 22.x, with the verified project lane at
+Node 22.23.2**; path comparisons and case behavior as observed on the
+supported Linux filesystem lane. macOS, Windows, case-insensitive
+filesystems, network filesystems, and non-POSIX path semantics are
+**unverified**; unverified host lanes fail compatibility eligibility unless
+separately reviewed. The contract does not claim host-independent
+filesystem guarantees have been proven. Exact patch-level Node pinning may
+remain an implementation-plan decision if API behavior is unchanged; the
+major lane is explicit here. No package dependency is added.
+
+## TrustedWorkspaceConfiguration Classification (F-EL4)
+
+`TrustedWorkspaceConfiguration` is:
+
+- a trusted-local control-plane configuration object;
+- repository-external;
+- schema-governed or type-governed within the local gateway
+  implementation;
+- prospective configuration input.
+
+It is **not**: one of the six Artifact Core aggregates; an artifact kind; a
+lifecycle record; an approval record; a RuntimeGrant; an ExecutionResult; a
+TrustedReceipt.
+
+WP-6 must not add a seventh Artifact Core aggregate, add a new artifact
+kind, or alter the WP-3 artifact schema catalog for this object, unless a
+later explicit architecture decision authorizes that change. If a
+machine-readable schema is used, it is a **local configuration schema
+outside the Artifact Core aggregate catalog**.
+
+## Runtime-Input Hardening Invariant (F-EL5)
+
+WP-6 must reuse the established WP-4 and WP-5A descriptor-derived snapshot
+pattern for accepted runtime JavaScript objects:
+
+1. protocol-significant properties are captured exactly once;
+2. ordinary getters are not invoked;
+3. Proxy `get` traps are not used for protocol-significant reads;
+4. property descriptors or another reviewed hook-resistant mechanism are
+   used;
+5. structural introspection failures produce typed fail-closed findings;
+6. captured snapshots are deeply immutable;
+7. caller containers are not reread after snapshot construction;
+8. later caller or Proxy mutation cannot change configuration identity,
+   workspace lookup, ceilings, trustedExtensionSet, containment inputs,
+   PointOfUseInputs v2 contents, or findings already produced;
+9. deterministic guarantees are scoped consistently with the WP-5A
+   stable/plain-input rule for intentionally stateful structural Proxies;
+10. hostile-input tests cover getters, Proxy traps,
+    mutation-after-validation, descriptor changes, cyclic values, and
+    unsupported prototypes.
+
+This invariant is assigned to WP-6 implementation and security tests.

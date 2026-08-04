@@ -2,7 +2,14 @@
 
 ## Status
 
-Proposed — planning draft; not approved.
+Accepted
+
+Accepted by the externally granted human approval of the Post-WP-5A
+planning package (approval decision date 2026-08-05; planning commit
+`97022a49d9029449f304a2b1e47f9dc8da4d4a89`; accepted final review:
+POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED; open findings at
+approval: zero). Acceptance derives from the external human decision, not
+from the documentation operator.
 
 ## Context
 

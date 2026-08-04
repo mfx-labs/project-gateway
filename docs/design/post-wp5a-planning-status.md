@@ -1,11 +1,14 @@
-# Post-WP-5A Planning Status and Open-Decision Dispositions (Planning Draft)
+# Post-WP-5A Planning Status and Open-Decision Dispositions
 
-**Status:** Planning draft — not approved. Records dispositions for every
-WP-0 deferred decision affected by post-WP-5A sequencing, trusted authority
-configuration, capability vocabulary, and pi-guard compatibility. Each
-disposition is one of RESOLVED (by this planning package or earlier closed
-packages), DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
-Approval of the planning package is pending independent review.
+**Status:** Human-approved, authoritative, and closed (approval decision
+date 2026-08-05; planning commit `97022a49d9029449f304a2b1e47f9dc8da4d4a89`;
+accepted final review: POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED;
+open findings at approval: zero). The human approval has been recorded in
+ADR-023 through ADR-027 (all Accepted). The approval-recording mismatch
+F-EL-A is closed. WP-6 remains pending a separate eligibility and
+implementation-authorization decision and has not started. Each disposition
+is one of RESOLVED (by this planning package or earlier closed packages),
+DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
 
 ## WP-0 Deferred Decisions (project-gateway-scope-and-principles.md)
 
@@ -166,6 +169,75 @@ Approval of the planning package is pending independent review.
   cannot close without the trusted-extension-set contract); does not block
   WP-6 start. Implementation remains unauthorized.
 
+## Eligibility-Prerequisite Correction Dispositions (F-EL-A, F-EL1…F-EL5)
+
+- **F-EL-A (MAJOR — approval not recorded).** CLOSED. Authoritative
+  documents: ADR-023…ADR-027 (status now Accepted, with approval evidence:
+  external human decision 2026-08-05; planning commit
+  `97022a49d9029449f304a2b1e47f9dc8da4d4a89`; accepted final review
+  POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED; open findings at
+  approval: zero); roadmap and planning-status headers updated to record
+  approval and closure; the planning report records the temporal sequence
+  (human approval; initial planning commit; later status-recording
+  correction). Effect: WP-6's normative prerequisite "planning
+  authoritative and closed" is now satisfied as recorded. WP-6 remains
+  pending a separate eligibility and implementation-authorization
+  decision; implementation remains unauthorized.
+- **F-EL1 (MINOR — workspace identity and root uniqueness).** CLOSED.
+  Authoritative document: `trusted-workspace-and-ceiling-configuration.md`
+  (duplicate workspace identifiers and duplicate/overlapping roots fail
+  the entire configuration load; no first-wins/last-wins/merge/load-order
+  or first-match/longest-prefix routing; symlink-resolved and case-folding
+  overlap checked; v1 root-overlap prohibition). Effect on WP-6
+  eligibility: contract precision satisfied. Implementation remains
+  unauthorized.
+- **F-EL2 (MINOR — non-existent paths and rename containment).** CLOSED.
+  Authoritative document: `trusted-workspace-and-ceiling-configuration.md`
+  (nearest-existing-ancestor resolution; validated lexical append; escape
+  rejection; intermediate-symlink rejection; prospective decision with
+  point-of-use revalidation by WP-7/WP-11; rename contained only when both
+  endpoints are independently contained in the same workspace). Effect on
+  WP-6 eligibility: contract precision satisfied. Implementation remains
+  unauthorized.
+- **F-EL3 (NOTE — host lane).** CLOSED. Authoritative document:
+  `trusted-workspace-and-ceiling-configuration.md` and roadmap
+  cross-reference (Linux; x86_64; POSIX; UTF-8; Node.js 22.x at the
+  verified 22.23.2 lane; unverified lanes fail compatibility eligibility).
+  Effect on WP-6 eligibility: test determinism satisfied. Implementation
+  remains unauthorized.
+- **F-EL4 (NOTE — classification).** CLOSED. Authoritative documents:
+  `trusted-workspace-and-ceiling-configuration.md` and
+  `artifact-responsibility-matrix.md` (trusted-local control-plane
+  configuration object; not an Artifact Core aggregate, artifact kind,
+  lifecycle/approval/grant record, ExecutionResult, or TrustedReceipt; no
+  seventh aggregate, new kind, or WP-3 catalog change without a later
+  explicit decision; local configuration schema outside the aggregate
+  catalog). Effect on WP-6 eligibility: scope boundary satisfied.
+  Implementation remains unauthorized.
+- **F-EL5 (NOTE — runtime-input hardening).** CLOSED. Authoritative
+  documents: `trusted-workspace-and-ceiling-configuration.md` (ten-point
+  descriptor-derived snapshot invariant) and roadmap WP-6 block
+  (hardening assignment). Effect on WP-6 eligibility: implementation
+  invariant assigned. Implementation remains unauthorized.
+- **F-EL-R1 (MINOR — status-header contradiction).** CLOSED. The three
+  authoritative contract documents
+  (`capability-vocabulary.md`, `pi-guard-compatibility-and-authority-projection.md`,
+  `trusted-workspace-and-ceiling-configuration.md`) previously carried
+  current, unlabeled `(Planning Draft)` H1 suffixes and
+  `Planning draft — not approved` status blocks that contradicted the
+  Accepted ADR-024/ADR-025/ADR-026 decisions and the human-approved,
+  authoritative, closed planning package. Their H1 suffixes and status
+  blocks now state `Accepted — human-approved and authoritative` with the
+  same approval evidence already recorded by the governing ADRs (external
+  human decision 2026-08-05; planning commit
+  `97022a49d9029449f304a2b1e47f9dc8da4d4a89`; accepted final review
+  POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED; open findings at
+  approval: zero). No contract semantics changed; implementation-scope
+  caveats remain; no eligibility-prerequisite finding remains open
+  according to the F-EL-R1 correction report. WP-6 remains unauthorized
+  and not started; the separate pi-guard-side authorization remains
+  pending.
+
 ## F-SEQ Dispositions
 
 - **F-SEQ-1 (capability vocabulary + trusted ceiling format)** — RESOLVED
@@ -183,5 +255,6 @@ Approval of the planning package is pending independent review.
   required interface is documented (ADR-026) and requires separate
   authorization — a deferred implementation item, not an unresolved
   architecture decision of this package.
-- The v1 capability vocabulary is proposed and pending human review; no
-  implementation consumes it before approval.
+- The v1 capability vocabulary is approved (ADR-025 Accepted); no
+  implementation consumes it before a separate WP-6
+  implementation-authorization decision.

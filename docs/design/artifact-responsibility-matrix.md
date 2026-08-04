@@ -54,3 +54,13 @@ A consumable MVP `ExecutionBundle` MUST select exactly one compatible revision o
 4. `CompletionContract`.
 
 All four MUST be present. A context manifest that selects no additional context is an explicit context-manifest revision, not an omitted default. All required references MUST resolve to exact compatible revisions and one compatible trusted workspace scope. The source and serialization of workspace binding, portability rules, and cross-workspace reference treatment are deferred to OD-WP1-004. A change to a selected revision MUST be represented by a new bundle revision. Required capabilities and extensions that are unknown, unresolved, incompatible, or unsupported MUST fail closed.
+
+## Non-Artifact Note (F-EL4)
+
+`TrustedWorkspaceConfiguration` (the WP-6 trusted workspace and policy
+configuration object) is **not** an Artifact Core aggregate, artifact kind,
+lifecycle record, approval record, RuntimeGrant, ExecutionResult, or
+TrustedReceipt. It is a trusted-local, repository-external control-plane
+configuration object governed by the local gateway implementation (see
+`trusted-workspace-and-ceiling-configuration.md`). It is intentionally
+absent from the artifact responsibility matrix above.

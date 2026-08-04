@@ -1,8 +1,18 @@
-# Capability Vocabulary (Planning Draft)
+# Capability Vocabulary
 
-**Status:** Planning draft — not approved. Resolves the capability-vocabulary
-portion of F-SEQ-1. Normative decision: ADR-025. Cross-references:
-`trusted-workspace-and-ceiling-configuration.md`, `post-wp5a-roadmap.md`,
+**Status:** Accepted — human-approved and authoritative.
+
+Resolves the capability-vocabulary portion of F-SEQ-1. Normative decision:
+ADR-025 (Accepted). Approved by the externally granted human approval of the
+Post-WP-5A planning package (approval decision date 2026-08-05; planning
+commit `97022a49d9029449f304a2b1e47f9dc8da4d4a89`; accepted final review:
+POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED; open findings at
+approval: zero). Acceptance derives from the external human decision, not
+from the documentation operator. This document defines the authoritative
+contract only; no configuration loader, Pi integration, pi-guard
+integration, or WP-6 implementation is provided by this document.
+Cross-references: `trusted-workspace-and-ceiling-configuration.md`,
+`post-wp5a-roadmap.md`,
 `pi-guard-compatibility-and-authority-projection.md`, ADR-003, ADR-004.
 
 ## Purpose
@@ -110,5 +120,6 @@ not changed by the extension.
 ## Vocabulary Ownership and Maintenance
 
 Owned by Artifact Core protocol (maintained through reviewed core changes);
-the v1 table is proposed here for human review. pi-guard mapping tables are
-adapter-owned (WP-5B) and never alter the vocabulary itself.
+the v1 table is the accepted, authoritative vocabulary (ADR-025). pi-guard
+mapping tables are adapter-owned (WP-5B) and never alter the vocabulary
+itself.

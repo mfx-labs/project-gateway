@@ -4,7 +4,15 @@ This glossary defines WP-0 terms. It establishes conceptual boundaries, not fiel
 
 ## Artifact
 
-A versioned, structured document governed by an artifact-kind contract. Artifact content is project-visible data unless a separate trusted local record establishes a lifecycle state. An artifact does not gain authority merely by existing, validating, or being stored in a particular path.
+A structured protocol document governed by an artifact-kind contract. The term may be qualified to distinguish an artifact kind, artifact instance, and artifact revision. Artifact content is project-visible data unless a separate trusted local record establishes a lifecycle state. An artifact does not gain authority merely by existing, validating, or being stored in a particular path.
+
+## Artifact Kind
+
+One stable protocol responsibility, such as task intent or authority constraints. A kind is distinct from an artifact instance and revision, and it does not imply approval, issuance, authority, or consumer support. Serialized kind syntax is deferred.
+
+## Artifact Instance
+
+The conceptual identity of one logical artifact across one or more revisions. Instance identity is distinct from content identity and cannot be proven by a path, filename, branch, directory, or producer assertion. Identifier format and succession rules are deferred.
 
 ## Artifact Draft
 
@@ -24,11 +32,19 @@ An approved artifact revision that a trusted local control plane has made availa
 
 ## Artifact Revision
 
-One identifiable version of an artifact of a particular kind and version. A revision is the unit to which validation, canonical digest, approval, issuance, comparison, and bundle selection apply. Exact revision identifiers and storage rules are deferred.
+One immutable conceptual content version of an artifact instance. A revision is the unit to which validation, canonical digest, approval, issuance, comparison, and bundle selection apply. Changing content creates a different revision, and an issued revision MUST NOT be edited in place. Exact revision identifiers and storage rules are deferred.
 
 ## Canonical Digest
 
 A deterministic digest of an artifact revision's canonical representation. A trusted approval binds to this digest so a changed revision cannot inherit approval implicitly. WP-0 does not standardize the canonical representation or digest mechanism.
+
+## Artifact Reference
+
+A conceptual directional relationship from one artifact revision to another artifact revision or another explicitly permitted observed artifact. A consumable reference MUST select an exact compatible revision. It does not copy, merge, approve, issue, grant, activate, or override its target. Serialization and resolution mechanics are deferred.
+
+## Artifact Aggregate
+
+The conceptual consistency boundary for one core artifact kind. Each aggregate has one sole responsibility, its own revisions, validators, and invariants. This term does not prescribe a code structure, database aggregate, file, or process.
 
 ## Execution Bundle
 
@@ -36,7 +52,7 @@ An artifact that identifies which exact artifact revisions constitute one propos
 
 ## Execution Result
 
-A structured, retrospective artifact reporting what occurred during execution and evaluation. It is distinct from a `CompletionContract`, which defines how completion must be proven before execution. An execution result is not authority, approval, issuance, or a trusted local execution receipt.
+A structured, retrospective artifact reporting what occurred during execution and evaluation. It is distinct from a `CompletionContract`, which defines how completion must be proven before execution. An execution result is not authority, approval, issuance, or a trusted local execution receipt. Whether an evaluator-produced result requires a distinct approval, issuance, publication, receipt-correlation, revocation, or supersession condition for a particular use is deferred and MUST NOT be inferred from lifecycle rules for prospective artifacts.
 
 ## Authority
 

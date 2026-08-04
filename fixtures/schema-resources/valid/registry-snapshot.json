@@ -1,0 +1,230 @@
+{
+  "registry_protocol_id": "project-gateway.registry",
+  "registry_snapshot_format_version": "1.0",
+  "canonicalization": "jcs-rfc8785-v1",
+  "snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+  "protocol_compatibility": {
+    "artifact_protocol_id": "project-gateway.artifact",
+    "artifact_protocol_version": "1.0",
+    "kind_versions": [
+      {
+        "kind_id": "AuthorityPolicy",
+        "kind_version": "1.0"
+      },
+      {
+        "kind_id": "CompletionContract",
+        "kind_version": "1.0"
+      },
+      {
+        "kind_id": "ContextManifest",
+        "kind_version": "1.0"
+      },
+      {
+        "kind_id": "ExecutionBundle",
+        "kind_version": "1.0"
+      },
+      {
+        "kind_id": "ExecutionResult",
+        "kind_version": "1.0"
+      },
+      {
+        "kind_id": "TaskSpec",
+        "kind_version": "1.0"
+      }
+    ]
+  },
+  "namespace_entries": [
+    {
+      "namespace": "example.review-evidence",
+      "owner_id": "project-gateway.protocol-registry",
+      "security_review": {
+        "review_id": "pgw:gr:0855bd06d9faf3c70381bfd4559be7ea",
+        "status": "approved",
+        "reviewed_at": "2026-08-04T06:00:00.000Z",
+        "governing_role": "human-approved-protocol-registry"
+      },
+      "extension_contracts": [
+        {
+          "version": "1.0",
+          "payload_schema_id": "urn:project-gateway:schema:artifact:1.0:common:extension-declaration",
+          "semantic_contract_ids": [
+            "REG-006"
+          ],
+          "supported_kinds": [
+            {
+              "kind_id": "AuthorityPolicy",
+              "kind_version": "1.0"
+            },
+            {
+              "kind_id": "CompletionContract",
+              "kind_version": "1.0"
+            },
+            {
+              "kind_id": "ContextManifest",
+              "kind_version": "1.0"
+            },
+            {
+              "kind_id": "ExecutionBundle",
+              "kind_version": "1.0"
+            },
+            {
+              "kind_id": "ExecutionResult",
+              "kind_version": "1.0"
+            },
+            {
+              "kind_id": "TaskSpec",
+              "kind_version": "1.0"
+            }
+          ],
+          "supported_modes": [
+            "optional"
+          ],
+          "ignore_safety": "ignore-safe",
+          "deprecation": {
+            "status": "active"
+          },
+          "supersession": null
+        }
+      ]
+    },
+    {
+      "namespace": "project-gateway.conformance-tag",
+      "owner_id": "project-gateway.protocol-registry",
+      "security_review": {
+        "review_id": "pgw:gr:c172f6a8683783cd674ad2e4f1da7ad7",
+        "status": "approved",
+        "reviewed_at": "2026-08-04T06:00:00.000Z",
+        "governing_role": "human-approved-protocol-registry"
+      },
+      "extension_contracts": [
+        {
+          "version": "1.0",
+          "payload_schema_id": "urn:project-gateway:schema:artifact:1.0:common:extension-declaration",
+          "semantic_contract_ids": [
+            "REG-006"
+          ],
+          "supported_kinds": [
+            {
+              "kind_id": "AuthorityPolicy",
+              "kind_version": "1.0"
+            },
+            {
+              "kind_id": "CompletionContract",
+              "kind_version": "1.0"
+            },
+            {
+              "kind_id": "ContextManifest",
+              "kind_version": "1.0"
+            },
+            {
+              "kind_id": "ExecutionBundle",
+              "kind_version": "1.0"
+            },
+            {
+              "kind_id": "ExecutionResult",
+              "kind_version": "1.0"
+            },
+            {
+              "kind_id": "TaskSpec",
+              "kind_version": "1.0"
+            }
+          ],
+          "supported_modes": [
+            "optional"
+          ],
+          "ignore_safety": "ignore-safe",
+          "deprecation": {
+            "status": "active"
+          },
+          "supersession": null
+        }
+      ]
+    }
+  ],
+  "feature_capability_registrations": [
+    {
+      "class": "consumer-capability",
+      "id": "project-gateway.artifact-draft-write",
+      "version": "1.0",
+      "security_review": {
+        "review_id": "pgw:gr:77c18695324f60d8f186feb400f95370",
+        "status": "approved",
+        "reviewed_at": "2026-08-04T06:00:00.000Z",
+        "governing_role": "human-approved-protocol-registry"
+      }
+    },
+    {
+      "class": "consumer-capability",
+      "id": "project-gateway.fixture-consumer",
+      "version": "1.0",
+      "security_review": {
+        "review_id": "pgw:gr:a03ffbb0e4ec0cdfcf691817123e05ca",
+        "status": "approved",
+        "reviewed_at": "2026-08-04T06:00:00.000Z",
+        "governing_role": "human-approved-protocol-registry"
+      }
+    },
+    {
+      "class": "consumer-capability",
+      "id": "project-gateway.git-read",
+      "version": "1.0",
+      "security_review": {
+        "review_id": "pgw:gr:3c3333f3abecc4f7298fa19b658bfa52",
+        "status": "approved",
+        "reviewed_at": "2026-08-04T06:00:00.000Z",
+        "governing_role": "human-approved-protocol-registry"
+      }
+    },
+    {
+      "class": "consumer-capability",
+      "id": "project-gateway.workspace-read",
+      "version": "1.0",
+      "security_review": {
+        "review_id": "pgw:gr:a22a69a64febebada35d50b5803aa655",
+        "status": "approved",
+        "reviewed_at": "2026-08-04T06:00:00.000Z",
+        "governing_role": "human-approved-protocol-registry"
+      }
+    },
+    {
+      "class": "protocol-feature",
+      "id": "project-gateway.conformance-alpha",
+      "version": "1.0",
+      "security_review": {
+        "review_id": "pgw:gr:50b0ad0764d964f1a9038653f41e6dc3",
+        "status": "approved",
+        "reviewed_at": "2026-08-04T06:00:00.000Z",
+        "governing_role": "human-approved-protocol-registry"
+      }
+    },
+    {
+      "class": "protocol-feature",
+      "id": "project-gateway.conformance-beta",
+      "version": "1.0",
+      "security_review": {
+        "review_id": "pgw:gr:2c60eea0be8b7dcbf67348afc6c65654",
+        "status": "approved",
+        "reviewed_at": "2026-08-04T06:00:00.000Z",
+        "governing_role": "human-approved-protocol-registry"
+      }
+    },
+    {
+      "class": "protocol-feature",
+      "id": "project-gateway.conformance-fixture",
+      "version": "1.0",
+      "security_review": {
+        "review_id": "pgw:gr:48dfa61c39a87eabb261ea1cf475347f",
+        "status": "approved",
+        "reviewed_at": "2026-08-04T06:00:00.000Z",
+        "governing_role": "human-approved-protocol-registry"
+      }
+    }
+  ],
+  "governance_security_review": {
+    "review_id": "pgw:gr:de1ec6b0e46abf3c5960d8ba60e35b3e",
+    "status": "approved",
+    "reviewed_at": "2026-08-04T06:00:00.000Z",
+    "governing_role": "human-approved-protocol-registry"
+  },
+  "snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05"
+}

@@ -1,0 +1,45 @@
+{
+  "record_type": "MigrationRecord",
+  "record_id": "pgw:l:0515bba7ddfe2e18d6d95913e1a48a13",
+  "created_at": "2026-08-04T06:01:00.000Z",
+  "responsible_role": "trusted-migration-authority",
+  "registry_snapshot_reference": {
+    "registry_protocol_id": "project-gateway.registry",
+    "registry_snapshot_format_version": "1.0",
+    "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+    "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+    "protocol_compatibility": {
+      "mode": "exact-release",
+      "artifact_protocol_id": "project-gateway.artifact",
+      "artifact_protocol_version": "1.0"
+    }
+  },
+  "old_subject": {
+    "protocol_version": "1.0",
+    "kind": {
+      "id": "TaskSpec",
+      "version": "1.0"
+    },
+    "instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+    "revision_id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+    "digest": "sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "new_subject": {
+    "protocol_version": "1.0",
+    "kind": {
+      "id": "TaskSpec",
+      "version": "1.0"
+    },
+    "instance_id": "pgw:i:4a137fd72cc43652e09f979fbc5ff77b",
+    "revision_id": "pgw:r:af6f32606b7306ce630ad1f2f520c6c6",
+    "digest": "sha-256:412f22d5b257d60b3329ccde938100adb5e3e3f6a3a8da164b259aa88465cc90",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "transformation_profile": {
+    "id": "project-gateway.explicit-migration",
+    "version": "1.0"
+  },
+  "scope": "historical-correlation",
+  "schema_probe": true
+}

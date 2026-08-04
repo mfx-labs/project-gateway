@@ -1,0 +1,13 @@
+{
+  "target_protocol_version": "1.0",
+  "target_kind": {
+    "id": "CompletionContract",
+    "version": "1.0"
+  },
+  "target_instance_id": "pgw:i:23c04d055bd59c637bd47e3feb5b5575",
+  "target_revision_id": "pgw:r:ff793e8e7ff0f02133a9af257b81003f",
+  "target_digest": "sha-256:3eb28e975843c943d894fb1d751f0a234b41deb72c38e443aeff62682b9285c7",
+  "target_workspace_binding": {
+    "mode": "portable"
+  }
+}

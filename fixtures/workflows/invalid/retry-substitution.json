@@ -1,0 +1,9 @@
+{
+  "workflow_id": "WF-I-008",
+  "expected_result": "fail",
+  "record_paths": [
+    "fixtures/lifecycle/invalid/retry-changing-bundle.json",
+    "fixtures/lifecycle/invalid/retry-changing-workspace.json"
+  ],
+  "notes": "Retry cannot substitute bundle or workspace."
+}

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:common:evidence-reference",
+  "title": "Bounded evidence reference with explicit trust class",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "artifact"
+      ],
+      "properties": {
+        "kind": {
+          "const": "artifact-reference"
+        },
+        "artifact": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "receipt_record_id"
+      ],
+      "properties": {
+        "kind": {
+          "const": "trusted-receipt-reference"
+        },
+        "receipt_record_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "workspace_id",
+        "resource_id",
+        "content_digest",
+        "observation_role"
+      ],
+      "properties": {
+        "kind": {
+          "const": "workspace-resource-observation"
+        },
+        "workspace_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/workspaceId"
+        },
+        "resource_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/selectorId"
+        },
+        "content_digest": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/digest"
+        },
+        "observation_role": {
+          "enum": [
+            "input",
+            "output",
+            "changed-resource",
+            "evaluation-evidence"
+          ]
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "kind",
+        "evidence_id",
+        "content_digest",
+        "declared_media_type",
+        "observation_role"
+      ],
+      "properties": {
+        "kind": {
+          "const": "external-evidence"
+        },
+        "evidence_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/evidenceId"
+        },
+        "content_digest": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/digest"
+        },
+        "declared_media_type": {
+          "type": "string",
+          "pattern": "^[a-z]+/[a-z0-9.+-]+$",
+          "maxLength": 128
+        },
+        "observation_role": {
+          "enum": [
+            "input",
+            "output",
+            "evaluation-evidence"
+          ]
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  ]
+}

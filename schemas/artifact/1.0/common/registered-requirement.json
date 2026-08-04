@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:common:registered-requirement",
+  "title": "Registered requirement under the V1 conformance registry profile",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "class",
+        "id",
+        "version"
+      ],
+      "properties": {
+        "class": {
+          "const": "protocol-feature"
+        },
+        "id": {
+          "enum": [
+            "project-gateway.conformance-alpha",
+            "project-gateway.conformance-beta",
+            "project-gateway.conformance-fixture"
+          ]
+        },
+        "version": {
+          "const": "1.0"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "class",
+        "id",
+        "version"
+      ],
+      "properties": {
+        "class": {
+          "const": "consumer-capability"
+        },
+        "id": {
+          "const": "project-gateway.fixture-consumer"
+        },
+        "version": {
+          "const": "1.0"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "workflow_id": "WF-I-003",
+  "expected_result": "fail",
+  "record_paths": [
+    "fixtures/lifecycle/invalid/activation-missing-member-issuance.json"
+  ],
+  "notes": "Bundle activation lacks a member issuance."
+}

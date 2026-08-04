@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference",
+  "title": "Exact RegistrySnapshotReference",
+  "type": "object",
+  "required": [
+    "registry_protocol_id",
+    "registry_snapshot_format_version",
+    "registry_snapshot_id",
+    "registry_snapshot_digest",
+    "protocol_compatibility"
+  ],
+  "properties": {
+    "registry_protocol_id": {
+      "const": "project-gateway.registry"
+    },
+    "registry_snapshot_format_version": {
+      "const": "1.0"
+    },
+    "registry_snapshot_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/registrySnapshotId"
+    },
+    "registry_snapshot_digest": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/digest"
+    },
+    "protocol_compatibility": {
+      "type": "object",
+      "required": [
+        "mode",
+        "artifact_protocol_id",
+        "artifact_protocol_version"
+      ],
+      "properties": {
+        "mode": {
+          "const": "exact-release"
+        },
+        "artifact_protocol_id": {
+          "const": "project-gateway.artifact"
+        },
+        "artifact_protocol_version": {
+          "const": "1.0"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  },
+  "unevaluatedProperties": false
+}

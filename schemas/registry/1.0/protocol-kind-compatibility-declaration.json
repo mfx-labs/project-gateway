@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:registry:1.0:protocol-kind-compatibility-declaration",
+  "title": "Exact V1 protocol and kind compatibility declaration",
+  "type": "object",
+  "required": [
+    "artifact_protocol_id",
+    "artifact_protocol_version",
+    "kind_versions"
+  ],
+  "properties": {
+    "artifact_protocol_id": {
+      "const": "project-gateway.artifact"
+    },
+    "artifact_protocol_version": {
+      "const": "1.0"
+    },
+    "kind_versions": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": [
+          "kind_id",
+          "kind_version"
+        ],
+        "properties": {
+          "kind_id": {
+            "enum": [
+              "TaskSpec",
+              "AuthorityPolicy",
+              "ContextManifest",
+              "CompletionContract",
+              "ExecutionBundle",
+              "ExecutionResult"
+            ]
+          },
+          "kind_version": {
+            "const": "1.0"
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

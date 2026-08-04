@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+  "title": "TrustedReceipt",
+  "type": "object",
+  "required": [
+    "record_type",
+    "record_id",
+    "created_at",
+    "responsible_role",
+    "registry_snapshot_reference",
+    "event_type",
+    "event_record_id",
+    "workspace_id",
+    "occurrence_id",
+    "attempt_id",
+    "disposition"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "TrustedReceipt"
+    },
+    "record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "created_at": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+    },
+    "responsible_role": {
+      "const": "trusted-receipt-producer"
+    },
+    "registry_snapshot_reference": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+    },
+    "event_type": {
+      "enum": [
+        "activation-decision",
+        "occurrence-start",
+        "attempt-start",
+        "attempt-end",
+        "enforcement-denial",
+        "cancellation",
+        "timeout",
+        "crash",
+        "result-publication-correlation"
+      ]
+    },
+    "event_record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "workspace_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/workspaceId"
+    },
+    "occurrence_id": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/occurrenceId"
+        }
+      ]
+    },
+    "attempt_id": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/attemptId"
+        }
+      ]
+    },
+    "disposition": {
+      "enum": [
+        "accepted",
+        "denied",
+        "started",
+        "completed",
+        "failed",
+        "cancelled",
+        "timed-out",
+        "crashed"
+      ]
+    }
+  },
+  "unevaluatedProperties": false
+}

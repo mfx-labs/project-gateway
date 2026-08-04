@@ -1,0 +1,9 @@
+{
+  "workflow_id": "WF-I-005",
+  "expected_result": "fail",
+  "record_paths": [
+    "fixtures/lifecycle/invalid/denied-activation.json",
+    "fixtures/lifecycle/invalid/occurrence-after-denied-activation.json"
+  ],
+  "notes": "Denied activation cannot create occurrence."
+}

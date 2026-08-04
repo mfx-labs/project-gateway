@@ -1,0 +1,6 @@
+{
+  "id": "project-gateway.artifact",
+  "version": "1.0",
+  "canonicalization": "jcs-rfc8785-v1",
+  "unexpected_member": true
+}

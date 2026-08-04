@@ -1,0 +1,13 @@
+{
+  "vector_id": "CAN-ART-006",
+  "subject_type": "artifact-revision",
+  "source_fixture": "fixtures/artifacts/invalid/duplicate-key.json.raw",
+  "accepted_parsed_data_model": null,
+  "rejection_expectation": "duplicate-member",
+  "digest_domain": "PGAP-ARTIFACT-REVISION-v1\u0000",
+  "expected_sha256": null,
+  "expected_serialized_digest": null,
+  "rule_ids": [
+    "ART-001"
+  ]
+}

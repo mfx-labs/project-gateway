@@ -1,0 +1,18 @@
+{
+  "objective": "Produce a fixture conformance note.",
+  "instructions": [
+    {
+      "instruction_id": "prepare-note",
+      "text": "Create the requested conformance note."
+    }
+  ],
+  "expected_deliverables": [
+    {
+      "deliverable_id": "conformance-note",
+      "description": "A project-visible conformance note.",
+      "kind": "document"
+    }
+  ],
+  "outcome_constraints": [],
+  "project_data_citations": []
+}

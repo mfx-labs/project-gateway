@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:common:requirements",
+  "title": "Registered protocol feature and consumer capability requirements",
+  "type": "object",
+  "required": [
+    "protocol_features",
+    "consumer_capabilities"
+  ],
+  "properties": {
+    "protocol_features": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "urn:project-gateway:schema:artifact:1.0:common:registered-requirement"
+          },
+          {
+            "properties": {
+              "class": {
+                "const": "protocol-feature"
+              }
+            }
+          }
+        ]
+      },
+      "uniqueItems": true,
+      "maxItems": 32
+    },
+    "consumer_capabilities": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "urn:project-gateway:schema:artifact:1.0:common:registered-requirement"
+          },
+          {
+            "properties": {
+              "class": {
+                "const": "consumer-capability"
+              }
+            }
+          }
+        ]
+      },
+      "uniqueItems": true,
+      "maxItems": 32
+    }
+  },
+  "unevaluatedProperties": false
+}

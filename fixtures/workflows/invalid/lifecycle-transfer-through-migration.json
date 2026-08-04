@@ -1,0 +1,12 @@
+{
+  "workflow_id": "WF-I-013",
+  "expected_result": "fail",
+  "record_paths": [
+    "fixtures/artifacts/valid/task-minimal-genesis.json",
+    "fixtures/artifacts/valid/task-migration-new-subject.json",
+    "fixtures/lifecycle/valid/migration-task.json",
+    "fixtures/lifecycle/valid/approval-task.json",
+    "fixtures/lifecycle/invalid/issuance-migration-subject.json"
+  ],
+  "notes": "Old-subject approval is reused for the new migration subject through issuance; migration never transfers lifecycle authority."
+}

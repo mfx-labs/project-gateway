@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:lifecycle:1.0:records:supersession-record",
+  "title": "SupersessionRecord",
+  "type": "object",
+  "required": [
+    "record_type",
+    "record_id",
+    "created_at",
+    "responsible_role",
+    "registry_snapshot_reference",
+    "prior",
+    "successor",
+    "scope",
+    "reason_code"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "SupersessionRecord"
+    },
+    "record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "created_at": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+    },
+    "responsible_role": {
+      "const": "trusted-lifecycle-authority"
+    },
+    "registry_snapshot_reference": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+    },
+    "prior": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "subject_type",
+            "artifact_subject"
+          ],
+          "properties": {
+            "subject_type": {
+              "const": "artifact-revision"
+            },
+            "artifact_subject": {
+              "$ref": "urn:project-gateway:schema:lifecycle:1.0:common:components#/$defs/exactArtifactSubject"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "subject_type",
+            "record_id"
+          ],
+          "properties": {
+            "subject_type": {
+              "const": "result-publication"
+            },
+            "record_id": {
+              "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "successor": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "subject_type",
+            "artifact_subject"
+          ],
+          "properties": {
+            "subject_type": {
+              "const": "artifact-revision"
+            },
+            "artifact_subject": {
+              "$ref": "urn:project-gateway:schema:lifecycle:1.0:common:components#/$defs/exactArtifactSubject"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "subject_type",
+            "record_id"
+          ],
+          "properties": {
+            "subject_type": {
+              "const": "result-publication"
+            },
+            "record_id": {
+              "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "scope": {
+      "$ref": "urn:project-gateway:schema:lifecycle:1.0:common:components#/$defs/publicationScope"
+    },
+    "reason_code": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$",
+      "maxLength": 64
+    }
+  },
+  "unevaluatedProperties": false
+}

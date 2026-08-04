@@ -1,0 +1,9 @@
+{
+  "workflow_id": "WF-I-009",
+  "expected_result": "fail",
+  "record_paths": [
+    "fixtures/artifacts/valid/result-minimal-genesis.json",
+    "fixtures/artifacts/invalid/semantic-second-result-instance.json"
+  ],
+  "notes": "Second evaluator-produced result instance conflicts."
+}

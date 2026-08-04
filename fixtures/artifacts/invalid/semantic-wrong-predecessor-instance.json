@@ -1,0 +1,56 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "TaskSpec",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+  "revision": {
+    "id": "pgw:r:d65f71e7f15c58da83767ebc338864c6",
+    "generation": 1,
+    "predecessor": {
+      "target_protocol_version": "1.0",
+      "target_kind": {
+        "id": "TaskSpec",
+        "version": "1.0"
+      },
+      "target_instance_id": "pgw:i:b9ccf60674b1914096efd1d59fa51e0f",
+      "target_revision_id": "pgw:r:e0813cc53d6d83b1818142f7a9253b7d",
+      "target_digest": "sha-256:01a61316615a8ce71e471411f2ef168aaba74784ff252d0204b2d85b4dff9c28",
+      "target_workspace_binding": {
+        "mode": "portable"
+      }
+    },
+    "digest": "sha-256:5531e6fdbf79a0b7c99d2352aee82141855e76223158c418c70e12f7632d1260"
+  },
+  "workspace_binding": {
+    "mode": "portable"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [],
+  "body": {
+    "objective": "Produce a fixture conformance note.",
+    "instructions": [
+      {
+        "instruction_id": "prepare-note",
+        "text": "Create the revised requested conformance note."
+      }
+    ],
+    "expected_deliverables": [
+      {
+        "deliverable_id": "conformance-note",
+        "description": "A project-visible conformance note.",
+        "kind": "document"
+      }
+    ],
+    "outcome_constraints": [],
+    "project_data_citations": []
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "workflow_id": "WF-V-003",
+  "expected_result": "pass",
+  "record_paths": [
+    "fixtures/lifecycle/valid/runtime-grant-main.json",
+    "fixtures/lifecycle/valid/activation-accepted.json",
+    "fixtures/lifecycle/valid/occurrence-main.json",
+    "fixtures/lifecycle/valid/attempt-main-1.json",
+    "fixtures/lifecycle/valid/receipt-attempt-1.json"
+  ],
+  "notes": "Accepted activation creates one occurrence."
+}

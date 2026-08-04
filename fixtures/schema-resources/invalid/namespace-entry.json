@@ -1,0 +1,54 @@
+{
+  "namespace": "project-gateway.conformance-tag",
+  "owner_id": "project-gateway.protocol-registry",
+  "security_review": {
+    "review_id": "pgw:gr:c172f6a8683783cd674ad2e4f1da7ad7",
+    "status": "approved",
+    "reviewed_at": "2026-08-04T06:00:00.000Z",
+    "governing_role": "human-approved-protocol-registry"
+  },
+  "extension_contracts": [
+    {
+      "version": "1.0",
+      "payload_schema_id": "urn:project-gateway:schema:artifact:1.0:common:extension-declaration",
+      "semantic_contract_ids": [
+        "REG-006"
+      ],
+      "supported_kinds": [
+        {
+          "kind_id": "AuthorityPolicy",
+          "kind_version": "1.0"
+        },
+        {
+          "kind_id": "CompletionContract",
+          "kind_version": "1.0"
+        },
+        {
+          "kind_id": "ContextManifest",
+          "kind_version": "1.0"
+        },
+        {
+          "kind_id": "ExecutionBundle",
+          "kind_version": "1.0"
+        },
+        {
+          "kind_id": "ExecutionResult",
+          "kind_version": "1.0"
+        },
+        {
+          "kind_id": "TaskSpec",
+          "kind_version": "1.0"
+        }
+      ],
+      "supported_modes": [
+        "optional"
+      ],
+      "ignore_safety": "ignore-safe",
+      "deprecation": {
+        "status": "active"
+      },
+      "supersession": null
+    }
+  ],
+  "unexpected_member": true
+}

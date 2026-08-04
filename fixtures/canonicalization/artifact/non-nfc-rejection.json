@@ -1,0 +1,13 @@
+{
+  "vector_id": "CAN-ART-005",
+  "subject_type": "artifact-revision",
+  "source_fixture": "fixtures/artifacts/invalid/non-nfc-string.json",
+  "accepted_parsed_data_model": null,
+  "rejection_expectation": "non-nfc-string",
+  "digest_domain": "PGAP-ARTIFACT-REVISION-v1\u0000",
+  "expected_sha256": null,
+  "expected_serialized_digest": null,
+  "rule_ids": [
+    "ART-002"
+  ]
+}

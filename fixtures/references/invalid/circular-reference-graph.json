@@ -1,0 +1,17 @@
+{
+  "graph_subject": "semantic-reference-graph",
+  "nodes": [
+    "fixture-node-a",
+    "fixture-node-b"
+  ],
+  "edges": [
+    {
+      "from": "fixture-node-a",
+      "to": "fixture-node-b"
+    },
+    {
+      "from": "fixture-node-b",
+      "to": "fixture-node-a"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "workflow_id": "WF-I-006",
+  "expected_result": "fail",
+  "record_paths": [
+    "fixtures/lifecycle/invalid/denied-activation.json",
+    "fixtures/lifecycle/invalid/denied-grant-reuse.json"
+  ],
+  "notes": "Denied grant is terminal."
+}

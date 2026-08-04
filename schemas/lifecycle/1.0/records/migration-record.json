@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:lifecycle:1.0:records:migration-record",
+  "title": "MigrationRecord",
+  "type": "object",
+  "required": [
+    "record_type",
+    "record_id",
+    "created_at",
+    "responsible_role",
+    "registry_snapshot_reference",
+    "old_subject",
+    "new_subject",
+    "transformation_profile",
+    "scope"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "MigrationRecord"
+    },
+    "record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "created_at": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+    },
+    "responsible_role": {
+      "const": "trusted-migration-authority"
+    },
+    "registry_snapshot_reference": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+    },
+    "old_subject": {
+      "$ref": "urn:project-gateway:schema:lifecycle:1.0:common:components#/$defs/exactArtifactSubject"
+    },
+    "new_subject": {
+      "$ref": "urn:project-gateway:schema:lifecycle:1.0:common:components#/$defs/exactArtifactSubject"
+    },
+    "transformation_profile": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "const": "project-gateway.explicit-migration"
+        },
+        "version": {
+          "const": "1.0"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "scope": {
+      "enum": [
+        "historical-correlation",
+        "import-correlation"
+      ]
+    }
+  },
+  "unevaluatedProperties": false
+}

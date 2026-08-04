@@ -1,0 +1,58 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "ExecutionResult",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:8b13ff16e5e2ab55f9545ce171fdfb7c",
+  "revision": {
+    "id": "pgw:r:66f1c853ded0e0f67d4392d6c8b792fa",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:551a37acb15610ce49f4ad0d23743710f5f9c1a29fec423cf5b0a414c4611500"
+  },
+  "workspace_binding": {
+    "mode": "bound",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [],
+  "body": {
+    "reported_bundle": {
+      "target_protocol_version": "1.0",
+      "target_kind": {
+        "id": "ExecutionBundle",
+        "version": "1.0"
+      },
+      "target_instance_id": "pgw:i:064ee0ce2bdeee0073c6d64e93b9fb60",
+      "target_revision_id": "pgw:r:c55e6e260130dc58d95c600ee51db65d",
+      "target_digest": "sha-256:9a59a420a06f5e00f9529708918a2b9289bcb832aa8a4c983884520f5d6be3d7",
+      "target_workspace_binding": {
+        "mode": "bound",
+        "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+      }
+    },
+    "reported_occurrence_id": "pgw:o:07afc217d096ca56baa8fe7441667a7a",
+    "reported_attempt_id": "pgw:a:b17466cc359d45120cf977b1c506ab81",
+    "disposition": "completed",
+    "observed_outputs": [],
+    "observed_changed_resources": [],
+    "completion_check_observations": [
+      {
+        "check_id": "deliverable-present",
+        "status": "satisfied",
+        "evidence": []
+      }
+    ],
+    "violations": [],
+    "produced_artifact_references": [],
+    "evidence_references": []
+  }
+}

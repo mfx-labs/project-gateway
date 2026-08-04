@@ -1,0 +1,23 @@
+{
+  "checks": [
+    {
+      "check_id": "deliverable-present",
+      "evaluation_status": "required",
+      "check": {
+        "type": "project-gateway.deliverable-presence",
+        "version": "1.0",
+        "expected_deliverable_ids": [
+          "conformance-note"
+        ]
+      },
+      "required_evidence": [],
+      "acceptance_conditions": [
+        {
+          "condition_id": "deliverable-required",
+          "type": "all-identified-deliverables-present"
+        }
+      ]
+    }
+  ],
+  "unexpected_member": true
+}

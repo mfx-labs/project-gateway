@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:lifecycle:1.0:records:validation-record",
+  "title": "ValidationRecord",
+  "type": "object",
+  "required": [
+    "record_type",
+    "record_id",
+    "created_at",
+    "responsible_role",
+    "registry_snapshot_reference",
+    "subject",
+    "validator_profile",
+    "structural_outcome",
+    "semantic_outcome",
+    "findings"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "ValidationRecord"
+    },
+    "record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "created_at": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+    },
+    "responsible_role": {
+      "const": "trusted-validator"
+    },
+    "registry_snapshot_reference": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+    },
+    "subject": {
+      "$ref": "urn:project-gateway:schema:lifecycle:1.0:common:components#/$defs/exactArtifactSubject"
+    },
+    "validator_profile": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "const": "project-gateway.structural-semantic-v1"
+        },
+        "version": {
+          "const": "1.0"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "structural_outcome": {
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "semantic_outcome": {
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "required": [
+          "rule_id",
+          "category"
+        ],
+        "properties": {
+          "rule_id": {
+            "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/semanticRuleId"
+          },
+          "category": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$",
+            "maxLength": 64
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

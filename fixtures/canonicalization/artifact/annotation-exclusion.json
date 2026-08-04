@@ -1,0 +1,161 @@
+{
+  "vector_id": "CAN-ART-002",
+  "subject_type": "artifact-revision",
+  "source_fixtures": [
+    "fixtures/canonicalization/artifact/annotation-only-a.json",
+    "fixtures/canonicalization/artifact/annotation-only-b.json"
+  ],
+  "accepted_parsed_data_models": [
+    {
+      "protocol": {
+        "id": "project-gateway.artifact",
+        "version": "1.0",
+        "canonicalization": "jcs-rfc8785-v1"
+      },
+      "kind": {
+        "id": "TaskSpec",
+        "version": "1.0"
+      },
+      "instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+      "revision": {
+        "id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+        "generation": 0,
+        "predecessor": null,
+        "digest": "sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b"
+      },
+      "workspace_binding": {
+        "mode": "portable"
+      },
+      "requirements": {
+        "protocol_features": [],
+        "consumer_capabilities": []
+      },
+      "extensions": [],
+      "body": {
+        "objective": "Produce a fixture conformance note.",
+        "instructions": [
+          {
+            "instruction_id": "prepare-note",
+            "text": "Create the requested conformance note."
+          }
+        ],
+        "expected_deliverables": [
+          {
+            "deliverable_id": "conformance-note",
+            "description": "A project-visible conformance note.",
+            "kind": "document"
+          }
+        ],
+        "outcome_constraints": [],
+        "project_data_citations": []
+      },
+      "annotations": {
+        "title": "First display title"
+      }
+    },
+    {
+      "protocol": {
+        "id": "project-gateway.artifact",
+        "version": "1.0",
+        "canonicalization": "jcs-rfc8785-v1"
+      },
+      "kind": {
+        "id": "TaskSpec",
+        "version": "1.0"
+      },
+      "instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+      "revision": {
+        "id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+        "generation": 0,
+        "predecessor": null,
+        "digest": "sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b"
+      },
+      "workspace_binding": {
+        "mode": "portable"
+      },
+      "requirements": {
+        "protocol_features": [],
+        "consumer_capabilities": []
+      },
+      "extensions": [],
+      "body": {
+        "objective": "Produce a fixture conformance note.",
+        "instructions": [
+          {
+            "instruction_id": "prepare-note",
+            "text": "Create the requested conformance note."
+          }
+        ],
+        "expected_deliverables": [
+          {
+            "deliverable_id": "conformance-note",
+            "description": "A project-visible conformance note.",
+            "kind": "document"
+          }
+        ],
+        "outcome_constraints": [],
+        "project_data_citations": []
+      },
+      "annotations": {
+        "title": "Second display title",
+        "labels": [
+          "fixture"
+        ]
+      }
+    }
+  ],
+  "canonical_projection": {
+    "protocol": {
+      "id": "project-gateway.artifact",
+      "version": "1.0",
+      "canonicalization": "jcs-rfc8785-v1"
+    },
+    "kind": {
+      "id": "TaskSpec",
+      "version": "1.0"
+    },
+    "instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+    "revision": {
+      "id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+      "generation": 0,
+      "predecessor": null
+    },
+    "workspace_binding": {
+      "mode": "portable"
+    },
+    "requirements": {
+      "protocol_features": [],
+      "consumer_capabilities": []
+    },
+    "extensions": [],
+    "body": {
+      "objective": "Produce a fixture conformance note.",
+      "instructions": [
+        {
+          "instruction_id": "prepare-note",
+          "text": "Create the requested conformance note."
+        }
+      ],
+      "expected_deliverables": [
+        {
+          "deliverable_id": "conformance-note",
+          "description": "A project-visible conformance note.",
+          "kind": "document"
+        }
+      ],
+      "outcome_constraints": [],
+      "project_data_citations": []
+    }
+  },
+  "canonical_utf8": "{\"body\":{\"expected_deliverables\":[{\"deliverable_id\":\"conformance-note\",\"description\":\"A project-visible conformance note.\",\"kind\":\"document\"}],\"instructions\":[{\"instruction_id\":\"prepare-note\",\"text\":\"Create the requested conformance note.\"}],\"objective\":\"Produce a fixture conformance note.\",\"outcome_constraints\":[],\"project_data_citations\":[]},\"extensions\":[],\"instance_id\":\"pgw:i:9e74f09cf0287d6787d69e8ebddb5157\",\"kind\":{\"id\":\"TaskSpec\",\"version\":\"1.0\"},\"protocol\":{\"canonicalization\":\"jcs-rfc8785-v1\",\"id\":\"project-gateway.artifact\",\"version\":\"1.0\"},\"requirements\":{\"consumer_capabilities\":[],\"protocol_features\":[]},\"revision\":{\"generation\":0,\"id\":\"pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f\",\"predecessor\":null},\"workspace_binding\":{\"mode\":\"portable\"}}",
+  "digest_domain": "PGAP-ARTIFACT-REVISION-v1\u0000",
+  "expected_sha256": "b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b",
+  "expected_serialized_digest": "sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b",
+  "rule_ids": [
+    "ART-006"
+  ],
+  "coverage": [
+    "annotation-exclusion",
+    "annotation-only-digest-stability"
+  ]
+}

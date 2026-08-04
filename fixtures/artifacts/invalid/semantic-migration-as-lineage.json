@@ -1,0 +1,56 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "TaskSpec",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+  "revision": {
+    "id": "pgw:r:d65f71e7f15c58da83767ebc338864c6",
+    "generation": 1,
+    "predecessor": {
+      "target_protocol_version": "1.0",
+      "target_kind": {
+        "id": "TaskSpec",
+        "version": "1.0"
+      },
+      "target_instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+      "target_revision_id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+      "target_digest": "sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b",
+      "target_workspace_binding": {
+        "mode": "portable"
+      }
+    },
+    "digest": "sha-256:814f9bee550692357312380108a945a85b2c7cc71b57e48c2da52d35c8d81133"
+  },
+  "workspace_binding": {
+    "mode": "portable"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [],
+  "body": {
+    "objective": "Produce a fixture conformance note.",
+    "instructions": [
+      {
+        "instruction_id": "prepare-note",
+        "text": "Migrate the prior subject into this revision without a MigrationRecord."
+      }
+    ],
+    "expected_deliverables": [
+      {
+        "deliverable_id": "conformance-note",
+        "description": "A project-visible conformance note.",
+        "kind": "document"
+      }
+    ],
+    "outcome_constraints": [],
+    "project_data_citations": []
+  }
+}

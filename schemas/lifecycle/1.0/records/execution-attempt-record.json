@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-attempt-record",
+  "title": "ExecutionAttemptRecord",
+  "type": "object",
+  "required": [
+    "record_type",
+    "record_id",
+    "created_at",
+    "responsible_role",
+    "registry_snapshot_reference",
+    "activation_record_id",
+    "occurrence_id",
+    "attempt_id",
+    "ordinal",
+    "bundle",
+    "workspace_id",
+    "runtime_grant_id"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "ExecutionAttemptRecord"
+    },
+    "record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "created_at": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+    },
+    "responsible_role": {
+      "const": "trusted-execution-recorder"
+    },
+    "registry_snapshot_reference": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+    },
+    "activation_record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "occurrence_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/occurrenceId"
+    },
+    "attempt_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/attemptId"
+    },
+    "ordinal": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64
+    },
+    "bundle": {
+      "allOf": [
+        {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+        },
+        {
+          "properties": {
+            "target_kind": {
+              "properties": {
+                "id": {
+                  "const": "ExecutionBundle"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "workspace_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/workspaceId"
+    },
+    "runtime_grant_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    }
+  },
+  "unevaluatedProperties": false
+}

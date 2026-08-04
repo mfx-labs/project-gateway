@@ -1,0 +1,8 @@
+{
+  "workflow_id": "WF-I-007",
+  "expected_result": "fail",
+  "record_paths": [
+    "fixtures/lifecycle/invalid/attempt-without-accepted-occurrence.json"
+  ],
+  "notes": "Attempt lacks accepted occurrence."
+}

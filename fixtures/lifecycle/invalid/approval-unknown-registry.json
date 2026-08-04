@@ -1,0 +1,38 @@
+{
+  "record_type": "ApprovalRecord",
+  "record_id": "pgw:l:01fccf695e570e5670b56fc304de2f88",
+  "created_at": "2026-08-04T06:01:00.000Z",
+  "responsible_role": "trusted-approver",
+  "registry_snapshot_reference": {
+    "registry_protocol_id": "project-gateway.registry",
+    "registry_snapshot_format_version": "1.0",
+    "registry_snapshot_id": "pgw:g:913f92be99ab1ca9d87df35e78e26576",
+    "registry_snapshot_digest": "sha-256:8a3a8cfad94913f41818a7903bd5d9ed59153840ecdcef590812019c2ae1ac57",
+    "protocol_compatibility": {
+      "mode": "exact-release",
+      "artifact_protocol_id": "project-gateway.artifact",
+      "artifact_protocol_version": "1.0"
+    }
+  },
+  "subject": {
+    "protocol_version": "1.0",
+    "kind": {
+      "id": "TaskSpec",
+      "version": "1.0"
+    },
+    "instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+    "revision_id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+    "digest": "sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+  "purpose": "execution-use",
+  "validation_record_ids": [
+    "pgw:l:b34f44be24e82e0a12ce729ded641687"
+  ],
+  "required_semantics": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "valid_until": null
+}

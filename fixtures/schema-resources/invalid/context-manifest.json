@@ -1,0 +1,32 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "ContextManifest",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:92632714b203f03e1e92e2c10defd06d",
+  "revision": {
+    "id": "pgw:r:7230b62af4394f04153e6113fa3960a8",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:ef8568372b585f7d2dffdf144950ddff0f24c129cf54709cf92f54fcfb49350b"
+  },
+  "workspace_binding": {
+    "mode": "bound",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [],
+  "body": {
+    "selection_mode": "none",
+    "items": []
+  },
+  "schema_probe": true
+}

@@ -1,0 +1,84 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "AuthorityPolicy",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:0432354bb704591573d3b9d40b339d0d",
+  "revision": {
+    "id": "pgw:r:920d7cea6e73f640cd1f044e4d81c3a4",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:fc3586c6532f6c283a8603855b7ea155098646bcaff7a84ef0fcfd74c59cc5e8"
+  },
+  "workspace_binding": {
+    "mode": "bound",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [],
+  "body": {
+    "rules": [
+      {
+        "rule_id": "allow-artifact-read",
+        "effect": "allow",
+        "capability": {
+          "id": "project-gateway.workspace-read",
+          "version": "1.0"
+        },
+        "scope": {
+          "scope_type": "project-gateway.resource-class-scope",
+          "version": "1.0",
+          "resource_classes": [
+            "configured-artifact-area"
+          ],
+          "operation_classes": [
+            "read"
+          ]
+        },
+        "constraints": [
+          {
+            "type": "require-exact-resource",
+            "value": true
+          }
+        ],
+        "required_semantics": []
+      },
+      {
+        "rule_id": "deny-git-write",
+        "effect": "deny",
+        "capability": {
+          "id": "project-gateway.git-read",
+          "version": "1.0"
+        },
+        "scope": {
+          "scope_type": "project-gateway.resource-class-scope",
+          "version": "1.0",
+          "resource_classes": [
+            "git-metadata"
+          ],
+          "operation_classes": [
+            "inspect-git"
+          ]
+        },
+        "constraints": [
+          {
+            "type": "read-only",
+            "value": true
+          }
+        ],
+        "required_semantics": []
+      }
+    ]
+  },
+  "annotations": {
+    "title": "Untrusted policy display title"
+  }
+}

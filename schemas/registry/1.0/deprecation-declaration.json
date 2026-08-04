@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:registry:1.0:deprecation-declaration",
+  "title": "Registry deprecation declaration",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "const": "active"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "status",
+        "deprecated_at",
+        "reason_code"
+      ],
+      "properties": {
+        "status": {
+          "const": "deprecated"
+        },
+        "deprecated_at": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+        },
+        "reason_code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  ]
+}

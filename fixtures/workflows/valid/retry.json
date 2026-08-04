@@ -1,0 +1,10 @@
+{
+  "workflow_id": "WF-V-004",
+  "expected_result": "pass",
+  "record_paths": [
+    "fixtures/lifecycle/valid/attempt-main-1.json",
+    "fixtures/lifecycle/valid/attempt-main-2-retry.json",
+    "fixtures/lifecycle/valid/receipt-attempt-2.json"
+  ],
+  "notes": "Second ordered attempt retains occurrence, bundle, workspace, and grant."
+}

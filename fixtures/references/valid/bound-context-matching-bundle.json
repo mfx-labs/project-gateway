@@ -1,0 +1,14 @@
+{
+  "target_protocol_version": "1.0",
+  "target_kind": {
+    "id": "ContextManifest",
+    "version": "1.0"
+  },
+  "target_instance_id": "pgw:i:92632714b203f03e1e92e2c10defd06d",
+  "target_revision_id": "pgw:r:7230b62af4394f04153e6113fa3960a8",
+  "target_digest": "sha-256:ef8568372b585f7d2dffdf144950ddff0f24c129cf54709cf92f54fcfb49350b",
+  "target_workspace_binding": {
+    "mode": "bound",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  }
+}

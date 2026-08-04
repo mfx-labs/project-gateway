@@ -1,0 +1,10 @@
+{
+  "workflow_id": "WF-V-001",
+  "expected_result": "pass",
+  "record_paths": [
+    "fixtures/lifecycle/valid/validation-task.json",
+    "fixtures/lifecycle/valid/approval-task.json",
+    "fixtures/lifecycle/valid/issuance-task.json"
+  ],
+  "notes": "Validation, approval, and issuance remain distinct."
+}

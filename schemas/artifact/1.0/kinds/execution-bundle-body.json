@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:kinds:execution-bundle-body",
+  "title": "ExecutionBundle exact four-member composition body",
+  "type": "object",
+  "required": [
+    "task",
+    "authority_policy",
+    "context_manifest",
+    "completion_contract"
+  ],
+  "properties": {
+    "task": {
+      "allOf": [
+        {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+        },
+        {
+          "properties": {
+            "target_kind": {
+              "properties": {
+                "id": {
+                  "const": "TaskSpec"
+                },
+                "version": {
+                  "const": "1.0"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "authority_policy": {
+      "allOf": [
+        {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+        },
+        {
+          "properties": {
+            "target_kind": {
+              "properties": {
+                "id": {
+                  "const": "AuthorityPolicy"
+                },
+                "version": {
+                  "const": "1.0"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "context_manifest": {
+      "allOf": [
+        {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+        },
+        {
+          "properties": {
+            "target_kind": {
+              "properties": {
+                "id": {
+                  "const": "ContextManifest"
+                },
+                "version": {
+                  "const": "1.0"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "completion_contract": {
+      "allOf": [
+        {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+        },
+        {
+          "properties": {
+            "target_kind": {
+              "properties": {
+                "id": {
+                  "const": "CompletionContract"
+                },
+                "version": {
+                  "const": "1.0"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "unevaluatedProperties": false
+}

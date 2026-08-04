@@ -1,0 +1,130 @@
+{
+  "vector_id": "CAN-ART-004",
+  "subject_type": "artifact-revision",
+  "accepted_parsed_data_model": {
+    "protocol": {
+      "id": "project-gateway.artifact",
+      "version": "1.0",
+      "canonicalization": "jcs-rfc8785-v1"
+    },
+    "kind": {
+      "id": "AuthorityPolicy",
+      "version": "1.0"
+    },
+    "instance_id": "pgw:i:b09d7bbc9ace7f189718e56bdddeb4e7",
+    "revision": {
+      "id": "pgw:r:2f1c76acdc577c1a46ecdba92d8034f0",
+      "generation": 0,
+      "predecessor": null,
+      "digest": "sha-256:6ea38d85cf402dc52986873b50f282415530ea4324b5531f49c1dfaf14020379"
+    },
+    "workspace_binding": {
+      "mode": "bound",
+      "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+    },
+    "requirements": {
+      "protocol_features": [],
+      "consumer_capabilities": []
+    },
+    "extensions": [],
+    "body": {
+      "rules": [
+        {
+          "rule_id": "allow-artifact-read",
+          "effect": "allow",
+          "capability": {
+            "id": "project-gateway.workspace-read",
+            "version": "1.0"
+          },
+          "scope": {
+            "scope_type": "project-gateway.resource-class-scope",
+            "version": "1.0",
+            "resource_classes": [
+              "configured-artifact-area"
+            ],
+            "operation_classes": [
+              "read"
+            ]
+          },
+          "constraints": [
+            {
+              "type": "require-exact-resource",
+              "value": true
+            },
+            {
+              "type": "max-actions",
+              "value": 9007199254740991
+            }
+          ],
+          "required_semantics": []
+        }
+      ]
+    }
+  },
+  "canonical_projection": {
+    "protocol": {
+      "id": "project-gateway.artifact",
+      "version": "1.0",
+      "canonicalization": "jcs-rfc8785-v1"
+    },
+    "kind": {
+      "id": "AuthorityPolicy",
+      "version": "1.0"
+    },
+    "instance_id": "pgw:i:b09d7bbc9ace7f189718e56bdddeb4e7",
+    "revision": {
+      "id": "pgw:r:2f1c76acdc577c1a46ecdba92d8034f0",
+      "generation": 0,
+      "predecessor": null
+    },
+    "workspace_binding": {
+      "mode": "bound",
+      "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+    },
+    "requirements": {
+      "protocol_features": [],
+      "consumer_capabilities": []
+    },
+    "extensions": [],
+    "body": {
+      "rules": [
+        {
+          "rule_id": "allow-artifact-read",
+          "effect": "allow",
+          "capability": {
+            "id": "project-gateway.workspace-read",
+            "version": "1.0"
+          },
+          "scope": {
+            "scope_type": "project-gateway.resource-class-scope",
+            "version": "1.0",
+            "resource_classes": [
+              "configured-artifact-area"
+            ],
+            "operation_classes": [
+              "read"
+            ]
+          },
+          "constraints": [
+            {
+              "type": "require-exact-resource",
+              "value": true
+            },
+            {
+              "type": "max-actions",
+              "value": 9007199254740991
+            }
+          ],
+          "required_semantics": []
+        }
+      ]
+    }
+  },
+  "canonical_utf8": "{\"body\":{\"rules\":[{\"capability\":{\"id\":\"project-gateway.workspace-read\",\"version\":\"1.0\"},\"constraints\":[{\"type\":\"require-exact-resource\",\"value\":true},{\"type\":\"max-actions\",\"value\":9007199254740991}],\"effect\":\"allow\",\"required_semantics\":[],\"rule_id\":\"allow-artifact-read\",\"scope\":{\"operation_classes\":[\"read\"],\"resource_classes\":[\"configured-artifact-area\"],\"scope_type\":\"project-gateway.resource-class-scope\",\"version\":\"1.0\"}}]},\"extensions\":[],\"instance_id\":\"pgw:i:b09d7bbc9ace7f189718e56bdddeb4e7\",\"kind\":{\"id\":\"AuthorityPolicy\",\"version\":\"1.0\"},\"protocol\":{\"canonicalization\":\"jcs-rfc8785-v1\",\"id\":\"project-gateway.artifact\",\"version\":\"1.0\"},\"requirements\":{\"consumer_capabilities\":[],\"protocol_features\":[]},\"revision\":{\"generation\":0,\"id\":\"pgw:r:2f1c76acdc577c1a46ecdba92d8034f0\",\"predecessor\":null},\"workspace_binding\":{\"mode\":\"bound\",\"workspace_id\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"}}",
+  "digest_domain": "PGAP-ARTIFACT-REVISION-v1\u0000",
+  "expected_sha256": "6ea38d85cf402dc52986873b50f282415530ea4324b5531f49c1dfaf14020379",
+  "expected_serialized_digest": "sha-256:6ea38d85cf402dc52986873b50f282415530ea4324b5531f49c1dfaf14020379",
+  "rule_ids": [
+    "ART-004"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "vector_id": "CAN-ART-007",
+  "subject_type": "domain-separation",
+  "canonical_projection": {
+    "subject": "same"
+  },
+  "canonical_utf8": "{\"subject\":\"same\"}",
+  "digest_domain": "PGAP-ARTIFACT-REVISION-v1\u0000",
+  "expected_sha256": "50cd82fc793869698bf61b3ad510754b43bdbf7ac795333ee95c17553f47ac12",
+  "expected_serialized_digest": "sha-256:50cd82fc793869698bf61b3ad510754b43bdbf7ac795333ee95c17553f47ac12",
+  "rule_ids": [
+    "ART-005"
+  ]
+}

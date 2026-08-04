@@ -1,0 +1,13 @@
+{
+  "vector_id": "CAN-REG-004",
+  "subject_type": "registry-snapshot",
+  "source_fixture": "fixtures/registry/invalid/non-nfc.json.raw",
+  "accepted_parsed_data_model": null,
+  "rejection_expectation": "non-nfc-string",
+  "digest_domain": "PGAP-REGISTRY-SNAPSHOT-v1\u0000",
+  "expected_sha256": null,
+  "expected_serialized_digest": null,
+  "rule_ids": [
+    "REG-002"
+  ]
+}

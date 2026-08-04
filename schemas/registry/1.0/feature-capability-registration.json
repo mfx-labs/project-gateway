@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:registry:1.0:feature-capability-registration",
+  "title": "Registered protocol feature or consumer capability",
+  "type": "object",
+  "required": [
+    "class",
+    "id",
+    "version",
+    "security_review"
+  ],
+  "properties": {
+    "class": {
+      "enum": [
+        "protocol-feature",
+        "consumer-capability"
+      ]
+    },
+    "id": {
+      "enum": [
+        "project-gateway.conformance-alpha",
+        "project-gateway.conformance-beta",
+        "project-gateway.conformance-fixture",
+        "project-gateway.fixture-consumer",
+        "project-gateway.workspace-read",
+        "project-gateway.artifact-draft-write",
+        "project-gateway.git-read"
+      ]
+    },
+    "version": {
+      "const": "1.0"
+    },
+    "security_review": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:governance-security-review"
+    }
+  },
+  "unevaluatedProperties": false
+}

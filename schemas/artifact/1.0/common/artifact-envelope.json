@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:common:artifact-envelope",
+  "title": "Complete V1 common artifact envelope with closed kind discrimination",
+  "type": "object",
+  "required": [
+    "protocol",
+    "kind",
+    "instance_id",
+    "revision",
+    "workspace_binding",
+    "requirements",
+    "extensions",
+    "body"
+  ],
+  "properties": {
+    "protocol": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:protocol-descriptor"
+    },
+    "kind": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:kind-descriptor"
+    },
+    "instance_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/artifactInstanceId"
+    },
+    "revision": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:revision-descriptor"
+    },
+    "workspace_binding": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:workspace-binding"
+    },
+    "requirements": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:requirements"
+    },
+    "extensions": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:project-gateway:schema:artifact:1.0:common:extension-declaration"
+      }
+    },
+    "annotations": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:annotations"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "kind": {
+          "type": "object",
+          "required": [
+            "id",
+            "version"
+          ],
+          "properties": {
+            "id": {
+              "const": "TaskSpec"
+            },
+            "version": {
+              "const": "1.0"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "workspace_binding": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:workspace-binding"
+        },
+        "body": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:kinds:task-spec-body"
+        }
+      }
+    },
+    {
+      "properties": {
+        "kind": {
+          "type": "object",
+          "required": [
+            "id",
+            "version"
+          ],
+          "properties": {
+            "id": {
+              "const": "AuthorityPolicy"
+            },
+            "version": {
+              "const": "1.0"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "workspace_binding": {
+          "type": "object",
+          "required": [
+            "mode",
+            "workspace_id"
+          ],
+          "properties": {
+            "mode": {
+              "const": "bound"
+            },
+            "workspace_id": {
+              "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/workspaceId"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "body": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:kinds:authority-policy-body"
+        }
+      }
+    },
+    {
+      "properties": {
+        "kind": {
+          "type": "object",
+          "required": [
+            "id",
+            "version"
+          ],
+          "properties": {
+            "id": {
+              "const": "ContextManifest"
+            },
+            "version": {
+              "const": "1.0"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "workspace_binding": {
+          "type": "object",
+          "required": [
+            "mode",
+            "workspace_id"
+          ],
+          "properties": {
+            "mode": {
+              "const": "bound"
+            },
+            "workspace_id": {
+              "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/workspaceId"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "body": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:kinds:context-manifest-body"
+        }
+      }
+    },
+    {
+      "properties": {
+        "kind": {
+          "type": "object",
+          "required": [
+            "id",
+            "version"
+          ],
+          "properties": {
+            "id": {
+              "const": "CompletionContract"
+            },
+            "version": {
+              "const": "1.0"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "workspace_binding": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:workspace-binding"
+        },
+        "body": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:kinds:completion-contract-body"
+        }
+      }
+    },
+    {
+      "properties": {
+        "kind": {
+          "type": "object",
+          "required": [
+            "id",
+            "version"
+          ],
+          "properties": {
+            "id": {
+              "const": "ExecutionBundle"
+            },
+            "version": {
+              "const": "1.0"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "workspace_binding": {
+          "type": "object",
+          "required": [
+            "mode",
+            "workspace_id"
+          ],
+          "properties": {
+            "mode": {
+              "const": "bound"
+            },
+            "workspace_id": {
+              "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/workspaceId"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "body": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:kinds:execution-bundle-body"
+        }
+      }
+    },
+    {
+      "properties": {
+        "kind": {
+          "type": "object",
+          "required": [
+            "id",
+            "version"
+          ],
+          "properties": {
+            "id": {
+              "const": "ExecutionResult"
+            },
+            "version": {
+              "const": "1.0"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "workspace_binding": {
+          "type": "object",
+          "required": [
+            "mode",
+            "workspace_id"
+          ],
+          "properties": {
+            "mode": {
+              "const": "bound"
+            },
+            "workspace_id": {
+              "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/workspaceId"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "body": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:kinds:execution-result-body"
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

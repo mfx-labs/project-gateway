@@ -1,0 +1,24 @@
+{
+  "record_type": "AuthoritativeAuditEvent",
+  "record_id": "pgw:l:b51f243d2ad6f51f67d7565f48de2c97",
+  "created_at": "2026-08-04T06:01:00.000Z",
+  "responsible_role": "trusted-control-plane",
+  "registry_snapshot_reference": {
+    "registry_protocol_id": "project-gateway.registry",
+    "registry_snapshot_format_version": "1.0",
+    "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+    "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+    "protocol_compatibility": {
+      "mode": "exact-release",
+      "artifact_protocol_id": "project-gateway.artifact",
+      "artifact_protocol_version": "1.0"
+    }
+  },
+  "event_type": "result-published",
+  "primary_record_id": "pgw:l:0f86561945fd788cb719f2d5b8e81ccd",
+  "correlation_record_ids": [
+    "pgw:l:595fcd28f93b03437b2d8eff4873b06c",
+    "pgw:l:d98879735ae0ebe7072123f55e2cb06a"
+  ],
+  "schema_probe": true
+}

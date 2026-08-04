@@ -1,0 +1,76 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "TaskSpec",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:b9ccf60674b1914096efd1d59fa51e0f",
+  "revision": {
+    "id": "pgw:r:e0813cc53d6d83b1818142f7a9253b7d",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:01a61316615a8ce71e471411f2ef168aaba74784ff252d0204b2d85b4dff9c28"
+  },
+  "workspace_binding": {
+    "mode": "portable"
+  },
+  "requirements": {
+    "protocol_features": [
+      {
+        "class": "protocol-feature",
+        "id": "project-gateway.conformance-fixture",
+        "version": "1.0"
+      }
+    ],
+    "consumer_capabilities": [
+      {
+        "class": "consumer-capability",
+        "id": "project-gateway.fixture-consumer",
+        "version": "1.0"
+      }
+    ]
+  },
+  "extensions": [],
+  "body": {
+    "objective": "Produce a fixture conformance note.",
+    "instructions": [
+      {
+        "instruction_id": "prepare-note",
+        "text": "Create the requested conformance note."
+      }
+    ],
+    "expected_deliverables": [
+      {
+        "deliverable_id": "conformance-note",
+        "description": "A project-visible conformance note.",
+        "kind": "document"
+      }
+    ],
+    "outcome_constraints": [
+      {
+        "constraint_id": "reviewable",
+        "statement": "Keep the note reviewable as project data."
+      }
+    ],
+    "project_data_citations": [
+      {
+        "citation_id": "spec-data",
+        "relationship": "outcome-constraint",
+        "summary": "The cited specification remains project data only."
+      }
+    ]
+  },
+  "annotations": {
+    "title": "Untrusted task display title",
+    "labels": [
+      "fixture",
+      "task"
+    ],
+    "producer_attribution": "fixture-producer",
+    "created_at": "2026-08-04T06:00:00.000Z"
+  }
+}

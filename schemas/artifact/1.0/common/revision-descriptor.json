@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:common:revision-descriptor",
+  "title": "Artifact revision descriptor",
+  "type": "object",
+  "required": [
+    "id",
+    "generation",
+    "predecessor",
+    "digest"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/revisionId"
+    },
+    "generation": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/nonNegativeSafeInteger"
+    },
+    "predecessor": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+        }
+      ]
+    },
+    "digest": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/digest"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "generation": {
+          "const": 0
+        },
+        "predecessor": {
+          "type": "null"
+        }
+      }
+    },
+    {
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "predecessor": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

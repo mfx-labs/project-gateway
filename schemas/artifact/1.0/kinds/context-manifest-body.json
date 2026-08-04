@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:kinds:context-manifest-body",
+  "title": "ContextManifest bounded data-selection body",
+  "type": "object",
+  "required": [
+    "selection_mode",
+    "items"
+  ],
+  "properties": {
+    "selection_mode": {
+      "enum": [
+        "none",
+        "items"
+      ]
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "required": [
+          "context_id",
+          "requirement",
+          "priority",
+          "purpose",
+          "integrity",
+          "selector"
+        ],
+        "properties": {
+          "context_id": {
+            "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/localId"
+          },
+          "requirement": {
+            "enum": [
+              "required",
+              "optional"
+            ]
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "purpose": {
+            "enum": [
+              "background",
+              "specification",
+              "evidence",
+              "constraint",
+              "fact"
+            ]
+          },
+          "integrity": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "mode"
+                ],
+                "properties": {
+                  "mode": {
+                    "const": "none"
+                  }
+                },
+                "unevaluatedProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "mode",
+                  "expected_content_digest"
+                ],
+                "properties": {
+                  "mode": {
+                    "const": "sha-256"
+                  },
+                  "expected_content_digest": {
+                    "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/digest"
+                  }
+                },
+                "unevaluatedProperties": false
+              }
+            ]
+          },
+          "selector": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "selector_type",
+                  "version",
+                  "resource_id"
+                ],
+                "properties": {
+                  "selector_type": {
+                    "const": "project-gateway.workspace-resource-id"
+                  },
+                  "version": {
+                    "const": "1.0"
+                  },
+                  "resource_id": {
+                    "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/selectorId"
+                  }
+                },
+                "unevaluatedProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "selector_type",
+                  "version",
+                  "artifact"
+                ],
+                "properties": {
+                  "selector_type": {
+                    "const": "project-gateway.artifact-revision"
+                  },
+                  "version": {
+                    "const": "1.0"
+                  },
+                  "artifact": {
+                    "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+                  }
+                },
+                "unevaluatedProperties": false
+              }
+            ]
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "selection_mode": {
+            "const": "none"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "items": {
+            "maxItems": 0
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "items": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

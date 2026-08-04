@@ -1,0 +1,14 @@
+{
+  "vector_id": "CAN-REG-006",
+  "subject_type": "domain-separation",
+  "canonical_projection": {
+    "subject": "same"
+  },
+  "canonical_utf8": "{\"subject\":\"same\"}",
+  "digest_domain": "PGAP-REGISTRY-SNAPSHOT-v1\u0000",
+  "expected_sha256": "80fe79c73f266e6729db8d25fc1980e66d4394cd10e04e734f5c21213900f89e",
+  "expected_serialized_digest": "sha-256:80fe79c73f266e6729db8d25fc1980e66d4394cd10e04e734f5c21213900f89e",
+  "rule_ids": [
+    "REG-004"
+  ]
+}

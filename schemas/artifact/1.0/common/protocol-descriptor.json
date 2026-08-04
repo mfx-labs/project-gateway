@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:common:protocol-descriptor",
+  "title": "Artifact protocol descriptor",
+  "type": "object",
+  "required": [
+    "id",
+    "version",
+    "canonicalization"
+  ],
+  "properties": {
+    "id": {
+      "const": "project-gateway.artifact"
+    },
+    "version": {
+      "const": "1.0"
+    },
+    "canonicalization": {
+      "const": "jcs-rfc8785-v1"
+    }
+  },
+  "unevaluatedProperties": false
+}

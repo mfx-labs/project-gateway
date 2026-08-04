@@ -1,0 +1,27 @@
+{
+  "record_type": "SupersessionRecord",
+  "record_id": "pgw:l:f708d5de3174144dabee1fe183b710b1",
+  "created_at": "2026-08-04T06:01:00.000Z",
+  "responsible_role": "trusted-lifecycle-authority",
+  "registry_snapshot_reference": {
+    "registry_protocol_id": "project-gateway.registry",
+    "registry_snapshot_format_version": "1.0",
+    "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+    "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+    "protocol_compatibility": {
+      "mode": "exact-release",
+      "artifact_protocol_id": "project-gateway.artifact",
+      "artifact_protocol_version": "1.0"
+    }
+  },
+  "prior": {
+    "subject_type": "result-publication",
+    "record_id": "pgw:l:0f86561945fd788cb719f2d5b8e81ccd"
+  },
+  "successor": {
+    "subject_type": "result-publication",
+    "record_id": "pgw:l:bbe7a46ace75d39197c83b683f767a0f"
+  },
+  "scope": "ordinary-review",
+  "reason_code": "corrected-observation"
+}

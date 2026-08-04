@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:lifecycle:1.0:records:activation-record",
+  "title": "ActivationRecord",
+  "type": "object",
+  "required": [
+    "record_type",
+    "record_id",
+    "created_at",
+    "responsible_role",
+    "registry_snapshot_reference",
+    "bundle",
+    "workspace_id",
+    "required_issuance_record_ids",
+    "runtime_grant_id",
+    "reserved_occurrence_id",
+    "decision"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "ActivationRecord"
+    },
+    "record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "created_at": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+    },
+    "responsible_role": {
+      "const": "trusted-activation-authority"
+    },
+    "registry_snapshot_reference": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+    },
+    "bundle": {
+      "allOf": [
+        {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+        },
+        {
+          "properties": {
+            "target_kind": {
+              "properties": {
+                "id": {
+                  "const": "ExecutionBundle"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "workspace_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/workspaceId"
+    },
+    "required_issuance_record_ids": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+      }
+    },
+    "runtime_grant_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "reserved_occurrence_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/occurrenceId"
+    },
+    "decision": {
+      "enum": [
+        "accepted",
+        "denied"
+      ]
+    }
+  },
+  "unevaluatedProperties": false
+}

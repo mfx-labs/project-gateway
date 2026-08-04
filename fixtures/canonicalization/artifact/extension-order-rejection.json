@@ -1,0 +1,80 @@
+{
+  "vector_id": "CAN-ART-011",
+  "subject_type": "artifact-revision",
+  "source_fixture": "fixtures/artifacts/invalid/canonical-unsorted-extensions.json",
+  "source_data_model": {
+    "protocol": {
+      "id": "project-gateway.artifact",
+      "version": "1.0",
+      "canonicalization": "jcs-rfc8785-v1"
+    },
+    "kind": {
+      "id": "TaskSpec",
+      "version": "1.0"
+    },
+    "instance_id": "pgw:i:bdcb72c1802c07dc880da608e1f485f8",
+    "revision": {
+      "id": "pgw:r:d5accd8ef5eb36bd7b417caf32edb98b",
+      "generation": 0,
+      "predecessor": null,
+      "digest": "sha-256:885f8aeb2c6795001a3f74a3eef486eb0fe9b380b4e3461b88ea71c6cde2611a"
+    },
+    "workspace_binding": {
+      "mode": "portable"
+    },
+    "requirements": {
+      "protocol_features": [],
+      "consumer_capabilities": []
+    },
+    "extensions": [
+      {
+        "namespace": "project-gateway.conformance-tag",
+        "version": "1.0",
+        "mode": "optional",
+        "payload": {
+          "tag": "ordering",
+          "classification": "fixture-only"
+        }
+      },
+      {
+        "namespace": "example.review-evidence",
+        "version": "1.0",
+        "mode": "optional",
+        "payload": {
+          "evidence_class": "fixture-only",
+          "summary": "Ordering fixture evidence."
+        }
+      }
+    ],
+    "body": {
+      "objective": "Produce a fixture conformance note.",
+      "instructions": [
+        {
+          "instruction_id": "prepare-note",
+          "text": "Create the requested conformance note."
+        }
+      ],
+      "expected_deliverables": [
+        {
+          "deliverable_id": "conformance-note",
+          "description": "A project-visible conformance note.",
+          "kind": "document"
+        }
+      ],
+      "outcome_constraints": [],
+      "project_data_citations": []
+    }
+  },
+  "accepted_parsed_data_model": null,
+  "rejection_expectation": "canonical-order-failure",
+  "digest_domain": "PGAP-ARTIFACT-REVISION-v1\u0000",
+  "expected_sha256": null,
+  "expected_serialized_digest": null,
+  "coverage": [
+    "extensions-set-ordering",
+    "canonical-set-ordering"
+  ],
+  "rule_ids": [
+    "ART-008"
+  ]
+}

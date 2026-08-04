@@ -1,0 +1,73 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "AuthorityPolicy",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:b09d7bbc9ace7f189718e56bdddeb4e7",
+  "revision": {
+    "id": "pgw:r:dbae3aa082b4e7c370fea6df355c0e5d",
+    "generation": 1,
+    "predecessor": {
+      "target_protocol_version": "1.0",
+      "target_kind": {
+        "id": "AuthorityPolicy",
+        "version": "1.0"
+      },
+      "target_instance_id": "pgw:i:b09d7bbc9ace7f189718e56bdddeb4e7",
+      "target_revision_id": "pgw:r:23d4449e772e28829d670728cf30796d",
+      "target_digest": "sha-256:95a9035a3d2b4b134dc062a0ba50db8086c8ec12229ac48408f692a8a967a0ec",
+      "target_workspace_binding": {
+        "mode": "bound",
+        "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+      }
+    },
+    "digest": "sha-256:62d49c90442debb532cbaa909b1408ed2d2f9196e63a06c30730745de3754043"
+  },
+  "workspace_binding": {
+    "mode": "bound",
+    "workspace_id": "pgw:w:5d72691566a53e3e3ba556476fb4f772"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [],
+  "body": {
+    "rules": [
+      {
+        "rule_id": "allow-artifact-read",
+        "effect": "allow",
+        "capability": {
+          "id": "project-gateway.workspace-read",
+          "version": "1.0"
+        },
+        "scope": {
+          "scope_type": "project-gateway.resource-class-scope",
+          "version": "1.0",
+          "resource_classes": [
+            "configured-artifact-area"
+          ],
+          "operation_classes": [
+            "read"
+          ]
+        },
+        "constraints": [
+          {
+            "type": "require-exact-resource",
+            "value": true
+          },
+          {
+            "type": "max-resources",
+            "value": 3
+          }
+        ],
+        "required_semantics": []
+      }
+    ]
+  }
+}

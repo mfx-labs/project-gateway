@@ -237,3 +237,39 @@ The exact external reference to a Registry Snapshot: registry protocol identifie
 ## Registry Snapshot Digest
 
 The distinct domain-separated `sha-256:` digest of canonical Registry Snapshot content, using `PGAP-REGISTRY-SNAPSHOT-v1\u0000` rather than the artifact-revision digest domain. Registry snapshot data is validated for duplicate keys and already-NFC digest-covered strings before RFC 8785 JCS serialization; it is not silently normalized.
+
+## Structural Validation
+
+The ordered validation of raw input, canonical-input preconditions, local schema selection, closed JSON Schema contracts, canonical ordering, and derived digest assertions. Structural Validation establishes conformance only; it never establishes approval, issuance, a grant, activation, publication, evaluator provenance, workspace registration, or a receipt.
+
+## Semantic Validation
+
+The fail-closed validation of protocol meaning that requires cross-field, cross-artifact, registry, identity, workspace, lifecycle, consumer-support, or point-of-use inputs beyond one JSON Schema evaluation. Semantic Validation establishes conformance only and does not create trusted lifecycle authority.
+
+## Canonical-Input Validation
+
+The pre-canonicalization validation of one parsed JSON data model: duplicate member rejection before parser ambiguity, valid Unicode and no unpaired surrogate, already-NFC digest-covered strings, safe integers, explicit nullability, and canonical ordering prerequisites. It rejects nonconforming input and never silently normalizes it.
+
+## Schema Resource
+
+One versioned Draft 2020-12 structural contract with a stable Project Gateway schema URN `$id`. Every external reference from a Schema Resource is an absolute URN matching another resource’s exact `$id`; fragment-only references are resource-local. A Schema Resource is neither an artifact identity nor a trusted registry/lifecycle subject and is resolved only through the offline Schema Catalog, whose paths are packaging locations, not identity.
+
+## Schema Catalog
+
+The offline normative index of local Schema Resources, their stable URN `$id` values, paths, profiles, versions, subject types, dependencies, and status. It prevents producer-controlled or remote schema substitution.
+
+## Conformance Fixture
+
+A deterministic normative input or graph named by a stable fixture ID in the fixture manifest. It declares the first failing phase, expected pass/fail result, the exact schema resource that applies to a single subject (or explicit `null` for raw, canonical-input, schema-selection, graph, and vector fixtures), rule IDs, failure category, dependencies, and exact registry context where applicable. A later-phase fixture must pass every earlier required phase first.
+
+## Digest Vector
+
+A Conformance Fixture that records canonical projection/input expectations, exact canonical UTF-8 text, digest domain, actual SHA-256 output, serialized digest, and relevant rule IDs, or an explicit rejection expectation. It tests a protocol digest contract without becoming a hashing implementation.
+
+## Validation Phase
+
+One ordered stage in the protocol validation pipeline. A required failure at an earlier phase prevents later authority-dependent use; a later phase must operate on the same accepted data model established by the preceding phases.
+
+## Conformance Rule ID
+
+A stable normative identifier such as `ART-001`, `REF-004`, `LFC-003`, or `PUB-005` for one semantic protocol requirement. It is not an implementation exception string and maps to passing and failing Conformance Fixtures.

@@ -1,0 +1,10 @@
+{
+  "workflow_id": "WF-V-007",
+  "expected_result": "pass",
+  "record_paths": [
+    "fixtures/artifacts/valid/task-minimal-genesis.json",
+    "fixtures/artifacts/valid/task-migration-new-subject.json",
+    "fixtures/lifecycle/valid/migration-task.json"
+  ],
+  "notes": "Migration correlates separate generation-zero subjects without lifecycle transfer."
+}

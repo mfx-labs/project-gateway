@@ -1,0 +1,125 @@
+{
+  "vector_id": "CAN-ART-008",
+  "subject_type": "artifact-revision",
+  "source_fixture": "fixtures/artifacts/valid/task-set-ordering-valid.json",
+  "accepted_parsed_data_model": {
+    "protocol": {
+      "id": "project-gateway.artifact",
+      "version": "1.0",
+      "canonicalization": "jcs-rfc8785-v1"
+    },
+    "kind": {
+      "id": "TaskSpec",
+      "version": "1.0"
+    },
+    "instance_id": "pgw:i:4d981becf03f7abc2c92c3fd6781a1d2",
+    "revision": {
+      "id": "pgw:r:f4a77f060631ac53271451f9a984b3a0",
+      "generation": 0,
+      "predecessor": null,
+      "digest": "sha-256:3b55b8c1309eada6a7dc038bf42b3422bd36b798b509b0e334d4b09ce1bdd2ee"
+    },
+    "workspace_binding": {
+      "mode": "portable"
+    },
+    "requirements": {
+      "protocol_features": [
+        {
+          "class": "protocol-feature",
+          "id": "project-gateway.conformance-alpha",
+          "version": "1.0"
+        },
+        {
+          "class": "protocol-feature",
+          "id": "project-gateway.conformance-beta",
+          "version": "1.0"
+        }
+      ],
+      "consumer_capabilities": []
+    },
+    "extensions": [],
+    "body": {
+      "objective": "Produce a fixture conformance note.",
+      "instructions": [
+        {
+          "instruction_id": "prepare-note",
+          "text": "Create the requested conformance note."
+        }
+      ],
+      "expected_deliverables": [
+        {
+          "deliverable_id": "conformance-note",
+          "description": "A project-visible conformance note.",
+          "kind": "document"
+        }
+      ],
+      "outcome_constraints": [],
+      "project_data_citations": []
+    }
+  },
+  "canonical_projection": {
+    "protocol": {
+      "id": "project-gateway.artifact",
+      "version": "1.0",
+      "canonicalization": "jcs-rfc8785-v1"
+    },
+    "kind": {
+      "id": "TaskSpec",
+      "version": "1.0"
+    },
+    "instance_id": "pgw:i:4d981becf03f7abc2c92c3fd6781a1d2",
+    "revision": {
+      "id": "pgw:r:f4a77f060631ac53271451f9a984b3a0",
+      "generation": 0,
+      "predecessor": null
+    },
+    "workspace_binding": {
+      "mode": "portable"
+    },
+    "requirements": {
+      "protocol_features": [
+        {
+          "class": "protocol-feature",
+          "id": "project-gateway.conformance-alpha",
+          "version": "1.0"
+        },
+        {
+          "class": "protocol-feature",
+          "id": "project-gateway.conformance-beta",
+          "version": "1.0"
+        }
+      ],
+      "consumer_capabilities": []
+    },
+    "extensions": [],
+    "body": {
+      "objective": "Produce a fixture conformance note.",
+      "instructions": [
+        {
+          "instruction_id": "prepare-note",
+          "text": "Create the requested conformance note."
+        }
+      ],
+      "expected_deliverables": [
+        {
+          "deliverable_id": "conformance-note",
+          "description": "A project-visible conformance note.",
+          "kind": "document"
+        }
+      ],
+      "outcome_constraints": [],
+      "project_data_citations": []
+    }
+  },
+  "canonical_utf8": "{\"body\":{\"expected_deliverables\":[{\"deliverable_id\":\"conformance-note\",\"description\":\"A project-visible conformance note.\",\"kind\":\"document\"}],\"instructions\":[{\"instruction_id\":\"prepare-note\",\"text\":\"Create the requested conformance note.\"}],\"objective\":\"Produce a fixture conformance note.\",\"outcome_constraints\":[],\"project_data_citations\":[]},\"extensions\":[],\"instance_id\":\"pgw:i:4d981becf03f7abc2c92c3fd6781a1d2\",\"kind\":{\"id\":\"TaskSpec\",\"version\":\"1.0\"},\"protocol\":{\"canonicalization\":\"jcs-rfc8785-v1\",\"id\":\"project-gateway.artifact\",\"version\":\"1.0\"},\"requirements\":{\"consumer_capabilities\":[],\"protocol_features\":[{\"class\":\"protocol-feature\",\"id\":\"project-gateway.conformance-alpha\",\"version\":\"1.0\"},{\"class\":\"protocol-feature\",\"id\":\"project-gateway.conformance-beta\",\"version\":\"1.0\"}]},\"revision\":{\"generation\":0,\"id\":\"pgw:r:f4a77f060631ac53271451f9a984b3a0\",\"predecessor\":null},\"workspace_binding\":{\"mode\":\"portable\"}}",
+  "digest_domain": "PGAP-ARTIFACT-REVISION-v1\u0000",
+  "expected_sha256": "3b55b8c1309eada6a7dc038bf42b3422bd36b798b509b0e334d4b09ce1bdd2ee",
+  "expected_serialized_digest": "sha-256:3b55b8c1309eada6a7dc038bf42b3422bd36b798b509b0e334d4b09ce1bdd2ee",
+  "coverage": [
+    "requirements-set-ordering",
+    "canonical-set-ordering"
+  ],
+  "rule_ids": [
+    "ART-008"
+  ]
+}

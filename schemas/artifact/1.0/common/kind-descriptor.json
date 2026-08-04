@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:common:kind-descriptor",
+  "title": "Core artifact kind descriptor",
+  "type": "object",
+  "required": [
+    "id",
+    "version"
+  ],
+  "properties": {
+    "id": {
+      "enum": [
+        "TaskSpec",
+        "AuthorityPolicy",
+        "ContextManifest",
+        "CompletionContract",
+        "ExecutionBundle",
+        "ExecutionResult"
+      ]
+    },
+    "version": {
+      "const": "1.0"
+    }
+  },
+  "unevaluatedProperties": false
+}

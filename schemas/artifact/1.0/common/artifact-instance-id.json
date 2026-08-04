@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:common:artifact-instance-id",
+  "title": "Artifact instance ID",
+  "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/artifactInstanceId"
+}

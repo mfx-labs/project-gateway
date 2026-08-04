@@ -1,0 +1,54 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "TaskSpec",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:3f34e6d2278fa3bad25f9ab0be7ca7a1",
+  "revision": {
+    "id": "pgw:r:ade3a3fd00bdcf9fd4f946a4e9c9c75d",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:2fa804dc248af5d14bf8092a35805fb2762994dfa793db530ca68731b1af74e4"
+  },
+  "workspace_binding": {
+    "mode": "portable"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [
+    {
+      "namespace": "project-gateway.conformance-tag",
+      "version": "1.0",
+      "mode": "optional",
+      "payload": {
+        "tag": "task-fixture",
+        "classification": "fixture-only"
+      }
+    }
+  ],
+  "body": {
+    "objective": "Produce a fixture conformance note.",
+    "instructions": [
+      {
+        "instruction_id": "prepare-note",
+        "text": "Apply the conformance-tag task-fixture classification before review."
+      }
+    ],
+    "expected_deliverables": [
+      {
+        "deliverable_id": "conformance-note",
+        "description": "A project-visible conformance note.",
+        "kind": "document"
+      }
+    ],
+    "outcome_constraints": [],
+    "project_data_citations": []
+  }
+}

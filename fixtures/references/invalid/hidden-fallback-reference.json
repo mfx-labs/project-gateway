@@ -1,0 +1,30 @@
+{
+  "primary": {
+    "target_protocol_version": "1.0",
+    "target_kind": {
+      "id": "TaskSpec",
+      "version": "1.0"
+    },
+    "target_instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+    "target_revision_id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+    "target_digest": "sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b",
+    "target_workspace_binding": {
+      "mode": "portable"
+    }
+  },
+  "fallbacks": [
+    {
+      "target_protocol_version": "1.0",
+      "target_kind": {
+        "id": "TaskSpec",
+        "version": "1.0"
+      },
+      "target_instance_id": "pgw:i:b9ccf60674b1914096efd1d59fa51e0f",
+      "target_revision_id": "pgw:r:e0813cc53d6d83b1818142f7a9253b7d",
+      "target_digest": "sha-256:01a61316615a8ce71e471411f2ef168aaba74784ff252d0204b2d85b4dff9c28",
+      "target_workspace_binding": {
+        "mode": "portable"
+      }
+    }
+  ]
+}

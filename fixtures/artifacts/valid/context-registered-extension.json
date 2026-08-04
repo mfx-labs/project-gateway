@@ -1,0 +1,41 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "ContextManifest",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:fb579e15311e4436d27abaedf9c50713",
+  "revision": {
+    "id": "pgw:r:20387e9bfb5177f74188ecc9f2b2d838",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:dfda5d64e17590a414bb223361014d890a7c471bf42610656ffc28e35386c975"
+  },
+  "workspace_binding": {
+    "mode": "bound",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [
+    {
+      "namespace": "project-gateway.conformance-tag",
+      "version": "1.0",
+      "mode": "optional",
+      "payload": {
+        "tag": "context-fixture",
+        "classification": "fixture-only"
+      }
+    }
+  ],
+  "body": {
+    "selection_mode": "none",
+    "items": []
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "target_protocol_version": "1.0",
+  "target_kind": {
+    "id": "TaskSpec",
+    "version": "1.0"
+  },
+  "target_instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+  "target_revision_id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+  "target_digest": "sha-256:0000000000000000000000000000000000000000000000000000000000000000",
+  "target_workspace_binding": {
+    "mode": "portable"
+  }
+}

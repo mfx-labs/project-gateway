@@ -1,0 +1,12 @@
+{
+  "class": "consumer-capability",
+  "id": "project-gateway.artifact-draft-write",
+  "version": "1.0",
+  "security_review": {
+    "review_id": "pgw:gr:77c18695324f60d8f186feb400f95370",
+    "status": "approved",
+    "reviewed_at": "2026-08-04T06:00:00.000Z",
+    "governing_role": "human-approved-protocol-registry"
+  },
+  "unexpected_member": true
+}

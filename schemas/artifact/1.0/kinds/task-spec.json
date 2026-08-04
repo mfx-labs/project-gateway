@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:kinds:task-spec",
+  "title": "Complete TaskSpec V1 artifact",
+  "allOf": [
+    {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:artifact-envelope"
+    },
+    {
+      "properties": {
+        "kind": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "const": "TaskSpec"
+            },
+            "version": {
+              "const": "1.0"
+            }
+          },
+          "required": [
+            "id",
+            "version"
+          ]
+        }
+      }
+    }
+  ]
+}

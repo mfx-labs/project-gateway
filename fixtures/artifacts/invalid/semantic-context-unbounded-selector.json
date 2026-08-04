@@ -1,0 +1,50 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "ContextManifest",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:6e15c1cb7686ff44e3d5de258e49e126",
+  "revision": {
+    "id": "pgw:r:71568045fffcad46417064ed10ea0657",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:b72fa7bfa6e42bab37bee896c58b57cd98f1b58f447dc0fb7ad819506fc022a6"
+  },
+  "workspace_binding": {
+    "mode": "bound",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [],
+  "body": {
+    "selection_mode": "items",
+    "items": [
+      {
+        "context_id": "requirements-data",
+        "requirement": "required",
+        "priority": 10,
+        "purpose": "specification",
+        "integrity": {
+          "mode": "sha-256",
+          "expected_content_digest": "sha-256:1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "selector": {
+          "selector_type": "filesystem-glob",
+          "version": "1.0",
+          "pattern": "**/*"
+        }
+      }
+    ]
+  },
+  "annotations": {
+    "title": "Untrusted context title"
+  }
+}

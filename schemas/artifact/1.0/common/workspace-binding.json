@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:common:workspace-binding",
+  "title": "Digest-covered workspace binding",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "const": "portable"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "mode",
+        "workspace_id"
+      ],
+      "properties": {
+        "mode": {
+          "const": "bound"
+        },
+        "workspace_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/workspaceId"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  ]
+}

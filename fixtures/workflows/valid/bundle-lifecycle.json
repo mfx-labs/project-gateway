@@ -1,0 +1,22 @@
+{
+  "workflow_id": "WF-V-002",
+  "expected_result": "pass",
+  "record_paths": [
+    "fixtures/lifecycle/valid/validation-task.json",
+    "fixtures/lifecycle/valid/validation-policy.json",
+    "fixtures/lifecycle/valid/validation-context.json",
+    "fixtures/lifecycle/valid/validation-completion.json",
+    "fixtures/lifecycle/valid/validation-bundle.json",
+    "fixtures/lifecycle/valid/approval-task.json",
+    "fixtures/lifecycle/valid/approval-policy.json",
+    "fixtures/lifecycle/valid/approval-context.json",
+    "fixtures/lifecycle/valid/approval-completion.json",
+    "fixtures/lifecycle/valid/approval-bundle.json",
+    "fixtures/lifecycle/valid/issuance-task.json",
+    "fixtures/lifecycle/valid/issuance-policy.json",
+    "fixtures/lifecycle/valid/issuance-context.json",
+    "fixtures/lifecycle/valid/issuance-completion.json",
+    "fixtures/lifecycle/valid/issuance-bundle.json"
+  ],
+  "notes": "All four members and bundle have separate lifecycle records."
+}

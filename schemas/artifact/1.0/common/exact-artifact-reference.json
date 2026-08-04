@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference",
+  "title": "Exact artifact reference",
+  "type": "object",
+  "required": [
+    "target_protocol_version",
+    "target_kind",
+    "target_instance_id",
+    "target_revision_id",
+    "target_digest",
+    "target_workspace_binding"
+  ],
+  "properties": {
+    "target_protocol_version": {
+      "const": "1.0"
+    },
+    "target_kind": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:kind-descriptor"
+    },
+    "target_instance_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/artifactInstanceId"
+    },
+    "target_revision_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/revisionId"
+    },
+    "target_digest": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/digest"
+    },
+    "target_workspace_binding": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:workspace-binding"
+    }
+  },
+  "unevaluatedProperties": false
+}

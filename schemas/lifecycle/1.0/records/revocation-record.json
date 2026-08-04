@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:lifecycle:1.0:records:revocation-record",
+  "title": "RevocationRecord",
+  "type": "object",
+  "required": [
+    "record_type",
+    "record_id",
+    "created_at",
+    "responsible_role",
+    "registry_snapshot_reference",
+    "target",
+    "scope",
+    "effective_at",
+    "reason_code"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "RevocationRecord"
+    },
+    "record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "created_at": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+    },
+    "responsible_role": {
+      "const": "trusted-revocation-authority"
+    },
+    "registry_snapshot_reference": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "record_type",
+        "record_id"
+      ],
+      "properties": {
+        "record_type": {
+          "enum": [
+            "ApprovalRecord",
+            "IssuanceRecord",
+            "RuntimeGrant",
+            "ResultPublicationRecord"
+          ]
+        },
+        "record_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "scope": {
+      "enum": [
+        "all-uses",
+        "execution-use",
+        "ordinary-review",
+        "completion-status",
+        "downstream-automation",
+        "authoritative-reporting"
+      ]
+    },
+    "effective_at": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+    },
+    "reason_code": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$",
+      "maxLength": 64
+    }
+  },
+  "unevaluatedProperties": false
+}

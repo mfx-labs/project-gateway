@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:registry:1.0:supersession-declaration",
+  "title": "Registry extension-contract supersession declaration",
+  "oneOf": [
+    {
+      "type": "null"
+    },
+    {
+      "type": "object",
+      "required": [
+        "successor_namespace",
+        "successor_version"
+      ],
+      "properties": {
+        "successor_namespace": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/namespace"
+        },
+        "successor_version": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/version"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  ]
+}

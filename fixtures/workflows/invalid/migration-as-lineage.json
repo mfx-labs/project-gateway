@@ -1,0 +1,8 @@
+{
+  "workflow_id": "WF-I-012",
+  "expected_result": "fail",
+  "record_paths": [
+    "fixtures/artifacts/invalid/semantic-migration-as-lineage.json"
+  ],
+  "notes": "Migration cannot become predecessor lineage."
+}

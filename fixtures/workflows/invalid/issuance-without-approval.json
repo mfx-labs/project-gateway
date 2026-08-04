@@ -1,0 +1,8 @@
+{
+  "workflow_id": "WF-I-002",
+  "expected_result": "fail",
+  "record_paths": [
+    "fixtures/lifecycle/invalid/issuance-without-approval.json"
+  ],
+  "notes": "Issuance references no active matching approval."
+}

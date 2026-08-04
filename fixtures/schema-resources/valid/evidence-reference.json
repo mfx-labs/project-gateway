@@ -1,0 +1,7 @@
+{
+  "kind": "workspace-resource-observation",
+  "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+  "resource_id": "pgw:s:c0fd8578328a52787483351440ba8d2e",
+  "content_digest": "sha-256:3333333333333333333333333333333333333333333333333333333333333333",
+  "observation_role": "evaluation-evidence"
+}

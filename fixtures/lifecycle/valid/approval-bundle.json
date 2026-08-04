@@ -1,0 +1,38 @@
+{
+  "record_type": "ApprovalRecord",
+  "record_id": "pgw:l:a243f82138e796ce117a8a631b8781a6",
+  "created_at": "2026-08-04T06:01:00.000Z",
+  "responsible_role": "trusted-approver",
+  "registry_snapshot_reference": {
+    "registry_protocol_id": "project-gateway.registry",
+    "registry_snapshot_format_version": "1.0",
+    "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+    "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+    "protocol_compatibility": {
+      "mode": "exact-release",
+      "artifact_protocol_id": "project-gateway.artifact",
+      "artifact_protocol_version": "1.0"
+    }
+  },
+  "subject": {
+    "protocol_version": "1.0",
+    "kind": {
+      "id": "ExecutionBundle",
+      "version": "1.0"
+    },
+    "instance_id": "pgw:i:064ee0ce2bdeee0073c6d64e93b9fb60",
+    "revision_id": "pgw:r:c55e6e260130dc58d95c600ee51db65d",
+    "digest": "sha-256:9a59a420a06f5e00f9529708918a2b9289bcb832aa8a4c983884520f5d6be3d7",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+  "purpose": "execution-use",
+  "validation_record_ids": [
+    "pgw:l:054a5c0c7896bce44918a38e7c13ea96"
+  ],
+  "required_semantics": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "valid_until": null
+}

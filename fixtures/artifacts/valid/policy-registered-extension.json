@@ -1,0 +1,66 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "AuthorityPolicy",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:1d82df215c6f149830941f6e6cee6531",
+  "revision": {
+    "id": "pgw:r:1d839401504244bc11535ec791b49be1",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:44e5f291d3c185b9f410a0552a2dcf0276ddcf6be6f499d3678a9e53eb15bb3c"
+  },
+  "workspace_binding": {
+    "mode": "bound",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [
+    {
+      "namespace": "project-gateway.conformance-tag",
+      "version": "1.0",
+      "mode": "optional",
+      "payload": {
+        "tag": "policy-fixture",
+        "classification": "fixture-only"
+      }
+    }
+  ],
+  "body": {
+    "rules": [
+      {
+        "rule_id": "allow-artifact-read",
+        "effect": "allow",
+        "capability": {
+          "id": "project-gateway.workspace-read",
+          "version": "1.0"
+        },
+        "scope": {
+          "scope_type": "project-gateway.resource-class-scope",
+          "version": "1.0",
+          "resource_classes": [
+            "configured-artifact-area"
+          ],
+          "operation_classes": [
+            "read"
+          ]
+        },
+        "constraints": [
+          {
+            "type": "require-exact-resource",
+            "value": true
+          }
+        ],
+        "required_semantics": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "ExecutionResult",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:7cd0bd60f9c3b76d91467aadafe7b0af",
+  "revision": {
+    "id": "pgw:r:50a66ef9a0d307aa1754ead10bf648ab",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:458d4f6ff831056e130103be596e3397f817312597440831d4bb245f603483f9"
+  },
+  "workspace_binding": {
+    "mode": "bound",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [],
+  "body": {
+    "reported_bundle": {
+      "target_protocol_version": "1.0",
+      "target_kind": {
+        "id": "ExecutionBundle",
+        "version": "1.0"
+      },
+      "target_instance_id": "pgw:i:deadbeef000000000000000000000000",
+      "target_revision_id": "pgw:r:cafebabe000000000000000000000000",
+      "target_digest": "sha-256:0000000000000000000000000000000000000000000000000000000000000000",
+      "target_workspace_binding": {
+        "mode": "bound",
+        "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+      }
+    },
+    "reported_occurrence_id": "pgw:o:07afc217d096ca56baa8fe7441667a7a",
+    "reported_attempt_id": "pgw:a:b17466cc359d45120cf977b1c506ab81",
+    "disposition": "completed",
+    "observed_outputs": [],
+    "observed_changed_resources": [],
+    "completion_check_observations": [
+      {
+        "check_id": "deliverable-present",
+        "status": "satisfied",
+        "evidence": []
+      }
+    ],
+    "violations": [],
+    "produced_artifact_references": [],
+    "evidence_references": []
+  }
+}

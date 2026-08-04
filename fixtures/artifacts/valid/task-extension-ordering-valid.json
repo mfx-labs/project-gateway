@@ -1,0 +1,63 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "TaskSpec",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:e65a23f456f9467b67690bbacf25e40e",
+  "revision": {
+    "id": "pgw:r:f4f390c817a968d55ef75a2854564c7e",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:033bc17126f7808848af1e0791b576942bc983ed2f2483c13f409a6ff2cdea4e"
+  },
+  "workspace_binding": {
+    "mode": "portable"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [
+    {
+      "namespace": "example.review-evidence",
+      "version": "1.0",
+      "mode": "optional",
+      "payload": {
+        "evidence_class": "fixture-only",
+        "summary": "Ordering fixture evidence."
+      }
+    },
+    {
+      "namespace": "project-gateway.conformance-tag",
+      "version": "1.0",
+      "mode": "optional",
+      "payload": {
+        "tag": "ordering",
+        "classification": "fixture-only"
+      }
+    }
+  ],
+  "body": {
+    "objective": "Produce a fixture conformance note.",
+    "instructions": [
+      {
+        "instruction_id": "prepare-note",
+        "text": "Create the requested conformance note."
+      }
+    ],
+    "expected_deliverables": [
+      {
+        "deliverable_id": "conformance-note",
+        "description": "A project-visible conformance note.",
+        "kind": "document"
+      }
+    ],
+    "outcome_constraints": [],
+    "project_data_citations": []
+  }
+}

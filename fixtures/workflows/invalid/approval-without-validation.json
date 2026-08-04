@@ -1,0 +1,8 @@
+{
+  "workflow_id": "WF-I-001",
+  "expected_result": "fail",
+  "record_paths": [
+    "fixtures/lifecycle/invalid/approval-without-validation.json"
+  ],
+  "notes": "Approval references no valid assessment."
+}

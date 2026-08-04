@@ -1,0 +1,68 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "ExecutionResult",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:f0c8b589d01c882eba045d60f9000704",
+  "revision": {
+    "id": "pgw:r:b364570b7044548b11f70fc5f76002ef",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:049b04302849b274175a1a28ff03914df37b03df84e9ebad7af125984b156131"
+  },
+  "workspace_binding": {
+    "mode": "bound",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [
+    {
+      "namespace": "project-gateway.conformance-tag",
+      "version": "1.0",
+      "mode": "optional",
+      "payload": {
+        "tag": "result-fixture",
+        "classification": "fixture-only"
+      }
+    }
+  ],
+  "body": {
+    "reported_bundle": {
+      "target_protocol_version": "1.0",
+      "target_kind": {
+        "id": "ExecutionBundle",
+        "version": "1.0"
+      },
+      "target_instance_id": "pgw:i:064ee0ce2bdeee0073c6d64e93b9fb60",
+      "target_revision_id": "pgw:r:c55e6e260130dc58d95c600ee51db65d",
+      "target_digest": "sha-256:9a59a420a06f5e00f9529708918a2b9289bcb832aa8a4c983884520f5d6be3d7",
+      "target_workspace_binding": {
+        "mode": "bound",
+        "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+      }
+    },
+    "reported_occurrence_id": "pgw:o:07afc217d096ca56baa8fe7441667a7a",
+    "reported_attempt_id": "pgw:a:b17466cc359d45120cf977b1c506ab81",
+    "disposition": "completed",
+    "observed_outputs": [],
+    "observed_changed_resources": [],
+    "completion_check_observations": [
+      {
+        "check_id": "deliverable-present",
+        "status": "satisfied",
+        "evidence": []
+      }
+    ],
+    "violations": [],
+    "produced_artifact_references": [],
+    "evidence_references": []
+  }
+}

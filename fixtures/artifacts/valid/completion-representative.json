@@ -1,0 +1,74 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "CompletionContract",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:528b2d4afb2ed2e8e5b26b484a2131cf",
+  "revision": {
+    "id": "pgw:r:4dd8c818824f54b42854ff0633ad6bc5",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:1ee82e9ef064a84f0bfb209ec384d55d1bd3533c90d6432b90ef10c2c163185e"
+  },
+  "workspace_binding": {
+    "mode": "portable"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [],
+  "body": {
+    "checks": [
+      {
+        "check_id": "deliverable-present",
+        "evaluation_status": "required",
+        "check": {
+          "type": "project-gateway.deliverable-presence",
+          "version": "1.0",
+          "expected_deliverable_ids": [
+            "conformance-note"
+          ]
+        },
+        "required_evidence": [],
+        "acceptance_conditions": [
+          {
+            "condition_id": "deliverable-required",
+            "type": "all-identified-deliverables-present"
+          }
+        ]
+      },
+      {
+        "check_id": "evidence-present",
+        "evaluation_status": "optional",
+        "check": {
+          "type": "project-gateway.evidence-presence",
+          "version": "1.0",
+          "required_evidence_kinds": [
+            "workspace-resource-observation"
+          ]
+        },
+        "required_evidence": [
+          {
+            "requirement_id": "resource-observation",
+            "kind": "workspace-resource-observation"
+          }
+        ],
+        "acceptance_conditions": [
+          {
+            "condition_id": "evidence-present",
+            "type": "all-required-evidence-present"
+          }
+        ]
+      }
+    ]
+  },
+  "annotations": {
+    "title": "Untrusted completion title"
+  }
+}

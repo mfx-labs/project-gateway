@@ -1,0 +1,141 @@
+{
+  "vector_id": "CAN-ART-010",
+  "subject_type": "artifact-revision",
+  "source_fixture": "fixtures/artifacts/valid/task-extension-ordering-valid.json",
+  "accepted_parsed_data_model": {
+    "protocol": {
+      "id": "project-gateway.artifact",
+      "version": "1.0",
+      "canonicalization": "jcs-rfc8785-v1"
+    },
+    "kind": {
+      "id": "TaskSpec",
+      "version": "1.0"
+    },
+    "instance_id": "pgw:i:e65a23f456f9467b67690bbacf25e40e",
+    "revision": {
+      "id": "pgw:r:f4f390c817a968d55ef75a2854564c7e",
+      "generation": 0,
+      "predecessor": null,
+      "digest": "sha-256:033bc17126f7808848af1e0791b576942bc983ed2f2483c13f409a6ff2cdea4e"
+    },
+    "workspace_binding": {
+      "mode": "portable"
+    },
+    "requirements": {
+      "protocol_features": [],
+      "consumer_capabilities": []
+    },
+    "extensions": [
+      {
+        "namespace": "example.review-evidence",
+        "version": "1.0",
+        "mode": "optional",
+        "payload": {
+          "evidence_class": "fixture-only",
+          "summary": "Ordering fixture evidence."
+        }
+      },
+      {
+        "namespace": "project-gateway.conformance-tag",
+        "version": "1.0",
+        "mode": "optional",
+        "payload": {
+          "tag": "ordering",
+          "classification": "fixture-only"
+        }
+      }
+    ],
+    "body": {
+      "objective": "Produce a fixture conformance note.",
+      "instructions": [
+        {
+          "instruction_id": "prepare-note",
+          "text": "Create the requested conformance note."
+        }
+      ],
+      "expected_deliverables": [
+        {
+          "deliverable_id": "conformance-note",
+          "description": "A project-visible conformance note.",
+          "kind": "document"
+        }
+      ],
+      "outcome_constraints": [],
+      "project_data_citations": []
+    }
+  },
+  "canonical_projection": {
+    "protocol": {
+      "id": "project-gateway.artifact",
+      "version": "1.0",
+      "canonicalization": "jcs-rfc8785-v1"
+    },
+    "kind": {
+      "id": "TaskSpec",
+      "version": "1.0"
+    },
+    "instance_id": "pgw:i:e65a23f456f9467b67690bbacf25e40e",
+    "revision": {
+      "id": "pgw:r:f4f390c817a968d55ef75a2854564c7e",
+      "generation": 0,
+      "predecessor": null
+    },
+    "workspace_binding": {
+      "mode": "portable"
+    },
+    "requirements": {
+      "protocol_features": [],
+      "consumer_capabilities": []
+    },
+    "extensions": [
+      {
+        "namespace": "example.review-evidence",
+        "version": "1.0",
+        "mode": "optional",
+        "payload": {
+          "evidence_class": "fixture-only",
+          "summary": "Ordering fixture evidence."
+        }
+      },
+      {
+        "namespace": "project-gateway.conformance-tag",
+        "version": "1.0",
+        "mode": "optional",
+        "payload": {
+          "tag": "ordering",
+          "classification": "fixture-only"
+        }
+      }
+    ],
+    "body": {
+      "objective": "Produce a fixture conformance note.",
+      "instructions": [
+        {
+          "instruction_id": "prepare-note",
+          "text": "Create the requested conformance note."
+        }
+      ],
+      "expected_deliverables": [
+        {
+          "deliverable_id": "conformance-note",
+          "description": "A project-visible conformance note.",
+          "kind": "document"
+        }
+      ],
+      "outcome_constraints": [],
+      "project_data_citations": []
+    }
+  },
+  "canonical_utf8": "{\"body\":{\"expected_deliverables\":[{\"deliverable_id\":\"conformance-note\",\"description\":\"A project-visible conformance note.\",\"kind\":\"document\"}],\"instructions\":[{\"instruction_id\":\"prepare-note\",\"text\":\"Create the requested conformance note.\"}],\"objective\":\"Produce a fixture conformance note.\",\"outcome_constraints\":[],\"project_data_citations\":[]},\"extensions\":[{\"mode\":\"optional\",\"namespace\":\"example.review-evidence\",\"payload\":{\"evidence_class\":\"fixture-only\",\"summary\":\"Ordering fixture evidence.\"},\"version\":\"1.0\"},{\"mode\":\"optional\",\"namespace\":\"project-gateway.conformance-tag\",\"payload\":{\"classification\":\"fixture-only\",\"tag\":\"ordering\"},\"version\":\"1.0\"}],\"instance_id\":\"pgw:i:e65a23f456f9467b67690bbacf25e40e\",\"kind\":{\"id\":\"TaskSpec\",\"version\":\"1.0\"},\"protocol\":{\"canonicalization\":\"jcs-rfc8785-v1\",\"id\":\"project-gateway.artifact\",\"version\":\"1.0\"},\"requirements\":{\"consumer_capabilities\":[],\"protocol_features\":[]},\"revision\":{\"generation\":0,\"id\":\"pgw:r:f4f390c817a968d55ef75a2854564c7e\",\"predecessor\":null},\"workspace_binding\":{\"mode\":\"portable\"}}",
+  "digest_domain": "PGAP-ARTIFACT-REVISION-v1\u0000",
+  "expected_sha256": "033bc17126f7808848af1e0791b576942bc983ed2f2483c13f409a6ff2cdea4e",
+  "expected_serialized_digest": "sha-256:033bc17126f7808848af1e0791b576942bc983ed2f2483c13f409a6ff2cdea4e",
+  "coverage": [
+    "extensions-set-ordering",
+    "canonical-set-ordering"
+  ],
+  "rule_ids": [
+    "ART-008"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "workflow_id": "WF-V-006",
+  "expected_result": "pass",
+  "record_paths": [
+    "fixtures/artifacts/valid/result-successor.json",
+    "fixtures/lifecycle/valid/validation-result-successor.json",
+    "fixtures/lifecycle/valid/result-publication-successor.json",
+    "fixtures/lifecycle/valid/supersession-result.json"
+  ],
+  "notes": "Correction remains within the same result instance."
+}

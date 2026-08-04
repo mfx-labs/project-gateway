@@ -1,0 +1,11 @@
+{
+  "workflow_id": "WF-V-005",
+  "expected_result": "pass",
+  "record_paths": [
+    "fixtures/artifacts/valid/result-minimal-genesis.json",
+    "fixtures/lifecycle/valid/validation-result.json",
+    "fixtures/lifecycle/valid/result-publication-main.json",
+    "fixtures/lifecycle/valid/receipt-attempt-1.json"
+  ],
+  "notes": "Published result supports ordinary review and receipt-correlated privileged use."
+}

@@ -1,0 +1,31 @@
+{
+  "artifact_protocol_id": "project-gateway.artifact",
+  "artifact_protocol_version": "1.0",
+  "kind_versions": [
+    {
+      "kind_id": "AuthorityPolicy",
+      "kind_version": "1.0"
+    },
+    {
+      "kind_id": "CompletionContract",
+      "kind_version": "1.0"
+    },
+    {
+      "kind_id": "ContextManifest",
+      "kind_version": "1.0"
+    },
+    {
+      "kind_id": "ExecutionBundle",
+      "kind_version": "1.0"
+    },
+    {
+      "kind_id": "ExecutionResult",
+      "kind_version": "1.0"
+    },
+    {
+      "kind_id": "TaskSpec",
+      "kind_version": "1.0"
+    }
+  ],
+  "unexpected_member": true
+}

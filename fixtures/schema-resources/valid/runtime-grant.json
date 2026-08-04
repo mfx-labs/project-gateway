@@ -1,0 +1,44 @@
+{
+  "record_type": "RuntimeGrant",
+  "record_id": "pgw:l:e885b36cf1d0c416221e47dd4ad71d0e",
+  "created_at": "2026-08-04T06:01:00.000Z",
+  "responsible_role": "trusted-runtime-grant-authority",
+  "registry_snapshot_reference": {
+    "registry_protocol_id": "project-gateway.registry",
+    "registry_snapshot_format_version": "1.0",
+    "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+    "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+    "protocol_compatibility": {
+      "mode": "exact-release",
+      "artifact_protocol_id": "project-gateway.artifact",
+      "artifact_protocol_version": "1.0"
+    }
+  },
+  "bundle": {
+    "target_protocol_version": "1.0",
+    "target_kind": {
+      "id": "ExecutionBundle",
+      "version": "1.0"
+    },
+    "target_instance_id": "pgw:i:064ee0ce2bdeee0073c6d64e93b9fb60",
+    "target_revision_id": "pgw:r:c55e6e260130dc58d95c600ee51db65d",
+    "target_digest": "sha-256:9a59a420a06f5e00f9529708918a2b9289bcb832aa8a4c983884520f5d6be3d7",
+    "target_workspace_binding": {
+      "mode": "bound",
+      "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+    }
+  },
+  "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+  "reserved_occurrence_id": "pgw:o:07afc217d096ca56baa8fe7441667a7a",
+  "attempt_limit": 2,
+  "validity": {
+    "not_before": "2026-08-04T06:00:00.000Z",
+    "not_after": "2026-08-05T06:00:00.000Z"
+  },
+  "narrowed_constraints": [
+    {
+      "type": "max-actions",
+      "value": 10
+    }
+  ]
+}

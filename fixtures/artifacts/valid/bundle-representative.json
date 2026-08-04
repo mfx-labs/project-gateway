@@ -1,0 +1,86 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "ExecutionBundle",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:72c3b6f532a649dea7c69f4d7ab6a08a",
+  "revision": {
+    "id": "pgw:r:09a6f4b186477ee91cda73d5741ae67c",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:e30dafce2540d39cf8acfed2aa003da95f491f0722812972037272f6cb707a76"
+  },
+  "workspace_binding": {
+    "mode": "bound",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [],
+  "body": {
+    "task": {
+      "target_protocol_version": "1.0",
+      "target_kind": {
+        "id": "TaskSpec",
+        "version": "1.0"
+      },
+      "target_instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+      "target_revision_id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+      "target_digest": "sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b",
+      "target_workspace_binding": {
+        "mode": "portable"
+      }
+    },
+    "authority_policy": {
+      "target_protocol_version": "1.0",
+      "target_kind": {
+        "id": "AuthorityPolicy",
+        "version": "1.0"
+      },
+      "target_instance_id": "pgw:i:b09d7bbc9ace7f189718e56bdddeb4e7",
+      "target_revision_id": "pgw:r:23d4449e772e28829d670728cf30796d",
+      "target_digest": "sha-256:95a9035a3d2b4b134dc062a0ba50db8086c8ec12229ac48408f692a8a967a0ec",
+      "target_workspace_binding": {
+        "mode": "bound",
+        "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+      }
+    },
+    "context_manifest": {
+      "target_protocol_version": "1.0",
+      "target_kind": {
+        "id": "ContextManifest",
+        "version": "1.0"
+      },
+      "target_instance_id": "pgw:i:92632714b203f03e1e92e2c10defd06d",
+      "target_revision_id": "pgw:r:7230b62af4394f04153e6113fa3960a8",
+      "target_digest": "sha-256:ef8568372b585f7d2dffdf144950ddff0f24c129cf54709cf92f54fcfb49350b",
+      "target_workspace_binding": {
+        "mode": "bound",
+        "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+      }
+    },
+    "completion_contract": {
+      "target_protocol_version": "1.0",
+      "target_kind": {
+        "id": "CompletionContract",
+        "version": "1.0"
+      },
+      "target_instance_id": "pgw:i:23c04d055bd59c637bd47e3feb5b5575",
+      "target_revision_id": "pgw:r:ff793e8e7ff0f02133a9af257b81003f",
+      "target_digest": "sha-256:3eb28e975843c943d894fb1d751f0a234b41deb72c38e443aeff62682b9285c7",
+      "target_workspace_binding": {
+        "mode": "portable"
+      }
+    }
+  },
+  "annotations": {
+    "title": "Untrusted bundle title"
+  }
+}

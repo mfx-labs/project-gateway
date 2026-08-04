@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:lifecycle:1.0:common:components",
+  "title": "Closed trusted lifecycle common component header",
+  "type": "object",
+  "required": [
+    "record_id",
+    "created_at",
+    "responsible_role",
+    "registry_snapshot_reference"
+  ],
+  "properties": {
+    "record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "created_at": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+    },
+    "responsible_role": {
+      "enum": [
+        "trusted-validator",
+        "trusted-approver",
+        "trusted-issuer",
+        "trusted-revocation-authority",
+        "trusted-runtime-grant-authority",
+        "trusted-activation-authority",
+        "trusted-execution-recorder",
+        "trusted-receipt-producer",
+        "trusted-result-publisher",
+        "trusted-lifecycle-authority",
+        "trusted-reporting-authority",
+        "trusted-migration-authority",
+        "trusted-control-plane"
+      ]
+    },
+    "registry_snapshot_reference": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+    }
+  },
+  "unevaluatedProperties": false,
+  "$defs": {
+    "exactArtifactSubject": {
+      "type": "object",
+      "required": [
+        "protocol_version",
+        "kind",
+        "instance_id",
+        "revision_id",
+        "digest",
+        "workspace_id"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": "1.0"
+        },
+        "kind": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:kind-descriptor"
+        },
+        "instance_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/artifactInstanceId"
+        },
+        "revision_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/revisionId"
+        },
+        "digest": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/digest"
+        },
+        "workspace_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/workspaceId"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "validityBound": {
+      "type": "object",
+      "required": [
+        "not_before",
+        "not_after"
+      ],
+      "properties": {
+        "not_before": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+        },
+        "not_after": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "publicationScope": {
+      "enum": [
+        "ordinary-review",
+        "completion-status",
+        "downstream-automation",
+        "authoritative-reporting"
+      ]
+    },
+    "evaluatorProvenance": {
+      "type": "object",
+      "required": [
+        "evaluator_id",
+        "capability_profile_id"
+      ],
+      "properties": {
+        "evaluator_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/evaluatorId"
+        },
+        "capability_profile_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/capabilityProfileId"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

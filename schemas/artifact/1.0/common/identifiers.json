@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+  "title": "Project Gateway identifier and scalar syntax set",
+  "description": "A reusable closed scalar set. Opaque fixture values are deterministic only for reproducible tests.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/artifactInstanceId"
+    },
+    {
+      "$ref": "#/$defs/revisionId"
+    },
+    {
+      "$ref": "#/$defs/workspaceId"
+    },
+    {
+      "$ref": "#/$defs/registrySnapshotId"
+    },
+    {
+      "$ref": "#/$defs/lifecycleRecordId"
+    },
+    {
+      "$ref": "#/$defs/occurrenceId"
+    },
+    {
+      "$ref": "#/$defs/attemptId"
+    },
+    {
+      "$ref": "#/$defs/selectorId"
+    },
+    {
+      "$ref": "#/$defs/evidenceId"
+    },
+    {
+      "$ref": "#/$defs/evaluatorId"
+    },
+    {
+      "$ref": "#/$defs/capabilityProfileId"
+    },
+    {
+      "$ref": "#/$defs/governanceReviewId"
+    },
+    {
+      "$ref": "#/$defs/digest"
+    },
+    {
+      "$ref": "#/$defs/version"
+    },
+    {
+      "$ref": "#/$defs/timestamp"
+    }
+  ],
+  "$defs": {
+    "artifactInstanceId": {
+      "type": "string",
+      "pattern": "^pgw:i:[0-9a-f]{32}$"
+    },
+    "revisionId": {
+      "type": "string",
+      "pattern": "^pgw:r:[0-9a-f]{32}$"
+    },
+    "workspaceId": {
+      "type": "string",
+      "pattern": "^pgw:w:[0-9a-f]{32}$"
+    },
+    "registrySnapshotId": {
+      "type": "string",
+      "pattern": "^pgw:g:[0-9a-f]{32}$"
+    },
+    "lifecycleRecordId": {
+      "type": "string",
+      "pattern": "^pgw:l:[0-9a-f]{32}$"
+    },
+    "occurrenceId": {
+      "type": "string",
+      "pattern": "^pgw:o:[0-9a-f]{32}$"
+    },
+    "attemptId": {
+      "type": "string",
+      "pattern": "^pgw:a:[0-9a-f]{32}$"
+    },
+    "selectorId": {
+      "type": "string",
+      "pattern": "^pgw:s:[0-9a-f]{32}$"
+    },
+    "evidenceId": {
+      "type": "string",
+      "pattern": "^pgw:e:[0-9a-f]{32}$"
+    },
+    "evaluatorId": {
+      "type": "string",
+      "pattern": "^pgw:ev:[0-9a-f]{32}$"
+    },
+    "capabilityProfileId": {
+      "type": "string",
+      "pattern": "^pgw:cp:[0-9a-f]{32}$"
+    },
+    "governanceReviewId": {
+      "type": "string",
+      "pattern": "^pgw:gr:[0-9a-f]{32}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha-256:[0-9a-f]{64}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+      "maxLength": 21
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+      "maxLength": 24
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^(?:[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+      "minLength": 3,
+      "maxLength": 253
+    },
+    "localId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "semanticRuleId": {
+      "type": "string",
+      "pattern": "^(ART|TSK|AUT|CTX|CMP|BND|RES|REF|WSP|LIN|REG|LFC|EXE|PUB|MIG|SEC)-[0-9]{3}$"
+    },
+    "safeInteger": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "nonNegativeSafeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    }
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:lifecycle:1.0:records:result-publication-record",
+  "title": "ResultPublicationRecord",
+  "type": "object",
+  "required": [
+    "record_type",
+    "record_id",
+    "created_at",
+    "responsible_role",
+    "registry_snapshot_reference",
+    "result_subject",
+    "evaluator_provenance",
+    "association_mode",
+    "validation_record_id",
+    "bundle",
+    "workspace_id",
+    "occurrence_id",
+    "attempt_id",
+    "publication_scopes",
+    "receipt_correlations"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "ResultPublicationRecord"
+    },
+    "record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "created_at": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+    },
+    "responsible_role": {
+      "const": "trusted-result-publisher"
+    },
+    "registry_snapshot_reference": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+    },
+    "result_subject": {
+      "allOf": [
+        {
+          "$ref": "urn:project-gateway:schema:lifecycle:1.0:common:components#/$defs/exactArtifactSubject"
+        },
+        {
+          "properties": {
+            "kind": {
+              "properties": {
+                "id": {
+                  "const": "ExecutionResult"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "evaluator_provenance": {
+      "$ref": "urn:project-gateway:schema:lifecycle:1.0:common:components#/$defs/evaluatorProvenance"
+    },
+    "association_mode": {
+      "enum": [
+        "originated",
+        "adopted"
+      ]
+    },
+    "validation_record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "bundle": {
+      "allOf": [
+        {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+        },
+        {
+          "properties": {
+            "target_kind": {
+              "properties": {
+                "id": {
+                  "const": "ExecutionBundle"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "workspace_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/workspaceId"
+    },
+    "occurrence_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/occurrenceId"
+    },
+    "attempt_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/attemptId"
+    },
+    "publication_scopes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:project-gateway:schema:lifecycle:1.0:common:components#/$defs/publicationScope"
+      }
+    },
+    "receipt_correlations": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

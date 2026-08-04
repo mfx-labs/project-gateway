@@ -1,0 +1,48 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "CompletionContract",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:30b7aa4eae02e70dea083b08d0b3dd18",
+  "revision": {
+    "id": "pgw:r:db8c75523db5e597fd3a064685ad2cb5",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:3ce0dd63ee6cd005cca6d391138c0e8544e15b574276dc02bfde6f42d16c6ccc"
+  },
+  "workspace_binding": {
+    "mode": "portable"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [],
+  "body": {
+    "checks": [
+      {
+        "check_id": "deliverable-present",
+        "evaluation_status": "required",
+        "check": {
+          "type": "project-gateway.custom-check",
+          "version": "1.0",
+          "expected_deliverable_ids": [
+            "conformance-note"
+          ]
+        },
+        "required_evidence": [],
+        "acceptance_conditions": [
+          {
+            "condition_id": "deliverable-required",
+            "type": "all-identified-deliverables-present"
+          }
+        ]
+      }
+    ]
+  }
+}

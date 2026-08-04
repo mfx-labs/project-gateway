@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:registry:1.0:registry-snapshot",
+  "title": "Immutable RegistrySnapshot canonical subject",
+  "type": "object",
+  "required": [
+    "registry_protocol_id",
+    "registry_snapshot_format_version",
+    "canonicalization",
+    "snapshot_id",
+    "protocol_compatibility",
+    "namespace_entries",
+    "feature_capability_registrations",
+    "governance_security_review",
+    "snapshot_digest"
+  ],
+  "properties": {
+    "registry_protocol_id": {
+      "const": "project-gateway.registry"
+    },
+    "registry_snapshot_format_version": {
+      "const": "1.0"
+    },
+    "canonicalization": {
+      "const": "jcs-rfc8785-v1"
+    },
+    "snapshot_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/registrySnapshotId"
+    },
+    "protocol_compatibility": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:protocol-kind-compatibility-declaration"
+    },
+    "namespace_entries": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:project-gateway:schema:registry:1.0:registry-namespace-entry"
+      }
+    },
+    "feature_capability_registrations": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:project-gateway:schema:registry:1.0:feature-capability-registration"
+      }
+    },
+    "governance_security_review": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:governance-security-review"
+    },
+    "snapshot_digest": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/digest"
+    }
+  },
+  "unevaluatedProperties": false
+}

@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:kinds:completion-contract-body",
+  "title": "CompletionContract prospective proof body",
+  "type": "object",
+  "required": [
+    "checks"
+  ],
+  "properties": {
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "required": [
+          "check_id",
+          "evaluation_status",
+          "check",
+          "required_evidence",
+          "acceptance_conditions"
+        ],
+        "properties": {
+          "check_id": {
+            "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/localId"
+          },
+          "evaluation_status": {
+            "enum": [
+              "required",
+              "optional"
+            ]
+          },
+          "check": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "version",
+                  "expected_deliverable_ids"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "project-gateway.deliverable-presence"
+                  },
+                  "version": {
+                    "const": "1.0"
+                  },
+                  "expected_deliverable_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 64,
+                    "uniqueItems": true,
+                    "items": {
+                      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/localId"
+                    }
+                  }
+                },
+                "unevaluatedProperties": false
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "version",
+                  "required_evidence_kinds"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "project-gateway.evidence-presence"
+                  },
+                  "version": {
+                    "const": "1.0"
+                  },
+                  "required_evidence_kinds": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "uniqueItems": true,
+                    "items": {
+                      "enum": [
+                        "artifact-reference",
+                        "workspace-resource-observation",
+                        "external-evidence"
+                      ]
+                    }
+                  }
+                },
+                "unevaluatedProperties": false
+              }
+            ]
+          },
+          "required_evidence": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "required": [
+                "requirement_id",
+                "kind"
+              ],
+              "properties": {
+                "requirement_id": {
+                  "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/localId"
+                },
+                "kind": {
+                  "enum": [
+                    "produced-artifact",
+                    "workspace-resource-observation",
+                    "external-evidence"
+                  ]
+                }
+              },
+              "unevaluatedProperties": false
+            }
+          },
+          "acceptance_conditions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "required": [
+                "condition_id",
+                "type"
+              ],
+              "properties": {
+                "condition_id": {
+                  "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/localId"
+                },
+                "type": {
+                  "enum": [
+                    "all-identified-deliverables-present",
+                    "all-required-evidence-present",
+                    "no-reported-violations"
+                  ]
+                }
+              },
+              "unevaluatedProperties": false
+            }
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

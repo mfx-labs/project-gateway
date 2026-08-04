@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:artifact:1.0:kinds:execution-result-body",
+  "title": "ExecutionResult retrospective observation body",
+  "type": "object",
+  "required": [
+    "reported_bundle",
+    "reported_occurrence_id",
+    "reported_attempt_id",
+    "disposition",
+    "observed_outputs",
+    "observed_changed_resources",
+    "completion_check_observations",
+    "violations",
+    "produced_artifact_references",
+    "evidence_references"
+  ],
+  "properties": {
+    "reported_bundle": {
+      "allOf": [
+        {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+        },
+        {
+          "properties": {
+            "target_kind": {
+              "properties": {
+                "id": {
+                  "const": "ExecutionBundle"
+                },
+                "version": {
+                  "const": "1.0"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "reported_occurrence_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/occurrenceId"
+    },
+    "reported_attempt_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/attemptId"
+    },
+    "disposition": {
+      "enum": [
+        "completed",
+        "incomplete",
+        "failed",
+        "cancelled",
+        "timed-out",
+        "crashed",
+        "rejected"
+      ]
+    },
+    "observed_outputs": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "required": [
+          "output_id",
+          "kind",
+          "text"
+        ],
+        "properties": {
+          "output_id": {
+            "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/localId"
+          },
+          "kind": {
+            "enum": [
+              "summary",
+              "artifact",
+              "message"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "observed_changed_resources": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "allOf": [
+          {
+            "$ref": "urn:project-gateway:schema:artifact:1.0:common:evidence-reference"
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "workspace-resource-observation"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "completion_check_observations": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "required": [
+          "check_id",
+          "status",
+          "evidence"
+        ],
+        "properties": {
+          "check_id": {
+            "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/localId"
+          },
+          "status": {
+            "enum": [
+              "satisfied",
+              "not-satisfied",
+              "not-evaluated"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "$ref": "urn:project-gateway:schema:artifact:1.0:common:evidence-reference"
+            }
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "violations": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "required": [
+          "violation_id",
+          "category",
+          "summary"
+        ],
+        "properties": {
+          "violation_id": {
+            "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/localId"
+          },
+          "category": {
+            "enum": [
+              "policy",
+              "completion",
+              "runtime",
+              "integrity"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "produced_artifact_references": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+      }
+    },
+    "evidence_references": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "urn:project-gateway:schema:artifact:1.0:common:evidence-reference"
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

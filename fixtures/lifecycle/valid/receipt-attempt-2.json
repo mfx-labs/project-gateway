@@ -1,0 +1,23 @@
+{
+  "record_type": "TrustedReceipt",
+  "record_id": "pgw:l:9a398536ec47cefb75b87217e2981705",
+  "created_at": "2026-08-04T06:01:00.000Z",
+  "responsible_role": "trusted-receipt-producer",
+  "registry_snapshot_reference": {
+    "registry_protocol_id": "project-gateway.registry",
+    "registry_snapshot_format_version": "1.0",
+    "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+    "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+    "protocol_compatibility": {
+      "mode": "exact-release",
+      "artifact_protocol_id": "project-gateway.artifact",
+      "artifact_protocol_version": "1.0"
+    }
+  },
+  "event_type": "attempt-end",
+  "event_record_id": "pgw:l:2a159f1a5b300f07dd4f8fb4ee7c9eb7",
+  "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+  "occurrence_id": "pgw:o:07afc217d096ca56baa8fe7441667a7a",
+  "attempt_id": "pgw:a:803e00ec31985c5549122aad6ea922dc",
+  "disposition": "completed"
+}

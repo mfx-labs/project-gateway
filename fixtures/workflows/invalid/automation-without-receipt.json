@@ -1,0 +1,8 @@
+{
+  "workflow_id": "WF-I-011",
+  "expected_result": "fail",
+  "record_paths": [
+    "fixtures/lifecycle/invalid/publication-privileged-without-receipt.json"
+  ],
+  "notes": "Privileged result use requires receipt correlation."
+}

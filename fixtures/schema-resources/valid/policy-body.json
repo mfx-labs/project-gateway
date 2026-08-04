@@ -1,0 +1,29 @@
+{
+  "rules": [
+    {
+      "rule_id": "allow-artifact-read",
+      "effect": "allow",
+      "capability": {
+        "id": "project-gateway.workspace-read",
+        "version": "1.0"
+      },
+      "scope": {
+        "scope_type": "project-gateway.resource-class-scope",
+        "version": "1.0",
+        "resource_classes": [
+          "configured-artifact-area"
+        ],
+        "operation_classes": [
+          "read"
+        ]
+      },
+      "constraints": [
+        {
+          "type": "require-exact-resource",
+          "value": true
+        }
+      ],
+      "required_semantics": []
+    }
+  ]
+}

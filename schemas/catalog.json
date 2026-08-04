@@ -1,0 +1,613 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:catalog:1.0:schema-catalog",
+  "catalog_version": "1.0",
+  "schema_resources": [
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:annotations",
+      "path": "schemas/artifact/1.0/common/annotations.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "artifact presentation annotations",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:artifact-envelope",
+      "path": "schemas/artifact/1.0/common/artifact-envelope.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "complete common artifact envelope",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:annotations",
+        "urn:project-gateway:schema:artifact:1.0:common:extension-declaration",
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:artifact:1.0:common:kind-descriptor",
+        "urn:project-gateway:schema:artifact:1.0:common:protocol-descriptor",
+        "urn:project-gateway:schema:artifact:1.0:common:requirements",
+        "urn:project-gateway:schema:artifact:1.0:common:revision-descriptor",
+        "urn:project-gateway:schema:artifact:1.0:common:workspace-binding",
+        "urn:project-gateway:schema:artifact:1.0:kinds:authority-policy-body",
+        "urn:project-gateway:schema:artifact:1.0:kinds:completion-contract-body",
+        "urn:project-gateway:schema:artifact:1.0:kinds:context-manifest-body",
+        "urn:project-gateway:schema:artifact:1.0:kinds:execution-bundle-body",
+        "urn:project-gateway:schema:artifact:1.0:kinds:execution-result-body",
+        "urn:project-gateway:schema:artifact:1.0:kinds:task-spec-body"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:artifact-instance-id",
+      "path": "schemas/artifact/1.0/common/artifact-instance-id.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "artifact instance ID",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:digest-string",
+      "path": "schemas/artifact/1.0/common/digest-string.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "digest string",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:evidence-reference",
+      "path": "schemas/artifact/1.0/common/evidence-reference.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "bounded evidence reference",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference",
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference",
+      "path": "schemas/artifact/1.0/common/exact-artifact-reference.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "exact artifact reference",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:artifact:1.0:common:kind-descriptor",
+        "urn:project-gateway:schema:artifact:1.0:common:workspace-binding"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:extension-declaration",
+      "path": "schemas/artifact/1.0/common/extension-declaration.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "registered extension declaration",
+      "dependencies": [],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+      "path": "schemas/artifact/1.0/common/identifiers.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "identifier",
+      "dependencies": [],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:kind-descriptor",
+      "path": "schemas/artifact/1.0/common/kind-descriptor.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "artifact kind descriptor",
+      "dependencies": [],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:protocol-descriptor",
+      "path": "schemas/artifact/1.0/common/protocol-descriptor.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "artifact protocol descriptor",
+      "dependencies": [],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:registered-requirement",
+      "path": "schemas/artifact/1.0/common/registered-requirement.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "registered feature or capability requirement",
+      "dependencies": [],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:requirements",
+      "path": "schemas/artifact/1.0/common/requirements.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "artifact requirements",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:registered-requirement"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:revision-descriptor",
+      "path": "schemas/artifact/1.0/common/revision-descriptor.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "artifact revision descriptor",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference",
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:utc-timestamp",
+      "path": "schemas/artifact/1.0/common/utc-timestamp.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "normalized UTC timestamp string",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:common:workspace-binding",
+      "path": "schemas/artifact/1.0/common/workspace-binding.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "workspace binding",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:kinds:authority-policy",
+      "path": "schemas/artifact/1.0/kinds/authority-policy.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "complete AuthorityPolicy artifact",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:artifact-envelope"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:kinds:authority-policy-body",
+      "path": "schemas/artifact/1.0/kinds/authority-policy-body.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "AuthorityPolicy body",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:artifact:1.0:common:registered-requirement"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:kinds:completion-contract",
+      "path": "schemas/artifact/1.0/kinds/completion-contract.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "complete CompletionContract artifact",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:artifact-envelope"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:kinds:completion-contract-body",
+      "path": "schemas/artifact/1.0/kinds/completion-contract-body.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "CompletionContract body",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:kinds:context-manifest",
+      "path": "schemas/artifact/1.0/kinds/context-manifest.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "complete ContextManifest artifact",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:artifact-envelope"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:kinds:context-manifest-body",
+      "path": "schemas/artifact/1.0/kinds/context-manifest-body.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "ContextManifest body",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference",
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:kinds:execution-bundle",
+      "path": "schemas/artifact/1.0/kinds/execution-bundle.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "complete ExecutionBundle artifact",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:artifact-envelope"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:kinds:execution-bundle-body",
+      "path": "schemas/artifact/1.0/kinds/execution-bundle-body.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "ExecutionBundle body",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:kinds:execution-result",
+      "path": "schemas/artifact/1.0/kinds/execution-result.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "complete ExecutionResult artifact",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:artifact-envelope"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:kinds:execution-result-body",
+      "path": "schemas/artifact/1.0/kinds/execution-result-body.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "ExecutionResult body",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:evidence-reference",
+        "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference",
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:kinds:task-spec",
+      "path": "schemas/artifact/1.0/kinds/task-spec.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "complete TaskSpec artifact",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:artifact-envelope"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:artifact:1.0:kinds:task-spec-body",
+      "path": "schemas/artifact/1.0/kinds/task-spec-body.json",
+      "profile": "artifact",
+      "version": "1.0",
+      "subject_type": "TaskSpec body",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:common:components",
+      "path": "schemas/lifecycle/1.0/common/components.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "trusted lifecycle component header",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:artifact:1.0:common:kind-descriptor",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:activation-record",
+      "path": "schemas/lifecycle/1.0/records/activation-record.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "ActivationRecord",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference",
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:approval-record",
+      "path": "schemas/lifecycle/1.0/records/approval-record.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "ApprovalRecord",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:artifact:1.0:common:requirements",
+        "urn:project-gateway:schema:lifecycle:1.0:common:components",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:authoritative-audit-event",
+      "path": "schemas/lifecycle/1.0/records/authoritative-audit-event.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "AuthoritativeAuditEvent",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-attempt-record",
+      "path": "schemas/lifecycle/1.0/records/execution-attempt-record.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "ExecutionAttemptRecord",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference",
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-occurrence-record",
+      "path": "schemas/lifecycle/1.0/records/execution-occurrence-record.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "ExecutionOccurrenceRecord",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference",
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-summary-record",
+      "path": "schemas/lifecycle/1.0/records/execution-summary-record.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "ExecutionSummaryRecord",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:issuance-record",
+      "path": "schemas/lifecycle/1.0/records/issuance-record.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "IssuanceRecord",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:lifecycle:1.0:common:components",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:migration-record",
+      "path": "schemas/lifecycle/1.0/records/migration-record.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "MigrationRecord",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:lifecycle:1.0:common:components",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:result-publication-record",
+      "path": "schemas/lifecycle/1.0/records/result-publication-record.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "ResultPublicationRecord",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference",
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:lifecycle:1.0:common:components",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:revocation-record",
+      "path": "schemas/lifecycle/1.0/records/revocation-record.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "RevocationRecord",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:runtime-grant",
+      "path": "schemas/lifecycle/1.0/records/runtime-grant.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "RuntimeGrant",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference",
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:lifecycle:1.0:common:components",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:supersession-record",
+      "path": "schemas/lifecycle/1.0/records/supersession-record.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "SupersessionRecord",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:lifecycle:1.0:common:components",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "path": "schemas/lifecycle/1.0/records/trusted-receipt.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "TrustedReceipt",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:validation-record",
+      "path": "schemas/lifecycle/1.0/records/validation-record.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "ValidationRecord",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:lifecycle:1.0:common:components",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:registry:1.0:deprecation-declaration",
+      "path": "schemas/registry/1.0/deprecation-declaration.json",
+      "profile": "registry",
+      "version": "1.0",
+      "subject_type": "registry deprecation declaration",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:registry:1.0:extension-contract-entry",
+      "path": "schemas/registry/1.0/extension-contract-entry.json",
+      "profile": "registry",
+      "version": "1.0",
+      "subject_type": "registry extension contract entry",
+      "dependencies": [
+        "urn:project-gateway:schema:registry:1.0:deprecation-declaration",
+        "urn:project-gateway:schema:registry:1.0:supersession-declaration"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:registry:1.0:feature-capability-registration",
+      "path": "schemas/registry/1.0/feature-capability-registration.json",
+      "profile": "registry",
+      "version": "1.0",
+      "subject_type": "registry feature/capability registration",
+      "dependencies": [
+        "urn:project-gateway:schema:registry:1.0:governance-security-review"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:registry:1.0:governance-security-review",
+      "path": "schemas/registry/1.0/governance-security-review.json",
+      "profile": "registry",
+      "version": "1.0",
+      "subject_type": "registry governance security review",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:registry:1.0:protocol-kind-compatibility-declaration",
+      "path": "schemas/registry/1.0/protocol-kind-compatibility-declaration.json",
+      "profile": "registry",
+      "version": "1.0",
+      "subject_type": "protocol/kind compatibility declaration",
+      "dependencies": [],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:registry:1.0:registry-namespace-entry",
+      "path": "schemas/registry/1.0/registry-namespace-entry.json",
+      "profile": "registry",
+      "version": "1.0",
+      "subject_type": "registry namespace entry",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:registry:1.0:extension-contract-entry",
+        "urn:project-gateway:schema:registry:1.0:governance-security-review"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:registry:1.0:registry-snapshot",
+      "path": "schemas/registry/1.0/registry-snapshot.json",
+      "profile": "registry",
+      "version": "1.0",
+      "subject_type": "RegistrySnapshot",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:registry:1.0:feature-capability-registration",
+        "urn:project-gateway:schema:registry:1.0:governance-security-review",
+        "urn:project-gateway:schema:registry:1.0:protocol-kind-compatibility-declaration",
+        "urn:project-gateway:schema:registry:1.0:registry-namespace-entry"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference",
+      "path": "schemas/registry/1.0/registry-snapshot-reference.json",
+      "profile": "registry",
+      "version": "1.0",
+      "subject_type": "RegistrySnapshotReference",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    },
+    {
+      "schema_id": "urn:project-gateway:schema:registry:1.0:supersession-declaration",
+      "path": "schemas/registry/1.0/supersession-declaration.json",
+      "profile": "registry",
+      "version": "1.0",
+      "subject_type": "registry supersession declaration",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers"
+      ],
+      "normative_status": "normative"
+    }
+  ]
+}

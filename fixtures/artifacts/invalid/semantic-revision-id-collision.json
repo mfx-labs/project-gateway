@@ -1,0 +1,44 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "TaskSpec",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+  "revision": {
+    "id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:9635aa7a33aa0a3c0e8247b8bc637d077e011955c00ac9ee2c86db15326f5915"
+  },
+  "workspace_binding": {
+    "mode": "portable"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [],
+  "body": {
+    "objective": "Changed body with forbidden reused revision id.",
+    "instructions": [
+      {
+        "instruction_id": "prepare-note",
+        "text": "Create the requested conformance note."
+      }
+    ],
+    "expected_deliverables": [
+      {
+        "deliverable_id": "conformance-note",
+        "description": "A project-visible conformance note.",
+        "kind": "document"
+      }
+    ],
+    "outcome_constraints": [],
+    "project_data_citations": []
+  }
+}

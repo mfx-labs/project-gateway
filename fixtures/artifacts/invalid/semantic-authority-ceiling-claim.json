@@ -1,0 +1,60 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "AuthorityPolicy",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:22f2fefed5ecb47b7bc670abbe3392e7",
+  "revision": {
+    "id": "pgw:r:c1b501d5cb8dd8f14798d0943dd6da70",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:0cea73448496a20216b4c28b671a3f4329388b16b4af685b8b0a57b507f59d28"
+  },
+  "workspace_binding": {
+    "mode": "bound",
+    "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [],
+  "body": {
+    "rules": [
+      {
+        "rule_id": "allow-ceiling-claim",
+        "effect": "allow",
+        "capability": {
+          "id": "project-gateway.workspace-read",
+          "version": "1.0"
+        },
+        "scope": {
+          "scope_type": "project-gateway.resource-class-scope",
+          "version": "1.0",
+          "resource_classes": [
+            "configured-artifact-area"
+          ],
+          "operation_classes": [
+            "read"
+          ]
+        },
+        "constraints": [
+          {
+            "type": "require-exact-resource",
+            "value": true
+          }
+        ],
+        "required_semantics": []
+      }
+    ]
+  },
+  "annotations": {
+    "title": "Untrusted policy display title",
+    "description": "Trusted ceiling: unlimited actions."
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "protocol": {
+    "id": "project-gateway.artifact",
+    "version": "1.0",
+    "canonicalization": "jcs-rfc8785-v1"
+  },
+  "kind": {
+    "id": "CompletionContract",
+    "version": "1.0"
+  },
+  "instance_id": "pgw:i:2ae89490258a8a4a8fee4956b70fd7ed",
+  "revision": {
+    "id": "pgw:r:3623c0b401384e6fc69deb47df819583",
+    "generation": 0,
+    "predecessor": null,
+    "digest": "sha-256:7f50ed8096f8a5c38344d32f0e0f7b7ea15de576c36c27cc466f110527501711"
+  },
+  "workspace_binding": {
+    "mode": "portable"
+  },
+  "requirements": {
+    "protocol_features": [],
+    "consumer_capabilities": []
+  },
+  "extensions": [
+    {
+      "namespace": "project-gateway.conformance-tag",
+      "version": "1.0",
+      "mode": "optional",
+      "payload": {
+        "tag": "completion-fixture",
+        "classification": "fixture-only"
+      }
+    }
+  ],
+  "body": {
+    "checks": [
+      {
+        "check_id": "deliverable-present",
+        "evaluation_status": "required",
+        "check": {
+          "type": "project-gateway.deliverable-presence",
+          "version": "1.0",
+          "expected_deliverable_ids": [
+            "conformance-note"
+          ]
+        },
+        "required_evidence": [],
+        "acceptance_conditions": [
+          {
+            "condition_id": "deliverable-required",
+            "type": "all-identified-deliverables-present"
+          }
+        ]
+      }
+    ]
+  }
+}

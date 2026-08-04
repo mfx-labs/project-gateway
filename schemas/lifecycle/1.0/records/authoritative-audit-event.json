@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:lifecycle:1.0:records:authoritative-audit-event",
+  "title": "AuthoritativeAuditEvent",
+  "type": "object",
+  "required": [
+    "record_type",
+    "record_id",
+    "created_at",
+    "responsible_role",
+    "registry_snapshot_reference",
+    "event_type",
+    "primary_record_id",
+    "correlation_record_ids"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "AuthoritativeAuditEvent"
+    },
+    "record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "created_at": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+    },
+    "responsible_role": {
+      "const": "trusted-control-plane"
+    },
+    "registry_snapshot_reference": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+    },
+    "event_type": {
+      "enum": [
+        "record-created",
+        "record-revoked",
+        "validity-evaluated",
+        "activation-decided",
+        "occurrence-transitioned",
+        "attempt-transitioned",
+        "result-published",
+        "superseded",
+        "receipt-correlated"
+      ]
+    },
+    "primary_record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "correlation_record_ids": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

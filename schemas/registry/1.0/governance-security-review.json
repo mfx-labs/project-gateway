@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:registry:1.0:governance-security-review",
+  "title": "Immutable registry governance and security-review declaration",
+  "type": "object",
+  "required": [
+    "review_id",
+    "status",
+    "reviewed_at",
+    "governing_role"
+  ],
+  "properties": {
+    "review_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/governanceReviewId"
+    },
+    "status": {
+      "const": "approved"
+    },
+    "reviewed_at": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+    },
+    "governing_role": {
+      "const": "human-approved-protocol-registry"
+    }
+  },
+  "unevaluatedProperties": false
+}

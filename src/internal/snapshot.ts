@@ -8,6 +8,39 @@
  * - every array and object in the snapshot is deeply frozen;
  * - no nested reference is shared with caller-owned input.
  *
+ * Array capture is descriptor-derived (WP-6 Phase-1 correction F-1):
+ * - the array `length` is acquired through its own property descriptor and
+ *   must be a data descriptor carrying a non-negative safe integer within the
+ *   ECMA-262 array-length bound;
+ * - every index value is acquired through its own property descriptor (never
+ *   through `value[i]` ordinary indexed reads, so Proxy `get` traps never
+ *   supply protocol values);
+ * - accessor index/length descriptors are rejected without invocation;
+ * - sparse arrays (missing index descriptors) are rejected deterministically:
+ *   holes are not representable in the canonical JSON input contract;
+ * - unexpected own string properties on arrays (any key that is not a
+ *   canonical index below `length`) are rejected;
+ * - own symbol properties on objects and arrays are rejected (symbols are not
+ *   representable in the canonical JSON input contract);
+ * - Proxy structural traps (`ownKeys`, `getOwnPropertyDescriptor`,
+ *   `getPrototypeOf`) may be invoked and are the only trap category used;
+ *   throwing or inconsistent structural traps fail closed.
+ *
+ * Object capture is descriptor-derived with a single structural
+ * key-enumeration pass (WP-6 Phase-1 correction F-RR-1):
+ * - every own string key reported by `ownKeys` must carry exactly one own
+ *   property descriptor; a key whose `getOwnPropertyDescriptor` returns
+ *   `undefined` is a structural inconsistency and fails closed — the key is
+ *   never silently omitted (omitting an advertised restrictive field such as
+ *   a capability or numeric ceiling would widen effective authority and
+ *   would collapse identity into the identity of a genuinely absent field);
+ * - non-enumerable own string properties are unsupported in the canonical
+ *   JSON input contract and fail closed (a non-enumerable protocol field
+ *   could conceal a restriction);
+ * - accessor descriptors are rejected without invocation;
+ * - values are always read from the data descriptor, never through ordinary
+ *   property access, so Proxy `get` traps never supply protocol values.
+ *
  * Traversal state is strictly per top-level `snapshotJson()` call:
  * - the recursion stack (`inProgress`) distinguishes true cycles from repeated
  *   acyclic shared references and is cleaned up with `try/finally`;
@@ -48,6 +81,17 @@ function createTraversalState(): TraversalState {
 
 const MAX_SNAPSHOT_DEPTH = 512;
 
+/** ECMA-262 array-length upper bound (2^32 - 1). */
+const MAX_ARRAY_LENGTH = 0xffffffff;
+
+/** True when `key` is a canonical array index string `0..length-1`. */
+function isArrayIndexKey(key: string, length: number): boolean {
+  if (key === '0') return length > 0;
+  if (key.length === 0 || key.length > 1 && key.charCodeAt(0) === 48 /* '0' */) return false; // no leading zeros
+  const n = Number(key);
+  return n > 0 && n < length && String(n) === key;
+}
+
 function snapshotInner(state: TraversalState, value: unknown, path: string): unknown {
   if (value === null) return null;
   const t = typeof value;
@@ -73,10 +117,50 @@ function snapshotInner(state: TraversalState, value: unknown, path: string): unk
   state.depth++;
   try {
     let result: unknown;
-    if (Array.isArray(value)) {
+    try {
+      let isArray: boolean;
+      try {
+        isArray = Array.isArray(value);
+      } catch {
+        // A revoked Proxy cannot be structurally classified: fail closed.
+        throw new SnapshotError(`descriptor introspection failed at ${path}`);
+      }
+      if (isArray) {
+      // Descriptor-derived array capture: length and every index are acquired
+      // through own property descriptors; ordinary indexed reads (which would
+      // fire Proxy `get` traps) are never used for protocol values.
+      const lengthDesc = Object.getOwnPropertyDescriptor(value, 'length');
+      if (lengthDesc === undefined || lengthDesc.get !== undefined || lengthDesc.set !== undefined) {
+        throw new SnapshotError(`array length is not a data descriptor at ${path}`);
+      }
+      const length = lengthDesc.value;
+      if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0 || length > MAX_ARRAY_LENGTH) {
+        throw new SnapshotError(`malformed array length at ${path}`);
+      }
+      // Reject unexpected own string properties (only canonical indices below
+      // `length` are valid array members in the canonical JSON contract).
+      for (const key of Object.getOwnPropertyNames(value)) {
+        if (key === 'length') continue;
+        if (!isArrayIndexKey(key, length)) {
+          throw new SnapshotError(`unexpected own property "${key}" on array at ${path}`);
+        }
+      }
+      if (Object.getOwnPropertySymbols(value).length > 0) {
+        throw new SnapshotError(`symbol properties are not supported on arrays at ${path}`);
+      }
       const copy: unknown[] = [];
-      for (let i = 0; i < value.length; i++) {
-        copy.push(snapshotInner(state, value[i], `${path}/${i}`));
+      for (let i = 0; i < length; i++) {
+        const key = String(i);
+        const desc = Object.getOwnPropertyDescriptor(value, key);
+        if (desc === undefined) {
+          // Sparse hole: not representable in canonical JSON input; reject
+          // deterministically (matches the pre-correction fail-closed result).
+          throw new SnapshotError(`sparse array index ${key} at ${path}`);
+        }
+        if (desc.get !== undefined || desc.set !== undefined) {
+          throw new SnapshotError(`accessor property "${key}" at ${path}`);
+        }
+        copy.push(snapshotInner(state, desc.value, `${path}/${key}`));
       }
       result = Object.freeze(copy);
     } else {
@@ -86,19 +170,42 @@ function snapshotInner(state: TraversalState, value: unknown, path: string): unk
       if (proto !== Object.prototype && proto !== null) {
         throw new SnapshotError(`non-plain object at ${path}`);
       }
-      const descriptors = Object.getOwnPropertyDescriptors(value);
+      if (Object.getOwnPropertySymbols(value).length > 0) {
+        // Symbols are not representable in the canonical JSON input contract.
+        throw new SnapshotError(`symbol properties are not supported at ${path}`);
+      }
+      // Single structural key-enumeration pass (correction F-RR-1): every own
+      // string key reported by the enumeration must carry exactly one own
+      // property descriptor, looked up once. A listed key without a data
+      // descriptor is a structural inconsistency and fails closed; a listed
+      // non-enumerable string key is unsupported and fails closed; accessors
+      // are rejected without invocation; values come from the descriptor only.
       const copy: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
-      for (const key of Object.keys(descriptors)) {
-        const desc = descriptors[key]!;
+      for (const key of Object.getOwnPropertyNames(value)) {
+        const desc = Object.getOwnPropertyDescriptor(value, key);
+        if (desc === undefined) {
+          throw new SnapshotError(`missing own property descriptor for "${key}" at ${path}`);
+        }
         if (desc.get !== undefined || desc.set !== undefined) {
           // accessor properties are never invoked; a validated data model must not
           // contain them
           throw new SnapshotError(`accessor property "${key}" at ${path}`);
         }
-        if (!desc.enumerable) continue;
+        if (!desc.enumerable) {
+          throw new SnapshotError(`non-enumerable own property "${key}" at ${path}`);
+        }
         copy[key] = snapshotInner(state, desc.value, `${path}/${key}`);
       }
       result = Object.freeze(copy);
+    }
+    } catch (err) {
+      // A Proxy structural trap (ownKeys, getOwnPropertyDescriptor,
+      // getPrototypeOf) that throws a non-SnapshotError fails closed as a
+      // typed SnapshotError; precise SnapshotErrors (accessors, cycles,
+      // unsupported values, sparse arrays, malformed lengths) pass through
+      // unchanged.
+      if (err instanceof SnapshotError) throw err;
+      throw new SnapshotError(`descriptor introspection failed at ${path}`);
     }
     state.completed.add(obj);
     return result;

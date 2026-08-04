@@ -1,0 +1,79 @@
+/**
+ * @project-gateway/artifact-core/trusted (internal module family)
+ *
+ * Trusted-local configuration foundation (WP-6 Phase 1).
+ *
+ * This barrel is INTERNAL to the repository (corrections F-5/F-8): it is not
+ * re-exported from the package root, and it exposes only cohesive internal
+ * entry points needed by later repository modules and the trusted test
+ * suite. Low-level helpers (lexical canonicalization, ancestor predicates,
+ * numeric helpers, finding constructors, sort helpers, fail-report builders,
+ * capability/extension predicates, regex and digest-domain constants) are
+ * intentionally NOT barrel-exported; tests that need them import their
+ * module directly.
+ *
+ * Raw canonical roots are trusted-process internal data (correction F-5):
+ * they are never exposed through the package root API, public identity,
+ * findings, or any user-facing/MCP/ChatGPT projection.
+ *
+ * Deterministic, fail-closed, I/O-free validation of TrustedWorkspaceConfiguration
+ * runtime inputs: descriptor-derived snapshot hardening (arrays included),
+ * explicit configuration versioning, mandatory trusted host-lane operand,
+ * mandatory injected root resolver, opaque workspace identifiers,
+ * workspace-record validation, workspace-ID and resolved-canonical-root
+ * uniqueness, global and workspace ceiling structures, strict recursive
+ * unknown-field rejection, trustedExtensionSet declarations, provenance,
+ * deterministic locale-independent configuration identity, typed
+ * fail-closed findings, and deeply immutable validated outputs.
+ *
+ * This module family performs no filesystem, network, Git, process, or
+ * trusted-state I/O; all external state (e.g. symlink resolution of existing
+ * roots) is supplied through explicit interfaces.
+ */
+export {
+  validateTrustedWorkspaceConfiguration,
+  lookupValidatedWorkspace,
+} from './validate.js';
+export { snapshotTrustedWorkspaceConfigurationInput, TrustedSnapshotError } from './snapshot.js';
+export type { TrustedSnapshotErrorKind } from './snapshot.js';
+export { computeTrustedConfigurationIdentity, trustedConfigurationProjection } from './identity.js';
+export type { TrustedConfigurationIdentity } from './identity.js';
+export {
+  TRUSTED_CONFIGURATION_VERSION,
+} from './types.js';
+export type {
+  TrustedWorkspaceConfigurationInput,
+  TrustedConfigurationProvenanceInput,
+  TrustedWorkspaceInput,
+  TrustedExtensionSetInput,
+  TrustedConfigurationValidationOptions,
+  ValidatedWorkspaceRecord,
+  ValidatedGlobalCapabilityCeiling,
+  ValidatedTrustedWorkspaceConfiguration,
+} from './types.js';
+export {
+  CAPABILITY_VOCABULARY_VERSION,
+  CAPABILITY_VOCABULARY_V1,
+} from './capabilities.js';
+export {
+  TRUSTED_SOURCE_KIND,
+} from './provenance.js';
+export type { ValidatedTrustedConfigurationProvenance } from './provenance.js';
+export {
+  TRUSTED_HOST_LANE,
+} from './host-lane.js';
+export {
+  EXTENSION_SCOPES,
+} from './extension-set.js';
+export type {
+  ExtensionScope,
+  ValidatedExtensionIdentity,
+  ValidatedExpectedToolSource,
+  ValidatedTrustedExtensionSet,
+} from './extension-set.js';
+export type { RootPathResolver, CanonicalRoot, RootResolutionSuccess, RootResolutionFailure } from './roots.js';
+export type {
+  TrustedConfigurationFinding,
+  TrustedConfigurationFindingCode,
+  TrustedConfigurationReport,
+} from './findings.js';

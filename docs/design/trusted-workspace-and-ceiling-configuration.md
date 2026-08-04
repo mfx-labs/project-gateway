@@ -349,5 +349,79 @@ pattern for accepted runtime JavaScript objects:
 10. hostile-input tests cover getters, Proxy traps,
     mutation-after-validation, descriptor changes, cyclic values, and
     unsupported prototypes.
+11. object capture performs one structural key-enumeration pass in which
+    every listed own string key must carry exactly one own data property
+    descriptor: a listed key whose descriptor lookup returns `undefined`, a
+    listed non-enumerable own string property, and a listed accessor
+    property each fail closed as typed structural failures; a listed key is
+    never silently omitted (silent omission of an advertised restrictive
+    field such as a capability or numeric ceiling would widen effective
+    authority and would collapse identity into the identity of a genuinely
+    absent field).
 
 This invariant is assigned to WP-6 implementation and security tests.
+
+## Configuration Validation Contract — Normative Additions
+
+Adopted by the externally granted Phase-1 correction authorization (WP-6
+Phase 1 security remediation, decisions 1–10) and recorded here as
+authoritative implementation rules for the trusted configuration core.
+
+### Strict Unknown-Field Policy (correction F-4)
+
+- Unknown fields are malformed configuration. Recursive strict-shape
+  validation is required at every object layer: top-level configuration,
+  provenance, workspace records, capability-ceiling containers, numeric
+  ceiling containers, trustedExtensionSet, web-access declarations,
+  expected tool-source declarations, and any other protocol object.
+- Misspelled or future fields must not be silently ignored; a misspelled
+  field can silently remove an intended restriction, which is a
+  fail-open-adjacent configuration hazard.
+- Version evolution requires an explicitly accepted configuration version;
+  future fields are not an upgrade signal.
+- No later consumer may interpret a field that was omitted from validation
+  and identity.
+- Symbol keys are not representable in the canonical JSON input contract
+  and fail closed at the snapshot boundary.
+- Unknown-field failure is typed and deterministic (TCF-025).
+
+### Root Resolver Requirement (correction F-2)
+
+- Trusted production validation requires an injected `RootPathResolver`;
+  the resolver is the only host-boundary abstraction of the I/O-free core.
+- No lexical-only input may produce a validated configuration; a missing
+  resolver fails closed with a dedicated finding (TCF-026).
+- Every accepted workspace root must have a resolver result, and resolver
+  results are lexically recanonicalized. Broken paths, loops, thrown
+  errors, malformed results, and relative or outside-lane results fail
+  closed (TCF-008).
+- Duplicate and overlap evaluation always uses resolved canonical roots;
+  the accepted validated model contains no unresolved-validation mode;
+  configuration identity binds resolved canonical roots. No
+  identity-invisible lexical-only downgrade exists.
+
+### Trusted Host-Lane Operand (correction F-7)
+
+- Validation requires an explicit trusted host-lane compatibility operand
+  (`hostLane`). The core never ambiently probes the host: no `process`,
+  environment-variable, path, or runtime-global reads.
+- Only the accepted lane value (`linux-x86_64-posix-utf8-node22`,
+  corresponding to Linux x86_64, POSIX-style filesystem semantics, UTF-8
+  locale, Node.js 22.x per F-EL3) can produce a validated configuration.
+  Missing (TCF-027) and unsupported (TCF-028) lanes fail closed before any
+  input handling; unsupported lanes fail before identity calculation.
+- The accepted lane is bound into the validated configuration, the
+  canonical identity projection, and the identity digest, and the resolver
+  contract is interpreted under that lane.
+
+### Root Secrecy Boundary (correction F-5)
+
+- Raw canonical roots are trusted-process internal data. They are never
+  MCP, ChatGPT, user-facing, or package-root API output; later external
+  projections must use opaque workspace identity only.
+- Any root-bearing internal object requires an explicit trusted-process
+  boundary; the package root exposes no trusted configuration runtime API
+  and no root-bearing types.
+- Findings, public digest strings, and opaque workspace identifiers never
+  disclose roots; canonical bytes stay local to identity computation and
+  are not returned through the validated runtime result.

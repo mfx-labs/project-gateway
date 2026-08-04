@@ -48,6 +48,10 @@ export type {
   LifecycleStateView,
   RevocationView,
   PointOfUseInputs,
+  EligibilityReport,
+  ImmutableModel,
+  RequestedUse,
+  ValidationLevel,
   ArtifactKindId,
   LifecycleRecordType,
   ValidationPhase,
@@ -62,3 +66,6 @@ export { RawJsonError } from './json/scanner.js';
 export { validateReferenceModel, validateReferenceModelForUse } from './references/validate.js';
 export { isBrandedArtifact, isBrandedRegistry, isBrandedRecord, snapshotJson } from './internal/snapshot.js';
 export { snapshotModel } from './api/types.js';
+// Narrow adapter-facing protocol-equality helper: exact artifact reference
+// equality used by the Pi adapter to correlate exact bundle members.
+export { exactReferencesEqual, workspaceBindingsEqual } from './internal/protocol-equality.js';

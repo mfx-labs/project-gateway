@@ -1,3 +1,14 @@
 node_modules/
 dist/
 dist-test/
+# WP-5A harness fixture payloads (tests only): the fixture packages under
+# tests/pi-adapter/fixtures/pi-packages intentionally contain small `dist/`
+# directories whose runtime exports the compatibility harness tests verify.
+# The root `dist/` ignore rule would otherwise exclude them from commits,
+# breaking the F8 fixture cases in fresh clones. Only this fixture tree is
+# re-included; production `dist/` output stays ignored.
+!tests/pi-adapter/fixtures/
+!tests/pi-adapter/fixtures/pi-packages/
+!tests/pi-adapter/fixtures/pi-packages/**/
+!tests/pi-adapter/fixtures/pi-packages/**/dist/
+!tests/pi-adapter/fixtures/pi-packages/**/dist/index.js

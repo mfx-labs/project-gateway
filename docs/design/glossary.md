@@ -302,3 +302,27 @@ A pure evaluation of current eligibility for a requested use, using caller-suppl
 ## Conformance Runner
 
 The manifest-driven executor of the WP-3 conformance corpus: it loads the embedded manifest, validates dependency metadata, evaluates every fixture at its declared first failing phase, and compares outcome, category, rule IDs, and schema ID deterministically.
+
+## Pi Invocation Plan
+
+An immutable, runtime-branded WP-5A adapter output that converts an already validated and point-of-use-eligible ExecutionBundle (plus its four exact resolved prospective members) into a deterministic Pi-compatible prompt projection with status `projection-ready`. Creating a plan is not activation and grants no authority; pi-guard enforcement is explicitly pending.
+
+## Pi Execution Observation
+
+An immutable, runtime-branded WP-5A adapter output recording what the Pi host reported (session/turn correlation, completion text, tool-call attempts, cancellation, host errors). It is explicitly not an ExecutionResult, not a TrustedReceipt, and not proof of authorization.
+
+## Pi Host Capability Declaration
+
+A typed, caller-supplied declaration of the Pi host's version, package identity, prompt-injection mechanism, context transport, size bounds, encodings, media types, event classes, correlation support, and required features, verified against the supported Pi 0.83.0 lane with a deterministic capability fingerprint.
+
+## Pi Host Bridge
+
+A narrow WP-5A bridge that injects one immutable Pi Invocation Plan through the supported Pi prompt-injection mechanism and observes session/turn/message/tool/settle/shutdown events as untrusted data without authorizing, blocking, enabling, or disabling tools.
+
+## Projection Ready
+
+The only plan status WP-5A emits: the projection is complete and deterministic, but pi-guard authority enforcement has not been applied and nothing is authorized, approved, activated, or granted.
+
+## Context Data Block
+
+A fixed-delimiter, length-prefixed rendered section carrying one caller-supplied resolved context item as untrusted data bound to a ContextManifest entry; the length prefix makes the boundary unambiguous regardless of content.

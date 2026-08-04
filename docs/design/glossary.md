@@ -273,3 +273,32 @@ One ordered stage in the protocol validation pipeline. A required failure at an 
 ## Conformance Rule ID
 
 A stable normative identifier such as `ART-001`, `REF-004`, `LFC-003`, or `PUB-005` for one semantic protocol requirement. It is not an implementation exception string and maps to passing and failing Conformance Fixtures.
+
+
+## Validated Subject
+
+An immutable branded wrapper (Validated Artifact, Validated Registry Snapshot, or Validated Lifecycle Record) produced by the Artifact Core after the approved phases pass. An unvalidated JSON value can never be confused with a validated subject through the public API.
+
+## Validation Report
+
+A deterministic typed result containing success or failure, the first failing validation phase, a stable failure category, schema ID where applicable, subject identity, rule IDs, and ordered findings with JSON-pointer locations and stable message keys. It is conformance output only and never trusted lifecycle state.
+
+## Resolver
+
+A caller-supplied exact-subject resolver used by the Artifact Core for exact-reference evaluation. Returned subjects are treated as untrusted and revalidated through the full structural, canonical, and digest pipeline before any reference field is compared.
+
+## Identity State View
+
+A caller-supplied registrar view of artifact instance and revision registrations, digest binding, and predecessor state. WP-4 provides no persistent identity storage; an in-memory implementation exists for tests and the conformance runner.
+
+## Trusted Lifecycle State View
+
+A caller-supplied view of accepted lifecycle records and current revocations used by lifecycle graph and point-of-use evaluation. The Artifact Core never persists or creates trusted lifecycle state.
+
+## Point-of-Use Evaluation
+
+A pure evaluation of current eligibility for a requested use, using caller-supplied time, ceilings, consumer support, revocations, and records. It never starts execution, mutates counts, creates grants or activations, or claims persisted trusted state.
+
+## Conformance Runner
+
+The manifest-driven executor of the WP-3 conformance corpus: it loads the embedded manifest, validates dependency metadata, evaluates every fixture at its declared first failing phase, and compares outcome, category, rule IDs, and schema ID deterministically.

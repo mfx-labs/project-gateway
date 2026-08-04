@@ -18,3 +18,14 @@ The remaining dependency-metadata findings were resolved without schema, fixture
 - Executable verification (Ajv 8.20.0 Draft 2020-12) passes all schema compilation, structural, later-phase, workflow-subject, rule-coverage, and digest-vector checks.
 
 No unresolved WP-3 schema or conformance decisions.
+
+## Fixture Erratum (Resolved)
+
+`fixtures/lifecycle/invalid/approval-registry-digest-mismatch.json` was corrected
+by one value: its `registry_snapshot_digest` now differs from the accepted
+snapshot digest (`sha-256:61311261…db47c04` instead of `…db47c05`), so the
+fixture again demonstrates the `REG-008` registry-context failure it declares.
+See `docs/reports/wp-3-fixture-erratum-report.md`. The full WP-3 audit passes
+531/531 with no schema, manifest, rule, phase, or vector change.
+
+No unresolved WP-3 schema or conformance decisions.

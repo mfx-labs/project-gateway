@@ -326,3 +326,39 @@ The only plan status WP-5A emits: the projection is complete and deterministic, 
 ## Context Data Block
 
 A fixed-delimiter, length-prefixed rendered section carrying one caller-supplied resolved context item as untrusted data bound to a ContextManifest entry; the length prefix makes the boundary unambiguous regardless of content.
+
+## Global Capability Ceiling
+
+A trusted-local, control-plane-owned upper bound on the capability set (and optional numeric action limits) permitted for all workspaces. It can only narrow authority; it is an operand of the effective-authority intersection and can never be widened by artifacts, repository content, or consumers.
+
+## Workspace Capability Ceiling
+
+A trusted-local, control-plane-owned upper bound on the capability set (and optional numeric action limits) permitted within one registered workspace, bound to an opaque workspace identifier and a trusted filesystem root. It can only narrow authority; paths outside the configured root fail closed.
+
+## Capability Vocabulary
+
+The consumer-neutral canonical set of versioned capability identifiers shared by the global ceiling, workspace ceiling, AuthorityPolicy, RuntimeGrant, consumer-support declarations, and pi-guard enforcement mapping. Unknown or unsupported required capabilities fail closed.
+
+## Authority Projection
+
+The deterministic WP-5B transformation of validated trusted authority inputs (WP-5A plan, ceilings, approved AuthorityPolicy, RuntimeGrant, consumer support, observed tool surface, compatibility result) into a pi-guard enforcement configuration, with deny-wins and unknown-denied semantics and no partial activation on failure. Projection grants no authority.
+
+## Enforcement Evidence
+
+A structured, non-authoritative WP-5B record (`PiEnforcementEvidence`) of what was projected, activated, and restored for one execution scope. It is not an ExecutionResult, not a TrustedReceipt, not proof of execution success or completion, and not proof of authorization.
+
+## pi-guard Mode Profile
+
+A pi-guard tool-availability profile (OFF, INSPECT, EDIT, WRITE) applied over Pi-routed tool calls and active tool inventory. Profiles enforce availability of observed tools only and are never an authority source.
+
+## Trusted Workspace Configuration
+
+A trusted-local, repository-external, versioned configuration that binds opaque workspace identifiers to local roots, authority ceilings, provenance, and containment rules. Repository files cannot grant, widen, or alter it; unknown workspaces and malformed configuration fail closed.
+
+## Enforcement Configuration
+
+The deterministic, non-authoritative configuration projected from validated effective authority and compatibility inputs for application by an enforcement consumer such as pi-guard. It grants no authority, cannot exceed any input operand, and is never an activation decision.
+
+## Compatibility Fingerprint
+
+A deterministic identity over the explicitly declared and observed public compatibility surface of a consumer or host, used for drift detection and never treated as authority or proof of runtime correctness. A fingerprint over the observed public contract is not proof that private internals remain unchanged.

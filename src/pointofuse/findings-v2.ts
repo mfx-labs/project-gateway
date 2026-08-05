@@ -1,0 +1,131 @@
+/**
+ * WP-6 Phase 3A: typed fail-closed Phase-3 boundary findings (POU2 namespace,
+ * contract Section 20). Findings are immutable, deterministic, root-safe,
+ * path-safe, and secret-free: static messages only, no caller destination
+ * text, no canonical paths, no hostile object stringification, and no raw
+ * exception stacks.
+ *
+ * Exact POU2 code strings are implementation-owned; the closed catalog and its
+ * stage mapping are documented in the Phase-3A implementation report. The
+ * catalog below is the Phase-3A boundary subset (contract Section 20 lists the
+ * full closed family; later phases add their semantic families).
+ */
+import type { RouterFailureStage } from './router-types.js';
+
+export type POU2FindingCode =
+  | 'POU2-001' // router-shell structural failure (unknown/missing/hostile shell fields)
+  | 'POU2-002' // outer route-version failure (routeProtocolVersion not the exact literal)
+  | 'POU2-003' // legacy-declaration failure (legacyCompatibilityMode missing or not exact literal)
+  | 'POU2-004' // nested v2 input capture failure (structure, unknown fields, accessors, traps)
+  | 'POU2-005' // inner PointOfUseInputs version missing
+  | 'POU2-006' // inner PointOfUseInputs version mismatch (not the exact literal "2")
+  | 'POU2-007' // workspace capture failure (non-string or hostile workspace fields)
+  | 'POU2-008' // callable-view adaptation failure
+  | 'POU2-009' // lifecycle records-array snapshot failure (hostile array or duplicate record IDs)
+  | 'POU2-010' // registry or lifecycle-record runtime-brand failure
+  | 'POU2-011' // bare-model capture failure (bundle/policy/grant)
+  | 'POU2-012' // static-projection construction failure
+  | 'POU2-013' // static-input identity construction failure
+  | 'POU2-014'; // result-identity construction failure
+
+export interface POU2Finding {
+  readonly code: POU2FindingCode;
+  /** Stable machine-readable message key. */
+  readonly messageKey: string;
+  /** Deterministic human-readable message (static; no paths, secrets, or stacks). */
+  readonly message: string;
+  /** Closed router-failure stage this finding maps to (contract Section 20). */
+  readonly stage: RouterFailureStage;
+}
+
+export function pou2Finding(
+  code: POU2FindingCode,
+  messageKey: string,
+  message: string,
+  stage: RouterFailureStage,
+): POU2Finding {
+  return Object.freeze({ code, messageKey, message, stage });
+}
+
+/** Deterministic ordering: code, then message key (locale-independent). */
+export function sortPou2Findings(findings: readonly POU2Finding[]): POU2Finding[] {
+  return [...findings].sort((a, b) => {
+    if (a.code !== b.code) return a.code < b.code ? -1 : 1;
+    if (a.messageKey !== b.messageKey) return a.messageKey < b.messageKey ? -1 : 1;
+    return 0;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Closed Phase-3A finding catalog with fixed static messages.
+// ---------------------------------------------------------------------------
+
+/** Router-shell structural failure (unknown, missing, or hostile shell fields). */
+export function findingShellStructural(): POU2Finding {
+  return pou2Finding('POU2-001', 'pou2.shell-structural', 'point-of-use router request shell is malformed or hostile', 'shell-structural');
+}
+
+/** Outer route-version failure (routeProtocolVersion not the exact literal). */
+export function findingRouteTag(): POU2Finding {
+  return pou2Finding('POU2-002', 'pou2.route-version', 'point-of-use router route protocol version is unsupported', 'route-tag');
+}
+
+/** Legacy-declaration failure (legacyCompatibilityMode missing or not the exact literal). */
+export function findingLegacyDeclaration(): POU2Finding {
+  return pou2Finding('POU2-003', 'pou2.legacy-declaration', 'point-of-use legacy compatibility declaration is missing or unsupported', 'legacy-declaration');
+}
+
+/** Nested v2 input capture failure. */
+export function findingNestedInputCapture(): POU2Finding {
+  return pou2Finding('POU2-004', 'pou2.nested-input-capture', 'point-of-use v2 input record is malformed or hostile', 'input-capture');
+}
+
+/** Inner PointOfUseInputs version missing. */
+export function findingInnerVersionMissing(): POU2Finding {
+  return pou2Finding('POU2-005', 'pou2.inner-version-missing', 'point-of-use input protocol version is missing', 'inner-version-missing');
+}
+
+/** Inner PointOfUseInputs version mismatch (not the exact literal "2"). */
+export function findingInnerVersionMismatch(): POU2Finding {
+  return pou2Finding('POU2-006', 'pou2.inner-version-mismatch', 'point-of-use input protocol version is unsupported', 'inner-version-mismatch');
+}
+
+/** Workspace capture failure. */
+export function findingWorkspaceCapture(): POU2Finding {
+  return pou2Finding('POU2-007', 'pou2.workspace-capture', 'point-of-use workspace fields are malformed or hostile', 'workspace-capture');
+}
+
+/** Callable-view adaptation failure. */
+export function findingViewAdaptation(): POU2Finding {
+  return pou2Finding('POU2-008', 'pou2.view-adaptation', 'point-of-use callable view member is missing or hostile', 'view-adaptation');
+}
+
+/** Lifecycle records-array snapshot failure. */
+export function findingLifecycleSnapshot(): POU2Finding {
+  return pou2Finding('POU2-009', 'pou2.lifecycle-snapshot', 'point-of-use lifecycle records snapshot is malformed or duplicate', 'lifecycle-snapshot');
+}
+
+/** Registry or lifecycle-record runtime-brand failure. */
+export function findingOperandBrand(): POU2Finding {
+  return pou2Finding('POU2-010', 'pou2.operand-brand', 'point-of-use registry or lifecycle record is not runtime-genuine', 'operand-brand');
+}
+
+/** Bare-model capture failure (bundle/policy/grant). */
+export function findingModelCapture(): POU2Finding {
+  return pou2Finding('POU2-011', 'pou2.model-capture', 'point-of-use bundle, policy, or grant model is malformed or hostile', 'model-capture');
+}
+
+/** Static-projection construction failure. */
+export function findingStaticProjection(): POU2Finding {
+  return pou2Finding('POU2-012', 'pou2.static-projection', 'point-of-use static input projection construction failed', 'static-projection');
+}
+
+/** Static-input identity construction failure. */
+export function findingStaticIdentity(): POU2Finding {
+  return pou2Finding('POU2-013', 'pou2.static-identity', 'point-of-use static input identity computation failed', 'static-identity');
+}
+
+/** Result-identity construction failure. */
+export function findingResultIdentity(): POU2Finding {
+  return pou2Finding('POU2-014', 'pou2.result-identity', 'point-of-use result identity computation failed', 'identity-construction');
+}

@@ -233,6 +233,51 @@ export interface EligibilityReport {
   readonly findings: readonly Finding[];
 }
 
+// ---------------------------------------------------------------------------
+// WP-6 Phase 3 (internal): PointOfUseInputs v2 surface. Internal trusted-layer
+// types only — never exported from the package root. Per the normative Phase-3
+// contract: no nested configuration field, no caller capability ceilings, no
+// caller numeric ceilings, no containment decisions, and no caller-supplied
+// correlation or trust-bearing identity fields.
+// ---------------------------------------------------------------------------
+
+/**
+ * The exact v2 point-of-use input record (contract Section 5). Pure-data
+ * fields are exact-own descriptor-captured; view fields are receiver-adapted;
+ * bundle/policy/grant are captured bare models. `pointOfUseInputsProtocolVersion`
+ * must be the exact literal `"2"` and is validated before any identity is
+ * constructed.
+ */
+export interface PointOfUseInputsV2DataAndViews {
+  readonly pointOfUseInputsProtocolVersion: '2';
+  readonly workspaceId: string;
+  readonly requestedUse: RequestedUse;
+  readonly currentTime: string;
+  readonly consumerSupport: ConsumerSupportDeclaration;
+  readonly identity: IdentityStateView;
+  readonly resolver: ExactSubjectResolver;
+  readonly registry: AcceptedRegistryContext;
+  readonly lifecycle: LifecycleStateView;
+  readonly revocations: RevocationView;
+  /** Exact ExecutionBundle model (captured bare; no runtime brand). */
+  readonly bundle: ImmutableModel;
+  /** The bundle's resolved AuthorityPolicy member (captured bare). */
+  readonly policy: ImmutableModel;
+  /** Active RuntimeGrant model (captured bare; optional). */
+  readonly grant?: ImmutableModel;
+}
+
+/**
+ * Complete v2 eligibility report (contract Section 19): the committed
+ * EligibilityReport plus both identities. Both identities are mandatory on
+ * every complete-snapshot v2 report (denied or eligible) and absent on router
+ * failures and on v1 reports.
+ */
+export interface EligibilityReportV2 extends EligibilityReport {
+  readonly staticInputCorrelationIdentity: string;
+  readonly pointOfUseResultIdentity: string;
+}
+
 /** In-memory identity state for tests and the conformance runner (not persistent). */
 export class MemoryIdentityState implements IdentityStateView {
   private readonly instances = new Map<string, RegisteredInstance>();

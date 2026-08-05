@@ -70,6 +70,7 @@ export {
   findingInnerVersionMismatch,
   findingInnerVersionMissing,
   findingLegacyDeclaration,
+  findingLegacyNotPermitted,
   findingLifecycleSnapshot,
   findingModelCapture,
   findingNestedInputCapture,
@@ -81,7 +82,25 @@ export {
   findingStaticProjection,
   findingViewAdaptation,
   findingWorkspaceCapture,
+  findingConfigNotGenuine,
+  findingConfigVersion,
+  findingEvaluationException,
+  findingWorkspaceUnknown,
   pou2Finding,
+  semanticGlobalCapabilityCeilingDenial,
+  semanticGrantRecordTypeDenial,
+  semanticWorkspaceCapabilityCeilingDenial,
   sortPou2Findings,
 } from './findings-v2.js';
 export type { POU2Finding, POU2FindingCode } from './findings-v2.js';
+export { evaluatePointOfUseEligibilityForConfiguration, requiresV2 } from './routing.js';
+export {
+  bridgeV1Input,
+  bridgeV2Input,
+  capabilityDenialFindings,
+  deriveValidatedActiveGrantMaxActions,
+  evaluateDetachedV1,
+  evaluateV2Semantics,
+  finalizeV2Report,
+  grantGateFindings,
+} from './evaluate-v2.js';

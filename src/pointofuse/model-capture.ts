@@ -24,9 +24,43 @@ export type BareModelCaptureResult =
   | { readonly ok: false };
 
 /**
+ * True when every number in the detached captured JSON value is admissible
+ * under the repository's committed canonical-input numeric profile (the
+ * committed RFC 8785 serializer accepts exactly safe integers; `-0` is
+ * normalized to `0` and is therefore admissible). Finite non-integer values
+ * such as `1.5` are JSON-representable but NOT canonical-input-representable:
+ * they must fail at the model-capture boundary so no captured projection can
+ * ever fail static identity solely because of a numeric value.
+ *
+ * Walks only the detached captured value (never the hostile source), performs
+ * zero getter/Proxy `get` (the captured value is a deeply frozen plain JSON
+ * value), and never mutates. Object-key order and array order are preserved.
+ * This is a canonical-input-profile check only — no policy, grant, bundle, or
+ * schema semantic validation happens here.
+ */
+function hasCanonicalNumbersOnly(value: ImmutableJsonValue): boolean {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') return true;
+  if (typeof value === 'number') return Number.isSafeInteger(value);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (!hasCanonicalNumbersOnly(item)) return false;
+    }
+    return true;
+  }
+  for (const key of Object.keys(value as Readonly<Record<string, ImmutableJsonValue>>)) {
+    // snapshotJson outputs contain no undefined values; the assertion is
+    // type-level only (strict noUncheckedIndexedAccess).
+    if (!hasCanonicalNumbersOnly((value as Readonly<Record<string, ImmutableJsonValue>>)[key]!)) return false;
+  }
+  return true;
+}
+
+/**
  * Capture one bare model. The captured value is a deeply frozen plain JSON
  * object (record); arrays and primitives are rejected because bundle, policy,
- * and grant are record-shaped models.
+ * and grant are record-shaped models. The captured value must also satisfy
+ * the committed canonical-input numeric profile (safe integers only), so that
+ * every accepted model is serializable by the committed JCS implementation.
  */
 export function captureBareModel(value: unknown): BareModelCaptureResult {
   let captured: unknown;
@@ -39,6 +73,13 @@ export function captureBareModel(value: unknown): BareModelCaptureResult {
     return { ok: false };
   }
   if (captured === null || typeof captured !== 'object' || Array.isArray(captured)) {
+    return { ok: false };
+  }
+  // Canonical-input numeric profile: a finite non-integer or unsafe number is
+  // JSON-representable but not JCS-representable; rejecting it here (typed
+  // model-capture boundary failure) guarantees static identity can never fail
+  // because of a captured numeric value.
+  if (!hasCanonicalNumbersOnly(captured as ImmutableJsonValue)) {
     return { ok: false };
   }
   return { ok: true, model: captured as ImmutableJsonValue };

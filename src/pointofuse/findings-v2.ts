@@ -11,6 +11,13 @@
  * full closed family; later phases add their semantic families).
  */
 import type { RouterFailureStage } from './router-types.js';
+import { mk } from '../internal/report.js';
+import type { Finding } from '../internal/report.js';
+import type { FailureCategory, ValidationPhase } from '../internal/phase.js';
+
+// Phase/category constants used by the committed point-of-use findings.
+const POU_PHASE = 'point-of-use-eligibility' as ValidationPhase;
+const AGGREGATE_CATEGORY = 'AGGREGATE-RESPONSIBILITY-FAILURE' as FailureCategory;
 
 export type POU2FindingCode =
   | 'POU2-001' // router-shell structural failure (unknown/missing/hostile shell fields)
@@ -26,7 +33,15 @@ export type POU2FindingCode =
   | 'POU2-011' // bare-model capture failure (bundle/policy/grant)
   | 'POU2-012' // static-projection construction failure
   | 'POU2-013' // static-input identity construction failure
-  | 'POU2-014'; // result-identity construction failure
+  | 'POU2-014' // result-identity construction failure
+  | 'POU2-015' // trusted-configuration genuineness failure (router boundary)
+  | 'POU2-016' // unsupported trusted-configuration version (defensive; unreachable for genuine configs)
+  | 'POU2-017' // unknown workspace (router boundary)
+  | 'POU2-018' // legacy-not-permitted (v1 request under a v2-required configuration)
+  | 'POU2-019' // unexpected internal evaluation exception (router boundary)
+  | 'POU2-020' // semantic: configured global capability ceiling denies the requested capability
+  | 'POU2-021' // semantic: configured workspace capability ceiling denies the requested capability
+  | 'POU2-022'; // semantic: captured RuntimeGrant record type is not "RuntimeGrant"
 
 export interface POU2Finding {
   readonly code: POU2FindingCode;
@@ -128,4 +143,76 @@ export function findingStaticIdentity(): POU2Finding {
 /** Result-identity construction failure. */
 export function findingResultIdentity(): POU2Finding {
   return pou2Finding('POU2-014', 'pou2.result-identity', 'point-of-use result identity computation failed', 'identity-construction');
+}
+
+/** Trusted-configuration genuineness failure (router boundary; no identities). */
+export function findingConfigNotGenuine(): POU2Finding {
+  return pou2Finding('POU2-015', 'pou2.config-not-genuine', 'trusted configuration is not runtime-genuine', 'config-not-genuine');
+}
+
+/** Unsupported trusted-configuration version (defensive; unreachable for genuine configs). */
+export function findingConfigVersion(): POU2Finding {
+  return pou2Finding('POU2-016', 'pou2.config-version', 'trusted configuration version is unsupported', 'config-version');
+}
+
+/** Unknown workspace (router boundary; no identities). */
+export function findingWorkspaceUnknown(): POU2Finding {
+  return pou2Finding('POU2-017', 'pou2.workspace-unknown', 'workspace is not registered in the trusted configuration', 'workspace-unknown');
+}
+
+/** Legacy-not-permitted: a v1 legacy request under a v2-required configuration. */
+export function findingLegacyNotPermitted(): POU2Finding {
+  return pou2Finding('POU2-018', 'pou2.legacy-not-permitted', 'legacy point-of-use evaluation is not permitted for this configuration', 'legacy-not-permitted');
+}
+
+/** Unexpected internal evaluation exception (router boundary; static message only). */
+export function findingEvaluationException(): POU2Finding {
+  return pou2Finding('POU2-019', 'pou2.evaluation-exception', 'point-of-use evaluation failed unexpectedly', 'evaluation-exception');
+}
+
+/**
+ * Semantic finding: the configured global capability ceiling denies the
+ * requested capability. Committed Finding shape; rule IDs are closed
+ * implementation-owned identifiers that sort before every numeric finding
+ * under the committed deterministic ordering (capability intersection
+ * precedes numeric narrowing per contract Section 18).
+ */
+export function semanticGlobalCapabilityCeilingDenial(subjectIdentity: string): Finding {
+  return mk(
+    POU_PHASE,
+    AGGREGATE_CATEGORY,
+    'pou2.global-capability-ceiling-denial',
+    'requested capability is denied by the configured global capability ceiling',
+    { ruleIds: ['000-GLOBAL-CAPABILITY-CEILING', 'POU2-020'], subjectIdentity, location: '/capability' },
+  );
+}
+
+/**
+ * Semantic finding: the captured RuntimeGrant model has a record type other
+ * than `RuntimeGrant` (grant gate step 2; contract Section 15). Committed
+ * Finding shape with the LFC-008 family; deterministic ordering follows the
+ * committed sort.
+ */
+export function semanticGrantRecordTypeDenial(subjectIdentity: string): Finding {
+  return mk(
+    POU_PHASE,
+    'POINT-OF-USE-FAILURE' as FailureCategory,
+    'pou2.grant-record-type',
+    'runtime grant record type is not RuntimeGrant',
+    { ruleIds: ['LFC-008', 'POU2-022'], subjectIdentity, location: '/record_type' },
+  );
+}
+
+/**
+ * Semantic finding: the configured workspace capability ceiling denies the
+ * requested capability (same ordering contract as the global variant).
+ */
+export function semanticWorkspaceCapabilityCeilingDenial(subjectIdentity: string): Finding {
+  return mk(
+    POU_PHASE,
+    AGGREGATE_CATEGORY,
+    'pou2.workspace-capability-ceiling-denial',
+    'requested capability is denied by the configured workspace capability ceiling',
+    { ruleIds: ['000-WORKSPACE-CAPABILITY-CEILING', 'POU2-021'], subjectIdentity, location: '/capability' },
+  );
 }

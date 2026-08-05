@@ -316,9 +316,9 @@ test('security: independent library instances do not share state', () => {
 test('conformance: manifest totals after the WP-3 registry-digest erratum', () => {
   const runner = new ConformanceRunner();
   const summary = runner.run();
-  assert.equal(summary.total, 531);
-  assert.equal(summary.executed, 531);
-  assert.equal(summary.passed, 531);
+  assert.equal(summary.total, 587);
+  assert.equal(summary.executed, 587);
+  assert.equal(summary.passed, 587);
   assert.equal(summary.failed, 0);
   assert.deepEqual(summary.mismatches, []);
 });

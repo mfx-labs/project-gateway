@@ -1,0 +1,87 @@
+{
+  "vector_id": "CAN-POUV2-008A",
+  "subject_type": "point-of-use-input",
+  "canonical_projections": [
+    {
+      "consumerSupport": {
+        "consumerId": "test-consumer",
+        "supportedProtocolFeatures": [
+          "project-gateway.conformance-fixture"
+        ],
+        "supportedConsumerCapabilities": [
+          "project-gateway.workspace-read"
+        ],
+        "supportedExtensionNamespaces": [
+          "project-gateway.conformance-tag"
+        ]
+      },
+      "bundle": {
+        "state": "present",
+        "capturedModel": {
+          "instance_id": "b-1"
+        }
+      },
+      "grant": {
+        "state": "absent"
+      },
+      "policy": {
+        "state": "present",
+        "capturedModel": {
+          "instance_id": "p-1"
+        }
+      },
+      "registry": {
+        "registryProtocolId": "project-gateway.registry",
+        "registrySnapshotFormatVersion": "1.0",
+        "registrySnapshotId": "reg-1",
+        "registrySnapshotDigest": "sha-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "requestedUse": {
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+        "scope": "exact:resource-1",
+        "resourceClass": "configured-artifact-area",
+        "operationClass": "read",
+        "capability": "project-gateway.workspace-read"
+      },
+      "configuredGlobalCapabilityCeiling": {
+        "state": "absent"
+      },
+      "configuredWorkspaceCapabilityCeiling": {
+        "state": "absent"
+      },
+      "configuredGlobalNumericCeiling": {
+        "state": "absent"
+      },
+      "configuredWorkspaceNumericCeiling": {
+        "state": "absent"
+      },
+      "lifecycleRecords": [
+        {
+          "model": {
+            "record_id": "rec-1"
+          },
+          "recordId": "rec-1"
+        }
+      ],
+      "currentTime": "2026-08-04T06:10:00.000Z",
+      "inputWorkspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+      "requestedUseWorkspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+      "capabilityVocabularyVersion": "v1",
+      "configurationIdentity": "sha-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "configurationVersion": "2",
+      "innerPointOfUseInputsVersion": "2",
+      "outerRouterVersion": "2",
+      "projectionProtocolVersion": "1"
+    }
+  ],
+  "canonical_utf8": "{\"bundle\":{\"capturedModel\":{\"instance_id\":\"b-1\"},\"state\":\"present\"},\"capabilityVocabularyVersion\":\"v1\",\"configurationIdentity\":\"sha-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"configurationVersion\":\"2\",\"configuredGlobalCapabilityCeiling\":{\"state\":\"absent\"},\"configuredGlobalNumericCeiling\":{\"state\":\"absent\"},\"configuredWorkspaceCapabilityCeiling\":{\"state\":\"absent\"},\"configuredWorkspaceNumericCeiling\":{\"state\":\"absent\"},\"consumerSupport\":{\"consumerId\":\"test-consumer\",\"supportedConsumerCapabilities\":[\"project-gateway.workspace-read\"],\"supportedExtensionNamespaces\":[\"project-gateway.conformance-tag\"],\"supportedProtocolFeatures\":[\"project-gateway.conformance-fixture\"]},\"currentTime\":\"2026-08-04T06:10:00.000Z\",\"grant\":{\"state\":\"absent\"},\"innerPointOfUseInputsVersion\":\"2\",\"inputWorkspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\",\"lifecycleRecords\":[{\"model\":{\"record_id\":\"rec-1\"},\"recordId\":\"rec-1\"}],\"outerRouterVersion\":\"2\",\"policy\":{\"capturedModel\":{\"instance_id\":\"p-1\"},\"state\":\"present\"},\"projectionProtocolVersion\":\"1\",\"registry\":{\"registryProtocolId\":\"project-gateway.registry\",\"registrySnapshotDigest\":\"sha-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"registrySnapshotFormatVersion\":\"1.0\",\"registrySnapshotId\":\"reg-1\"},\"requestedUse\":{\"capability\":\"project-gateway.workspace-read\",\"operationClass\":\"read\",\"resourceClass\":\"configured-artifact-area\",\"scope\":\"exact:resource-1\",\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"requestedUseWorkspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"}",
+  "digest_domain": "PGAP-POINT-OF-USE-INPUT-v2\u0000",
+  "expected_sha256": "f7b0f626d2978fc8f90a29916db276cbad3e19b69a1986a03ee0acc6a6435a0d",
+  "expected_serialized_digest": "sha-256:f7b0f626d2978fc8f90a29916db276cbad3e19b69a1986a03ee0acc6a6435a0d",
+  "rule_ids": [
+    "AUT-000"
+  ],
+  "coverage": [
+    "object-key-order-independence"
+  ]
+}

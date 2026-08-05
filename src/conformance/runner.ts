@@ -25,6 +25,9 @@ import { structuralRuleIds, rawRuleIds, canonicalRuleIds, selectionRuleIds, refe
 import { schemaResourceForFixture, assertSchemaResourceMapIntegrity } from '../internal/schema-resource-map.js';
 import { checkProposedRegistration } from '../engine/identity.js';
 import { mk } from '../internal/report.js';
+import { validateTrustedWorkspaceConfiguration, TRUSTED_HOST_LANE } from '../trusted/index.js';
+import { brandRecordWrapper } from '../internal/snapshot.js';
+import { evaluatePointOfUseEligibilityForConfiguration, type PointOfUseRoutingResult } from '../pointofuse/index.js';
 
 export interface ConformanceManifestEntry {
   fixture_id: string;
@@ -259,6 +262,11 @@ export class ConformanceRunner {
       const vector = this.loadJson(entry.paths[0]!);
       const actual = this.evaluateVector(entry, vector);
       return this.compareVector(entry, declared, declaredIdx, actual);
+    } else if (entry.fixture_id.startsWith('POUV2-')) {
+      // PointOfUse v2 conformance context: the authoritative internal router
+      // evaluates the fixture descriptor's genuine configuration and exact
+      // versioned request; the descriptor's `expect` block is the oracle.
+      return this.evaluatePouV2Entry(entry);
     } else if (entry.paths[0]!.startsWith('fixtures/canonicalization/')) {
       // RULE-* coverage entries over canonicalization vectors: the actual
       // evaluation object is routed through the SAME common comparison logic
@@ -825,6 +833,230 @@ export class ConformanceRunner {
       );
     }
     return { findings, schemaUsed: undefined };
+  }
+
+  // ------------------------------------------------- point-of-use v2 context
+  /**
+   * PointOfUse v2 conformance context (WP-6 Phase 3C1): the fixture
+   * descriptor under `fixtures/pointofuse-v2/` carries the trusted
+   * configuration input, the exact versioned router request (with corpus-path
+   * references for bundle/policy/grant/lifecycle/registry), and the `expect`
+   * oracle. The runner constructs a runtime-genuine configuration through the
+   * committed Phase-1 validator and calls the authoritative INTERNAL
+   * configuration-aware router — no authority intersection is reproduced in
+   * the runner and the direct public v1 entry is never used for v2 fixtures.
+   */
+  private evaluatePouV2Entry(entry: ConformanceManifestEntry): { ok: boolean; reason?: string; detail?: string } {
+    const descriptor = this.loadJson(entry.paths[0]!) as Record<string, unknown>;
+    const expect = (descriptor['expect'] as Record<string, unknown>) ?? {};
+    const built = this.buildPouV2Configuration(descriptor['config'] as Record<string, unknown> | undefined);
+    if (!built.ok) return { ok: false, reason: 'config-invalid', detail: built.detail };
+    // Forged-configuration boundary fixture: an unbranded spread clone is
+    // supplied to the router, which must fail closed at config-not-genuine.
+    const configuration = descriptor['config_forged'] === true ? { ...(built.configuration as object) } : built.configuration;
+    const request = this.buildPouV2Request(descriptor);
+    if (!request.ok) return { ok: false, reason: 'request-build', detail: request.detail };
+    let result: PointOfUseRoutingResult;
+    try {
+      result = evaluatePointOfUseEligibilityForConfiguration(configuration as never, request.request);
+    } catch {
+      return { ok: false, reason: 'router-threw', detail: entry.fixture_id };
+    }
+    return this.comparePouV2(entry.fixture_id, result, expect);
+  }
+
+  private buildPouV2Configuration(configInput: Record<string, unknown> | undefined):
+    { ok: true; configuration: unknown } | { ok: false; detail: string } {
+    if (!configInput || typeof configInput !== 'object') {
+      return { ok: false, detail: 'descriptor config missing' };
+    }
+    const report = validateTrustedWorkspaceConfiguration(configInput, {
+      hostLane: TRUSTED_HOST_LANE,
+      resolveRootPath: (p: string) => p,
+    });
+    if (!report.ok) {
+      return { ok: false, detail: `config invalid: ${report.findings.map((f) => f.messageKey).join(',')}` };
+    }
+    return { ok: true, configuration: report.configuration };
+  }
+
+  private buildPouV2Request(descriptor: Record<string, unknown>):
+    { ok: true; request: Record<string, unknown> } | { ok: false; detail: string } {
+    const request = (descriptor['request'] as Record<string, unknown>) ?? {};
+    const route = request['routeProtocolVersion'];
+    const inputs = (request['inputs'] as Record<string, unknown>) ?? {};
+    const built = this.buildPouV2Inputs(inputs);
+    if (!built.ok) return built;
+    if (route === '1') {
+      return {
+        ok: true,
+        request: { routeProtocolVersion: '1', legacyCompatibilityMode: 'explicit-legacy-test', inputs: built.inputs },
+      };
+    }
+    return { ok: true, request: { routeProtocolVersion: '2', inputs: built.inputs } };
+  }
+
+  private buildPouV2Inputs(inputs: Record<string, unknown>):
+    { ok: true; inputs: Record<string, unknown> } | { ok: false; detail: string } {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(inputs)) {
+      if (key === 'bundle_path') {
+        out['bundle'] = this.loadJson(String(value));
+      } else if (key === 'policy_path') {
+        out['policy'] = this.loadJson(String(value));
+      } else if (key === 'grant') {
+        const grant = value as Record<string, unknown>;
+        if (grant['present'] === true) {
+          let model = this.loadJson(String(grant['path'])) as Record<string, unknown>;
+          const override = grant['override'] as Record<string, unknown> | undefined;
+          if (override) model = this.applyPouV2Override(model, override);
+          out['grant'] = model;
+        }
+      } else if (key === 'registry') {
+        out['registry'] = this.buildPouV2Registry(value as Record<string, unknown>);
+      } else if (key === 'lifecycle') {
+        out['lifecycle'] = this.buildPouV2Lifecycle(value as Record<string, unknown>);
+      } else if (key === 'identity') {
+        out['identity'] = {
+          findInstance: () => undefined,
+          findRevision: () => undefined,
+          findPredecessor: () => undefined,
+          verifyRegistration: () => false,
+        };
+      } else if (key === 'resolver') {
+        out['resolver'] = { resolve: () => undefined };
+      } else if (key === 'revocations') {
+        out['revocations'] = this.buildPouV2Revocations(value);
+      } else {
+        out[key] = value;
+      }
+    }
+    return { ok: true, inputs: out };
+  }
+
+  /**
+   * Apply a shallow/dot-path override to a freshly loaded JSON model (grant
+   * variants). Dot paths address nested scalars; plain keys replace values.
+   * Operates on the runner-owned copy only — never on corpus bytes.
+   */
+  private applyPouV2Override(model: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
+    for (const [key, value] of Object.entries(override)) {
+      const parts = key.split('.');
+      let target: Record<string, unknown> = model;
+      for (let i = 0; i < parts.length - 1; i++) {
+        const next = target[parts[i]!];
+        if (next === null || typeof next !== 'object' || Array.isArray(next)) {
+          target[parts[i]!] = {};
+        }
+        target = target[parts[i]!] as Record<string, unknown>;
+      }
+      target[parts[parts.length - 1]!] = value;
+    }
+    return model;
+  }
+
+  private buildPouV2Registry(value: Record<string, unknown>): Record<string, unknown> {
+    const model = this.loadJson(String(value['snapshot_path'])) as Record<string, unknown>;
+    const snapshot = this.runRegistry(model).value as ValidatedRegistrySnapshot;
+    return {
+      registryProtocolId: String(value['registryProtocolId'] ?? 'project-gateway.registry'),
+      registrySnapshotFormatVersion: String(value['registrySnapshotFormatVersion'] ?? '1.0'),
+      registrySnapshotId: String(model['snapshot_id'] ?? ''),
+      registrySnapshotDigest: String(model['snapshot_digest'] ?? ''),
+      snapshot,
+    };
+  }
+
+  private buildPouV2Lifecycle(value: Record<string, unknown>): Record<string, unknown> {
+    const recordPaths = Array.isArray(value['record_paths']) ? (value['record_paths'] as string[]) : [];
+    const records = recordPaths.map((rel) => {
+      const model = this.loadJson(rel) as Record<string, unknown>;
+      const wrapper = Object.freeze({
+        recordType: String(model['record_type'] ?? ''),
+        recordId: String(model['record_id'] ?? ''),
+        level: 'structural-valid',
+        model: Object.freeze(model),
+      });
+      brandRecordWrapper(wrapper);
+      return wrapper;
+    });
+    return { records, findRecord: (id: string) => records.find((r) => r.recordId === id) };
+  }
+
+  private buildPouV2Revocations(value: unknown): { revocationsByTarget: (recordId: string) => readonly { recordId: string; effectiveAt: string; scope: string }[] } {
+    const entries = Array.isArray(value) ? (value as Record<string, unknown>[]) : [];
+    return {
+      revocationsByTarget: (recordId: string) =>
+        entries
+          .filter((e) => String(e['target_record_id']) === recordId)
+          .map((e) => ({ recordId, effectiveAt: String(e['effective_at']), scope: String(e['scope'] ?? 'revoke') })),
+    };
+  }
+
+  private comparePouV2(fixtureId: string, result: PointOfUseRoutingResult, expect: Record<string, unknown>):
+    { ok: boolean; reason?: string; detail?: string } {
+    const kind = String(expect['kind'] ?? '');
+    if (result.kind !== kind) {
+      return { ok: false, reason: 'kind-mismatch', detail: `${fixtureId} expected kind ${kind} got ${result.kind}` };
+    }
+    if (result.kind === 'router-failure') {
+      const stage = String(expect['stage'] ?? '');
+      if (result.stage !== stage) {
+        return { ok: false, reason: 'stage-mismatch', detail: `${fixtureId} expected stage ${stage} got ${result.stage}` };
+      }
+      const codes = Array.isArray(expect['finding_codes']) ? (expect['finding_codes'] as string[]) : [];
+      const actualCodes = result.findings.map((f) => f.code);
+      if (codes.length > 0 && JSON.stringify(codes) !== JSON.stringify(actualCodes)) {
+        return { ok: false, reason: 'finding-code-mismatch', detail: `${fixtureId} expected [${codes.join(',')}] got [${actualCodes.join(',')}]` };
+      }
+      return { ok: true };
+    }
+    const eligibility = result.eligibility;
+    const expectedEligible = expect['eligible'];
+    if (expectedEligible !== undefined && eligibility.eligible !== expectedEligible) {
+      return { ok: false, reason: 'eligible-mismatch', detail: `${fixtureId} expected eligible=${expectedEligible} got ${eligibility.eligible}` };
+    }
+    const identities = expect['identities'];
+    if (identities !== undefined) {
+      const hasStatic = 'staticInputCorrelationIdentity' in eligibility;
+      if (identities === true && !hasStatic) return { ok: false, reason: 'identity-missing', detail: fixtureId };
+      if (identities === false && hasStatic) return { ok: false, reason: 'identity-unexpected', detail: fixtureId };
+      if (identities === true) {
+        const v2 = eligibility as unknown as { staticInputCorrelationIdentity: string; pointOfUseResultIdentity: string };
+        if (!/^sha-256:[0-9a-f]{64}$/.test(v2.staticInputCorrelationIdentity) || !/^sha-256:[0-9a-f]{64}$/.test(v2.pointOfUseResultIdentity)) {
+          return { ok: false, reason: 'identity-format', detail: fixtureId };
+        }
+      }
+    }
+    const staticIdentity = expect['static_identity'];
+    if (staticIdentity !== undefined) {
+      const actual = (eligibility as unknown as { staticInputCorrelationIdentity: string }).staticInputCorrelationIdentity;
+      if (String(staticIdentity) !== actual) {
+        return { ok: false, reason: 'static-identity-mismatch', detail: `${fixtureId} expected ${staticIdentity} got ${actual}` };
+      }
+    }
+    const ruleIds = Array.isArray(expect['rule_ids']) ? (expect['rule_ids'] as string[]) : [];
+    if (ruleIds.length > 0) {
+      const union = new Set(eligibility.ruleIds);
+      for (const r of ruleIds) {
+        if (!union.has(r)) return { ok: false, reason: 'rule-missing', detail: `${fixtureId} rule ${r}` };
+      }
+    }
+    const categories = Array.isArray(expect['categories']) ? (expect['categories'] as string[]) : [];
+    if (categories.length > 0) {
+      const set = new Set<string>(eligibility.categories as readonly string[]);
+      for (const c of categories) {
+        if (!set.has(c)) return { ok: false, reason: 'category-missing', detail: `${fixtureId} category ${c}` };
+      }
+    }
+    const messageKeys = Array.isArray(expect['message_keys']) ? (expect['message_keys'] as string[]) : [];
+    if (messageKeys.length > 0) {
+      const actual = eligibility.findings.map((f) => f.messageKey);
+      if (JSON.stringify(messageKeys) !== JSON.stringify(actual)) {
+        return { ok: false, reason: 'message-key-order-mismatch', detail: `${fixtureId} expected [${messageKeys.join(',')}] got [${actual.join(',')}]` };
+      }
+    }
+    return { ok: true };
   }
 
   // ------------------------------------------------------------------ vectors

@@ -172,10 +172,11 @@ export function findingEvaluationException(): POU2Finding {
 
 /**
  * Semantic finding: the configured global capability ceiling denies the
- * requested capability. Committed Finding shape; rule IDs are closed
- * implementation-owned identifiers that sort before every numeric finding
- * under the committed deterministic ordering (capability intersection
- * precedes numeric narrowing per contract Section 18).
+ * requested capability. Committed Finding shape; the registered rule ID
+ * `AUT-000` (catalog rule "Configured capability ceiling denies") sorts
+ * before every numeric finding's rule IDs under the committed deterministic
+ * ordering (capability intersection precedes numeric narrowing per contract
+ * Section 18). POU2-020 remains the finding code; it is not a rule ID.
  */
 export function semanticGlobalCapabilityCeilingDenial(subjectIdentity: string): Finding {
   return mk(
@@ -183,14 +184,16 @@ export function semanticGlobalCapabilityCeilingDenial(subjectIdentity: string): 
     AGGREGATE_CATEGORY,
     'pou2.global-capability-ceiling-denial',
     'requested capability is denied by the configured global capability ceiling',
-    { ruleIds: ['000-GLOBAL-CAPABILITY-CEILING', 'POU2-020'], subjectIdentity, location: '/capability' },
+    { ruleIds: ['AUT-000'], subjectIdentity, location: '/capability' },
   );
 }
 
 /**
  * Semantic finding: the captured RuntimeGrant model has a record type other
  * than `RuntimeGrant` (grant gate step 2; contract Section 15). Committed
- * Finding shape with the LFC-008 family; deterministic ordering follows the
+ * Finding shape with the LFC family; the registered rule ID `LFC-012`
+ * ("RuntimeGrant record type") accompanies the retained `LFC-008`; POU2-022
+ * remains the finding code, not a rule ID. Deterministic ordering follows the
  * committed sort.
  */
 export function semanticGrantRecordTypeDenial(subjectIdentity: string): Finding {
@@ -199,13 +202,15 @@ export function semanticGrantRecordTypeDenial(subjectIdentity: string): Finding 
     'POINT-OF-USE-FAILURE' as FailureCategory,
     'pou2.grant-record-type',
     'runtime grant record type is not RuntimeGrant',
-    { ruleIds: ['LFC-008', 'POU2-022'], subjectIdentity, location: '/record_type' },
+    { ruleIds: ['LFC-008', 'LFC-012'], subjectIdentity, location: '/record_type' },
   );
 }
 
 /**
  * Semantic finding: the configured workspace capability ceiling denies the
- * requested capability (same ordering contract as the global variant).
+ * requested capability (same ordering contract as the global variant; the
+ * registered rule ID `AUT-000` is shared with the global denial — the two
+ * findings remain distinct by message key and finding code POU2-021).
  */
 export function semanticWorkspaceCapabilityCeilingDenial(subjectIdentity: string): Finding {
   return mk(
@@ -213,6 +218,6 @@ export function semanticWorkspaceCapabilityCeilingDenial(subjectIdentity: string
     AGGREGATE_CATEGORY,
     'pou2.workspace-capability-ceiling-denial',
     'requested capability is denied by the configured workspace capability ceiling',
-    { ruleIds: ['000-WORKSPACE-CAPABILITY-CEILING', 'POU2-021'], subjectIdentity, location: '/capability' },
+    { ruleIds: ['AUT-000'], subjectIdentity, location: '/capability' },
   );
 }

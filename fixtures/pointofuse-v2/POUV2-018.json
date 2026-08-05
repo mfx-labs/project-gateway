@@ -1,0 +1,1008 @@
+{
+  "fixture_id": "POUV2-018",
+  "subject_type": "point-of-use-v2",
+  "config": {
+    "configurationVersion": "2",
+    "capabilityVocabularyVersion": "v1",
+    "provenance": {
+      "sourceKind": "trusted-local-control-plane"
+    },
+    "workspaces": [
+      {
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+        "root": "/srv/gateway/alpha"
+      }
+    ]
+  },
+  "request": {
+    "routeProtocolVersion": "2",
+    "inputs": {
+      "pointOfUseInputsProtocolVersion": "2",
+      "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+      "requestedUse": {
+        "capability": "project-gateway.workspace-read",
+        "operationClass": "read",
+        "resourceClass": "configured-artifact-area",
+        "scope": "exact:resource-1",
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+      },
+      "currentTime": "2026-08-04T06:10:00.000Z",
+      "consumerSupport": {
+        "consumerId": "test-consumer",
+        "supportedProtocolFeatures": [
+          "project-gateway.conformance-fixture"
+        ],
+        "supportedConsumerCapabilities": [
+          "project-gateway.workspace-read"
+        ],
+        "supportedExtensionNamespaces": [
+          "project-gateway.conformance-tag"
+        ]
+      },
+      "identity": {},
+      "resolver": {},
+      "registry": {
+        "snapshot_path": "fixtures/registry/valid/registry-v1.json"
+      },
+      "lifecycle": {
+        "record_paths": [
+          "fixtures/lifecycle/valid/validation-task.json",
+          "fixtures/lifecycle/valid/approval-task.json",
+          "fixtures/lifecycle/valid/issuance-task.json",
+          "fixtures/lifecycle/valid/validation-policy.json",
+          "fixtures/lifecycle/valid/approval-policy.json",
+          "fixtures/lifecycle/valid/issuance-policy.json",
+          "fixtures/lifecycle/valid/validation-context.json",
+          "fixtures/lifecycle/valid/approval-context.json",
+          "fixtures/lifecycle/valid/issuance-context.json",
+          "fixtures/lifecycle/valid/validation-completion.json",
+          "fixtures/lifecycle/valid/approval-completion.json",
+          "fixtures/lifecycle/valid/issuance-completion.json",
+          "fixtures/lifecycle/valid/validation-bundle.json",
+          "fixtures/lifecycle/valid/approval-bundle.json",
+          "fixtures/lifecycle/valid/issuance-bundle.json",
+          "fixtures/lifecycle/valid/runtime-grant-main.json",
+          "fixtures/lifecycle/valid/activation-accepted.json"
+        ]
+      },
+      "revocations": [],
+      "bundle_path": "fixtures/artifacts/valid/bundle-minimal-genesis.json",
+      "policy_path": "fixtures/artifacts/valid/policy-minimal-genesis.json",
+      "grant": {
+        "present": true,
+        "path": "fixtures/lifecycle/valid/runtime-grant-main.json",
+        "override": {
+          "record_type": "IssuanceRecord"
+        }
+      }
+    }
+  },
+  "oracle": {
+    "static_projection": {
+      "projectionProtocolVersion": "1",
+      "outerRouterVersion": "2",
+      "innerPointOfUseInputsVersion": "2",
+      "configurationVersion": "2",
+      "configurationIdentity": "sha-256:d74c7dd2c71f9e143ce7f8e71af3db2f551e19ccebe8aeb11554620a4a0df11a",
+      "capabilityVocabularyVersion": "v1",
+      "inputWorkspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+      "requestedUseWorkspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+      "requestedUse": {
+        "capability": "project-gateway.workspace-read",
+        "operationClass": "read",
+        "resourceClass": "configured-artifact-area",
+        "scope": "exact:resource-1",
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+      },
+      "currentTime": "2026-08-04T06:10:00.000Z",
+      "configuredGlobalCapabilityCeiling": {
+        "state": "absent"
+      },
+      "configuredWorkspaceCapabilityCeiling": {
+        "state": "absent"
+      },
+      "configuredGlobalNumericCeiling": {
+        "state": "absent"
+      },
+      "configuredWorkspaceNumericCeiling": {
+        "state": "absent"
+      },
+      "consumerSupport": {
+        "consumerId": "test-consumer",
+        "supportedProtocolFeatures": [
+          "project-gateway.conformance-fixture"
+        ],
+        "supportedConsumerCapabilities": [
+          "project-gateway.workspace-read"
+        ],
+        "supportedExtensionNamespaces": [
+          "project-gateway.conformance-tag"
+        ]
+      },
+      "bundle": {
+        "state": "present",
+        "capturedModel": {
+          "protocol": {
+            "id": "project-gateway.artifact",
+            "version": "1.0",
+            "canonicalization": "jcs-rfc8785-v1"
+          },
+          "kind": {
+            "id": "ExecutionBundle",
+            "version": "1.0"
+          },
+          "instance_id": "pgw:i:064ee0ce2bdeee0073c6d64e93b9fb60",
+          "revision": {
+            "id": "pgw:r:c55e6e260130dc58d95c600ee51db65d",
+            "generation": 0,
+            "predecessor": null,
+            "digest": "sha-256:9a59a420a06f5e00f9529708918a2b9289bcb832aa8a4c983884520f5d6be3d7"
+          },
+          "workspace_binding": {
+            "mode": "bound",
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+          },
+          "requirements": {
+            "protocol_features": [],
+            "consumer_capabilities": []
+          },
+          "extensions": [],
+          "body": {
+            "task": {
+              "target_protocol_version": "1.0",
+              "target_kind": {
+                "id": "TaskSpec",
+                "version": "1.0"
+              },
+              "target_instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+              "target_revision_id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+              "target_digest": "sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b",
+              "target_workspace_binding": {
+                "mode": "portable"
+              }
+            },
+            "authority_policy": {
+              "target_protocol_version": "1.0",
+              "target_kind": {
+                "id": "AuthorityPolicy",
+                "version": "1.0"
+              },
+              "target_instance_id": "pgw:i:b09d7bbc9ace7f189718e56bdddeb4e7",
+              "target_revision_id": "pgw:r:23d4449e772e28829d670728cf30796d",
+              "target_digest": "sha-256:95a9035a3d2b4b134dc062a0ba50db8086c8ec12229ac48408f692a8a967a0ec",
+              "target_workspace_binding": {
+                "mode": "bound",
+                "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+              }
+            },
+            "context_manifest": {
+              "target_protocol_version": "1.0",
+              "target_kind": {
+                "id": "ContextManifest",
+                "version": "1.0"
+              },
+              "target_instance_id": "pgw:i:92632714b203f03e1e92e2c10defd06d",
+              "target_revision_id": "pgw:r:7230b62af4394f04153e6113fa3960a8",
+              "target_digest": "sha-256:ef8568372b585f7d2dffdf144950ddff0f24c129cf54709cf92f54fcfb49350b",
+              "target_workspace_binding": {
+                "mode": "bound",
+                "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+              }
+            },
+            "completion_contract": {
+              "target_protocol_version": "1.0",
+              "target_kind": {
+                "id": "CompletionContract",
+                "version": "1.0"
+              },
+              "target_instance_id": "pgw:i:23c04d055bd59c637bd47e3feb5b5575",
+              "target_revision_id": "pgw:r:ff793e8e7ff0f02133a9af257b81003f",
+              "target_digest": "sha-256:3eb28e975843c943d894fb1d751f0a234b41deb72c38e443aeff62682b9285c7",
+              "target_workspace_binding": {
+                "mode": "portable"
+              }
+            }
+          }
+        }
+      },
+      "policy": {
+        "state": "present",
+        "capturedModel": {
+          "protocol": {
+            "id": "project-gateway.artifact",
+            "version": "1.0",
+            "canonicalization": "jcs-rfc8785-v1"
+          },
+          "kind": {
+            "id": "AuthorityPolicy",
+            "version": "1.0"
+          },
+          "instance_id": "pgw:i:b09d7bbc9ace7f189718e56bdddeb4e7",
+          "revision": {
+            "id": "pgw:r:23d4449e772e28829d670728cf30796d",
+            "generation": 0,
+            "predecessor": null,
+            "digest": "sha-256:95a9035a3d2b4b134dc062a0ba50db8086c8ec12229ac48408f692a8a967a0ec"
+          },
+          "workspace_binding": {
+            "mode": "bound",
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+          },
+          "requirements": {
+            "protocol_features": [],
+            "consumer_capabilities": []
+          },
+          "extensions": [],
+          "body": {
+            "rules": [
+              {
+                "rule_id": "allow-artifact-read",
+                "effect": "allow",
+                "capability": {
+                  "id": "project-gateway.workspace-read",
+                  "version": "1.0"
+                },
+                "scope": {
+                  "scope_type": "project-gateway.resource-class-scope",
+                  "version": "1.0",
+                  "resource_classes": [
+                    "configured-artifact-area"
+                  ],
+                  "operation_classes": [
+                    "read"
+                  ]
+                },
+                "constraints": [
+                  {
+                    "type": "require-exact-resource",
+                    "value": true
+                  }
+                ],
+                "required_semantics": []
+              }
+            ]
+          }
+        }
+      },
+      "grant": {
+        "state": "present",
+        "capturedModel": {
+          "record_type": "IssuanceRecord",
+          "record_id": "pgw:l:e885b36cf1d0c416221e47dd4ad71d0e",
+          "created_at": "2026-08-04T06:01:00.000Z",
+          "responsible_role": "trusted-runtime-grant-authority",
+          "registry_snapshot_reference": {
+            "registry_protocol_id": "project-gateway.registry",
+            "registry_snapshot_format_version": "1.0",
+            "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+            "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+            "protocol_compatibility": {
+              "mode": "exact-release",
+              "artifact_protocol_id": "project-gateway.artifact",
+              "artifact_protocol_version": "1.0"
+            }
+          },
+          "bundle": {
+            "target_protocol_version": "1.0",
+            "target_kind": {
+              "id": "ExecutionBundle",
+              "version": "1.0"
+            },
+            "target_instance_id": "pgw:i:064ee0ce2bdeee0073c6d64e93b9fb60",
+            "target_revision_id": "pgw:r:c55e6e260130dc58d95c600ee51db65d",
+            "target_digest": "sha-256:9a59a420a06f5e00f9529708918a2b9289bcb832aa8a4c983884520f5d6be3d7",
+            "target_workspace_binding": {
+              "mode": "bound",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            }
+          },
+          "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+          "reserved_occurrence_id": "pgw:o:07afc217d096ca56baa8fe7441667a7a",
+          "attempt_limit": 2,
+          "validity": {
+            "not_before": "2026-08-04T06:00:00.000Z",
+            "not_after": "2026-08-05T06:00:00.000Z"
+          },
+          "narrowed_constraints": [
+            {
+              "type": "max-actions",
+              "value": 10
+            }
+          ]
+        }
+      },
+      "registry": {
+        "registryProtocolId": "project-gateway.registry",
+        "registrySnapshotFormatVersion": "1.0",
+        "registrySnapshotId": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registrySnapshotDigest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05"
+      },
+      "lifecycleRecords": [
+        {
+          "recordId": "pgw:l:054a5c0c7896bce44918a38e7c13ea96",
+          "model": {
+            "record_type": "ValidationRecord",
+            "record_id": "pgw:l:054a5c0c7896bce44918a38e7c13ea96",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-validator",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "ExecutionBundle",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:064ee0ce2bdeee0073c6d64e93b9fb60",
+              "revision_id": "pgw:r:c55e6e260130dc58d95c600ee51db65d",
+              "digest": "sha-256:9a59a420a06f5e00f9529708918a2b9289bcb832aa8a4c983884520f5d6be3d7",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "validator_profile": {
+              "id": "project-gateway.structural-semantic-v1",
+              "version": "1.0"
+            },
+            "structural_outcome": "pass",
+            "semantic_outcome": "pass",
+            "findings": []
+          }
+        },
+        {
+          "recordId": "pgw:l:0e8cc53e2cd90eff0ede290ba5e2a81b",
+          "model": {
+            "record_type": "ApprovalRecord",
+            "record_id": "pgw:l:0e8cc53e2cd90eff0ede290ba5e2a81b",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-approver",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "CompletionContract",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:23c04d055bd59c637bd47e3feb5b5575",
+              "revision_id": "pgw:r:ff793e8e7ff0f02133a9af257b81003f",
+              "digest": "sha-256:3eb28e975843c943d894fb1d751f0a234b41deb72c38e443aeff62682b9285c7",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "purpose": "execution-use",
+            "validation_record_ids": [
+              "pgw:l:66aa12fe9129d5c513dfdf53b6ee3a15"
+            ],
+            "required_semantics": {
+              "protocol_features": [],
+              "consumer_capabilities": []
+            },
+            "valid_until": null
+          }
+        },
+        {
+          "recordId": "pgw:l:1f861271b89026e10ba7308ff03d913e",
+          "model": {
+            "record_type": "IssuanceRecord",
+            "record_id": "pgw:l:1f861271b89026e10ba7308ff03d913e",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-issuer",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "AuthorityPolicy",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:b09d7bbc9ace7f189718e56bdddeb4e7",
+              "revision_id": "pgw:r:23d4449e772e28829d670728cf30796d",
+              "digest": "sha-256:95a9035a3d2b4b134dc062a0ba50db8086c8ec12229ac48408f692a8a967a0ec",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "approval_record_id": "pgw:l:cae8c03e2484b3fa7bf2cfe40c3b7f94",
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "use_class": "execution-use",
+            "activation_limit": 1,
+            "valid_until": null
+          }
+        },
+        {
+          "recordId": "pgw:l:22fc04818c32642993cba51db8146b26",
+          "model": {
+            "record_type": "ActivationRecord",
+            "record_id": "pgw:l:22fc04818c32642993cba51db8146b26",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-activation-authority",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "bundle": {
+              "target_protocol_version": "1.0",
+              "target_kind": {
+                "id": "ExecutionBundle",
+                "version": "1.0"
+              },
+              "target_instance_id": "pgw:i:064ee0ce2bdeee0073c6d64e93b9fb60",
+              "target_revision_id": "pgw:r:c55e6e260130dc58d95c600ee51db65d",
+              "target_digest": "sha-256:9a59a420a06f5e00f9529708918a2b9289bcb832aa8a4c983884520f5d6be3d7",
+              "target_workspace_binding": {
+                "mode": "bound",
+                "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+              }
+            },
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "required_issuance_record_ids": [
+              "pgw:l:1f861271b89026e10ba7308ff03d913e",
+              "pgw:l:8ccffec6c22e7a485528b68d6aa1a871",
+              "pgw:l:a9d38ff863dc27e5c8214a0a44cede42",
+              "pgw:l:aa97c2ef484a9f647ad4f57069216aa4",
+              "pgw:l:dc228c1bd64ce5dd0daef99e69c7c3fc"
+            ],
+            "runtime_grant_id": "pgw:l:e885b36cf1d0c416221e47dd4ad71d0e",
+            "reserved_occurrence_id": "pgw:o:07afc217d096ca56baa8fe7441667a7a",
+            "decision": "accepted"
+          }
+        },
+        {
+          "recordId": "pgw:l:3afb70bd8d8e7f298bf3f78498a84b00",
+          "model": {
+            "record_type": "ValidationRecord",
+            "record_id": "pgw:l:3afb70bd8d8e7f298bf3f78498a84b00",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-validator",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "ContextManifest",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:92632714b203f03e1e92e2c10defd06d",
+              "revision_id": "pgw:r:7230b62af4394f04153e6113fa3960a8",
+              "digest": "sha-256:ef8568372b585f7d2dffdf144950ddff0f24c129cf54709cf92f54fcfb49350b",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "validator_profile": {
+              "id": "project-gateway.structural-semantic-v1",
+              "version": "1.0"
+            },
+            "structural_outcome": "pass",
+            "semantic_outcome": "pass",
+            "findings": []
+          }
+        },
+        {
+          "recordId": "pgw:l:5b32de9df30b208d9a490e5149326a19",
+          "model": {
+            "record_type": "ApprovalRecord",
+            "record_id": "pgw:l:5b32de9df30b208d9a490e5149326a19",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-approver",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "ContextManifest",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:92632714b203f03e1e92e2c10defd06d",
+              "revision_id": "pgw:r:7230b62af4394f04153e6113fa3960a8",
+              "digest": "sha-256:ef8568372b585f7d2dffdf144950ddff0f24c129cf54709cf92f54fcfb49350b",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "purpose": "execution-use",
+            "validation_record_ids": [
+              "pgw:l:3afb70bd8d8e7f298bf3f78498a84b00"
+            ],
+            "required_semantics": {
+              "protocol_features": [],
+              "consumer_capabilities": []
+            },
+            "valid_until": null
+          }
+        },
+        {
+          "recordId": "pgw:l:66aa12fe9129d5c513dfdf53b6ee3a15",
+          "model": {
+            "record_type": "ValidationRecord",
+            "record_id": "pgw:l:66aa12fe9129d5c513dfdf53b6ee3a15",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-validator",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "CompletionContract",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:23c04d055bd59c637bd47e3feb5b5575",
+              "revision_id": "pgw:r:ff793e8e7ff0f02133a9af257b81003f",
+              "digest": "sha-256:3eb28e975843c943d894fb1d751f0a234b41deb72c38e443aeff62682b9285c7",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "validator_profile": {
+              "id": "project-gateway.structural-semantic-v1",
+              "version": "1.0"
+            },
+            "structural_outcome": "pass",
+            "semantic_outcome": "pass",
+            "findings": []
+          }
+        },
+        {
+          "recordId": "pgw:l:8ccffec6c22e7a485528b68d6aa1a871",
+          "model": {
+            "record_type": "IssuanceRecord",
+            "record_id": "pgw:l:8ccffec6c22e7a485528b68d6aa1a871",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-issuer",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "ContextManifest",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:92632714b203f03e1e92e2c10defd06d",
+              "revision_id": "pgw:r:7230b62af4394f04153e6113fa3960a8",
+              "digest": "sha-256:ef8568372b585f7d2dffdf144950ddff0f24c129cf54709cf92f54fcfb49350b",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "approval_record_id": "pgw:l:5b32de9df30b208d9a490e5149326a19",
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "use_class": "execution-use",
+            "activation_limit": 1,
+            "valid_until": null
+          }
+        },
+        {
+          "recordId": "pgw:l:a243f82138e796ce117a8a631b8781a6",
+          "model": {
+            "record_type": "ApprovalRecord",
+            "record_id": "pgw:l:a243f82138e796ce117a8a631b8781a6",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-approver",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "ExecutionBundle",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:064ee0ce2bdeee0073c6d64e93b9fb60",
+              "revision_id": "pgw:r:c55e6e260130dc58d95c600ee51db65d",
+              "digest": "sha-256:9a59a420a06f5e00f9529708918a2b9289bcb832aa8a4c983884520f5d6be3d7",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "purpose": "execution-use",
+            "validation_record_ids": [
+              "pgw:l:054a5c0c7896bce44918a38e7c13ea96"
+            ],
+            "required_semantics": {
+              "protocol_features": [],
+              "consumer_capabilities": []
+            },
+            "valid_until": null
+          }
+        },
+        {
+          "recordId": "pgw:l:a9d38ff863dc27e5c8214a0a44cede42",
+          "model": {
+            "record_type": "IssuanceRecord",
+            "record_id": "pgw:l:a9d38ff863dc27e5c8214a0a44cede42",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-issuer",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "CompletionContract",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:23c04d055bd59c637bd47e3feb5b5575",
+              "revision_id": "pgw:r:ff793e8e7ff0f02133a9af257b81003f",
+              "digest": "sha-256:3eb28e975843c943d894fb1d751f0a234b41deb72c38e443aeff62682b9285c7",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "approval_record_id": "pgw:l:0e8cc53e2cd90eff0ede290ba5e2a81b",
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "use_class": "execution-use",
+            "activation_limit": 1,
+            "valid_until": null
+          }
+        },
+        {
+          "recordId": "pgw:l:aa97c2ef484a9f647ad4f57069216aa4",
+          "model": {
+            "record_type": "IssuanceRecord",
+            "record_id": "pgw:l:aa97c2ef484a9f647ad4f57069216aa4",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-issuer",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "ExecutionBundle",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:064ee0ce2bdeee0073c6d64e93b9fb60",
+              "revision_id": "pgw:r:c55e6e260130dc58d95c600ee51db65d",
+              "digest": "sha-256:9a59a420a06f5e00f9529708918a2b9289bcb832aa8a4c983884520f5d6be3d7",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "approval_record_id": "pgw:l:a243f82138e796ce117a8a631b8781a6",
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "use_class": "execution-use",
+            "activation_limit": 1,
+            "valid_until": null
+          }
+        },
+        {
+          "recordId": "pgw:l:b34f44be24e82e0a12ce729ded641687",
+          "model": {
+            "record_type": "ValidationRecord",
+            "record_id": "pgw:l:b34f44be24e82e0a12ce729ded641687",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-validator",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "TaskSpec",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+              "revision_id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+              "digest": "sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "validator_profile": {
+              "id": "project-gateway.structural-semantic-v1",
+              "version": "1.0"
+            },
+            "structural_outcome": "pass",
+            "semantic_outcome": "pass",
+            "findings": []
+          }
+        },
+        {
+          "recordId": "pgw:l:c4571ecbf5da4592574d5567730a2d50",
+          "model": {
+            "record_type": "ApprovalRecord",
+            "record_id": "pgw:l:c4571ecbf5da4592574d5567730a2d50",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-approver",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "TaskSpec",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+              "revision_id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+              "digest": "sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "purpose": "execution-use",
+            "validation_record_ids": [
+              "pgw:l:b34f44be24e82e0a12ce729ded641687"
+            ],
+            "required_semantics": {
+              "protocol_features": [],
+              "consumer_capabilities": []
+            },
+            "valid_until": null
+          }
+        },
+        {
+          "recordId": "pgw:l:cae8c03e2484b3fa7bf2cfe40c3b7f94",
+          "model": {
+            "record_type": "ApprovalRecord",
+            "record_id": "pgw:l:cae8c03e2484b3fa7bf2cfe40c3b7f94",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-approver",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "AuthorityPolicy",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:b09d7bbc9ace7f189718e56bdddeb4e7",
+              "revision_id": "pgw:r:23d4449e772e28829d670728cf30796d",
+              "digest": "sha-256:95a9035a3d2b4b134dc062a0ba50db8086c8ec12229ac48408f692a8a967a0ec",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "purpose": "execution-use",
+            "validation_record_ids": [
+              "pgw:l:f7bb7bb803fdfca9df17177721583b99"
+            ],
+            "required_semantics": {
+              "protocol_features": [],
+              "consumer_capabilities": []
+            },
+            "valid_until": null
+          }
+        },
+        {
+          "recordId": "pgw:l:dc228c1bd64ce5dd0daef99e69c7c3fc",
+          "model": {
+            "record_type": "IssuanceRecord",
+            "record_id": "pgw:l:dc228c1bd64ce5dd0daef99e69c7c3fc",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-issuer",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "TaskSpec",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:9e74f09cf0287d6787d69e8ebddb5157",
+              "revision_id": "pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f",
+              "digest": "sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "approval_record_id": "pgw:l:c4571ecbf5da4592574d5567730a2d50",
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "use_class": "execution-use",
+            "activation_limit": 1,
+            "valid_until": null
+          }
+        },
+        {
+          "recordId": "pgw:l:e885b36cf1d0c416221e47dd4ad71d0e",
+          "model": {
+            "record_type": "RuntimeGrant",
+            "record_id": "pgw:l:e885b36cf1d0c416221e47dd4ad71d0e",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-runtime-grant-authority",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "bundle": {
+              "target_protocol_version": "1.0",
+              "target_kind": {
+                "id": "ExecutionBundle",
+                "version": "1.0"
+              },
+              "target_instance_id": "pgw:i:064ee0ce2bdeee0073c6d64e93b9fb60",
+              "target_revision_id": "pgw:r:c55e6e260130dc58d95c600ee51db65d",
+              "target_digest": "sha-256:9a59a420a06f5e00f9529708918a2b9289bcb832aa8a4c983884520f5d6be3d7",
+              "target_workspace_binding": {
+                "mode": "bound",
+                "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+              }
+            },
+            "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "reserved_occurrence_id": "pgw:o:07afc217d096ca56baa8fe7441667a7a",
+            "attempt_limit": 2,
+            "validity": {
+              "not_before": "2026-08-04T06:00:00.000Z",
+              "not_after": "2026-08-05T06:00:00.000Z"
+            },
+            "narrowed_constraints": [
+              {
+                "type": "max-actions",
+                "value": 10
+              }
+            ]
+          }
+        },
+        {
+          "recordId": "pgw:l:f7bb7bb803fdfca9df17177721583b99",
+          "model": {
+            "record_type": "ValidationRecord",
+            "record_id": "pgw:l:f7bb7bb803fdfca9df17177721583b99",
+            "created_at": "2026-08-04T06:01:00.000Z",
+            "responsible_role": "trusted-validator",
+            "registry_snapshot_reference": {
+              "registry_protocol_id": "project-gateway.registry",
+              "registry_snapshot_format_version": "1.0",
+              "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+              "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+              "protocol_compatibility": {
+                "mode": "exact-release",
+                "artifact_protocol_id": "project-gateway.artifact",
+                "artifact_protocol_version": "1.0"
+              }
+            },
+            "subject": {
+              "protocol_version": "1.0",
+              "kind": {
+                "id": "AuthorityPolicy",
+                "version": "1.0"
+              },
+              "instance_id": "pgw:i:b09d7bbc9ace7f189718e56bdddeb4e7",
+              "revision_id": "pgw:r:23d4449e772e28829d670728cf30796d",
+              "digest": "sha-256:95a9035a3d2b4b134dc062a0ba50db8086c8ec12229ac48408f692a8a967a0ec",
+              "workspace_id": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+            },
+            "validator_profile": {
+              "id": "project-gateway.structural-semantic-v1",
+              "version": "1.0"
+            },
+            "structural_outcome": "pass",
+            "semantic_outcome": "pass",
+            "findings": []
+          }
+        }
+      ]
+    }
+  },
+  "expect": {
+    "kind": "eligibility-v2",
+    "eligible": false,
+    "identities": true,
+    "static_identity": "sha-256:a70aa93cde1dbfb8578bb6a87b50345654ce1a4afb6cbf04d5d8b8a38dbf3b74",
+    "rule_ids": [
+      "LFC-008",
+      "LFC-012"
+    ],
+    "categories": [
+      "POINT-OF-USE-FAILURE"
+    ],
+    "message_keys": [
+      "pou2.grant-record-type"
+    ]
+  },
+  "notes": "grant wrong record type -> LFC-012 semantic denial"
+}

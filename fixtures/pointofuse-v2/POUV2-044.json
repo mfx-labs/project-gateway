@@ -1,0 +1,101 @@
+{
+  "fixture_id": "POUV2-044",
+  "subject_type": "point-of-use-v2",
+  "config": {
+    "configurationVersion": "2",
+    "capabilityVocabularyVersion": "v1",
+    "provenance": {
+      "sourceKind": "trusted-local-control-plane"
+    },
+    "workspaces": [
+      {
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+        "root": "/srv/gateway/alpha"
+      }
+    ]
+  },
+  "request": {
+    "routeProtocolVersion": "2",
+    "inputs": {
+      "pointOfUseInputsProtocolVersion": "2",
+      "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+      "requestedUse": {
+        "capability": "project-gateway.workspace-read",
+        "operationClass": "read",
+        "resourceClass": "configured-artifact-area",
+        "scope": "exact:resource-1",
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+      },
+      "currentTime": "2026-08-04T06:10:00.000Z",
+      "consumerSupport": {
+        "consumerId": "test-consumer",
+        "supportedProtocolFeatures": [
+          "project-gateway.conformance-fixture"
+        ],
+        "supportedConsumerCapabilities": [
+          "project-gateway.workspace-read"
+        ],
+        "supportedExtensionNamespaces": [
+          "project-gateway.conformance-tag"
+        ]
+      },
+      "identity": {},
+      "resolver": {},
+      "registry": {
+        "snapshot_path": "fixtures/registry/valid/registry-v1.json"
+      },
+      "lifecycle": {
+        "record_paths": [
+          "fixtures/lifecycle/valid/validation-task.json",
+          "fixtures/lifecycle/valid/approval-task.json",
+          "fixtures/lifecycle/valid/issuance-task.json",
+          "fixtures/lifecycle/valid/validation-policy.json",
+          "fixtures/lifecycle/valid/approval-policy.json",
+          "fixtures/lifecycle/valid/issuance-policy.json",
+          "fixtures/lifecycle/valid/validation-context.json",
+          "fixtures/lifecycle/valid/approval-context.json",
+          "fixtures/lifecycle/valid/issuance-context.json",
+          "fixtures/lifecycle/valid/validation-completion.json",
+          "fixtures/lifecycle/valid/approval-completion.json",
+          "fixtures/lifecycle/valid/issuance-completion.json",
+          "fixtures/lifecycle/valid/validation-bundle.json",
+          "fixtures/lifecycle/valid/approval-bundle.json",
+          "fixtures/lifecycle/valid/issuance-bundle.json",
+          "fixtures/lifecycle/valid/runtime-grant-main.json",
+          "fixtures/lifecycle/valid/activation-accepted.json"
+        ]
+      },
+      "revocations": [],
+      "bundle_path": "fixtures/artifacts/valid/bundle-minimal-genesis.json",
+      "policy_path": "fixtures/artifacts/valid/policy-minimal-genesis.json",
+      "grant": {
+        "present": true,
+        "path": "fixtures/lifecycle/valid/runtime-grant-main.json",
+        "override": {
+          "narrowed_constraints": [
+            {
+              "type": "max-actions",
+              "value": "not-a-number"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "expect": {
+    "kind": "eligibility-v2",
+    "eligible": false,
+    "identities": true,
+    "rule_ids": [
+      "LFC-008",
+      "SEC-003"
+    ],
+    "categories": [
+      "POINT-OF-USE-FAILURE"
+    ],
+    "message_keys": [
+      "pou.grant-unknown-constraint"
+    ]
+  },
+  "notes": "malformed-but-canonical grant content -> complete semantic denial with identities"
+}

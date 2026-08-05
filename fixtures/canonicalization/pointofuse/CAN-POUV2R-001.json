@@ -1,0 +1,79 @@
+{
+  "vector_id": "CAN-POUV2R-001",
+  "subject_type": "point-of-use-result",
+  "canonical_projections": [
+    {
+      "pointOfUseResultIdentityProtocolVersion": "1",
+      "routingVariant": "v2",
+      "staticInputCorrelationIdentity": "sha-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "normalizedReport": {
+        "eligible": true,
+        "requestedUse": {
+          "capability": "project-gateway.workspace-read",
+          "operationClass": "read",
+          "resourceClass": "configured-artifact-area",
+          "scope": "exact:resource-1",
+          "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+        },
+        "capability": "project-gateway.workspace-read",
+        "scope": "exact:resource-1",
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+        "subjectCorrelations": {
+          "workspace": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+        },
+        "categories": [
+          "POINT-OF-USE-FAILURE"
+        ],
+        "ruleIds": [
+          "AUT-002"
+        ],
+        "findings": []
+      }
+    },
+    {
+      "pointOfUseResultIdentityProtocolVersion": "1",
+      "routingVariant": "v2",
+      "staticInputCorrelationIdentity": "sha-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "normalizedReport": {
+        "eligible": false,
+        "requestedUse": {
+          "capability": "project-gateway.workspace-read",
+          "operationClass": "read",
+          "resourceClass": "configured-artifact-area",
+          "scope": "exact:resource-1",
+          "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+        },
+        "capability": "project-gateway.workspace-read",
+        "scope": "exact:resource-1",
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+        "subjectCorrelations": {
+          "workspace": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+        },
+        "categories": [
+          "POINT-OF-USE-FAILURE"
+        ],
+        "ruleIds": [
+          "AUT-002"
+        ],
+        "findings": []
+      }
+    }
+  ],
+  "canonical_utf8": [
+    "{\"normalizedReport\":{\"capability\":\"project-gateway.workspace-read\",\"categories\":[\"POINT-OF-USE-FAILURE\"],\"eligible\":true,\"findings\":[],\"requestedUse\":{\"capability\":\"project-gateway.workspace-read\",\"operationClass\":\"read\",\"resourceClass\":\"configured-artifact-area\",\"scope\":\"exact:resource-1\",\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"ruleIds\":[\"AUT-002\"],\"scope\":\"exact:resource-1\",\"subjectCorrelations\":{\"workspace\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"pointOfUseResultIdentityProtocolVersion\":\"1\",\"routingVariant\":\"v2\",\"staticInputCorrelationIdentity\":\"sha-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+    "{\"normalizedReport\":{\"capability\":\"project-gateway.workspace-read\",\"categories\":[\"POINT-OF-USE-FAILURE\"],\"eligible\":false,\"findings\":[],\"requestedUse\":{\"capability\":\"project-gateway.workspace-read\",\"operationClass\":\"read\",\"resourceClass\":\"configured-artifact-area\",\"scope\":\"exact:resource-1\",\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"ruleIds\":[\"AUT-002\"],\"scope\":\"exact:resource-1\",\"subjectCorrelations\":{\"workspace\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"pointOfUseResultIdentityProtocolVersion\":\"1\",\"routingVariant\":\"v2\",\"staticInputCorrelationIdentity\":\"sha-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+  ],
+  "digest_domain": "PGAP-POINT-OF-USE-RESULT-v2\u0000",
+  "expected_sha256": [
+    "6d79468b9318f11d9c4bdcb1c0c116b9f7c8062a4edafa56a625ba75b96f4057",
+    "3f231f3efd68c60911e1f647c6812f6375bd23e1ce6cd7dc48dfbd4b092f06da"
+  ],
+  "expected_serialized_digest": [
+    "sha-256:6d79468b9318f11d9c4bdcb1c0c116b9f7c8062a4edafa56a625ba75b96f4057",
+    "sha-256:3f231f3efd68c60911e1f647c6812f6375bd23e1ce6cd7dc48dfbd4b092f06da"
+  ],
+  "rule_ids": [],
+  "coverage": [
+    "result-eligible-vs-denied"
+  ]
+}

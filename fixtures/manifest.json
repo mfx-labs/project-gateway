@@ -2302,6 +2302,278 @@
       "normative": true
     },
     {
+      "fixture_id": "CAN-POUV2-001",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2-001.json"
+      ],
+      "subject_type": "point-of-use-input",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: static-input-baseline.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2-002",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2-002.json"
+      ],
+      "subject_type": "point-of-use-input",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: global-ceiling-absent-vs-present.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2-003",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2-003.json"
+      ],
+      "subject_type": "point-of-use-input",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: global-ceiling-permit-vs-deny.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2-004",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2-004.json"
+      ],
+      "subject_type": "point-of-use-input",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: workspace-ceiling-change.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2-005",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2-005.json"
+      ],
+      "subject_type": "point-of-use-input",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: numeric-zero-vs-absent.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2-006",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2-006.json"
+      ],
+      "subject_type": "point-of-use-input",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: grant-absent-vs-present.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2-007",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2-007.json"
+      ],
+      "subject_type": "point-of-use-input",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: lifecycle-snapshot-change.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2-008A",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2-008A.json"
+      ],
+      "subject_type": "point-of-use-input",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: object-key-order-independence-a.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2-008B",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2-008B.json"
+      ],
+      "subject_type": "point-of-use-input",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: object-key-order-independence-b.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2-009",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2-009.json"
+      ],
+      "subject_type": "point-of-use-input",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: constraint-array-order-model-byte.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2R-001",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2R-001.json"
+      ],
+      "subject_type": "point-of-use-result",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: result-eligible-vs-denied.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2R-002",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2R-002.json"
+      ],
+      "subject_type": "point-of-use-result",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: result-policy-vs-capability-denial.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2R-003",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2R-003.json"
+      ],
+      "subject_type": "point-of-use-result",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: result-grant-vs-numeric-denial.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2R-004A",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2R-004A.json"
+      ],
+      "subject_type": "point-of-use-result",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: result-correlation-key-order-a.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2R-004B",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2R-004B.json"
+      ],
+      "subject_type": "point-of-use-result",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: result-correlation-key-order-b.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2R-005",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2R-005.json"
+      ],
+      "subject_type": "point-of-use-result",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: result-finding-sequence-difference.",
+      "normative": true
+    },
+    {
+      "fixture_id": "CAN-POUV2R-006",
+      "paths": [
+        "fixtures/canonicalization/pointofuse/CAN-POUV2R-006.json"
+      ],
+      "subject_type": "point-of-use-result",
+      "validation_phase": "canonicalization-and-digest-verification",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Independent digest vector: result-live-revocation-change.",
+      "normative": true
+    },
+    {
       "fixture_id": "CAN-REG-001",
       "paths": [
         "fixtures/canonicalization/registry/registry-canonical-digest.json"
@@ -4199,6 +4471,702 @@
         }
       },
       "notes": "Direct manifest coverage for a physical fixture input.",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-001",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-001.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "v1 legacy, no v2-requiring ceiling -> eligibility-v1 eligible, no identities",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-002",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-002.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "v1 legacy under a v2-requiring ceiling -> legacy-not-permitted",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-003",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-003.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "v2, no ceilings -> eligible with both identities",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-004",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-004.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "v2 with permitting global capability ceiling",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-005",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-005.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "v2 with numeric ceiling above grant limit",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-006",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-006.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "mismatched inner version -> router failure",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-007",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-007.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "unknown workspace -> router failure, no identities",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-008",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-008.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "forged (unbranded clone) configuration -> config-not-genuine",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-009",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-009.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "AUT-000"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "global ceiling denies -> AUT-000 semantic denial",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-010",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-010.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "AUT-000"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "global ceiling present empty -> deny all",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-011",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-011.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "workspace ceiling permits",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-012",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-012.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "AUT-000"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "workspace ceiling denies -> AUT-000 semantic denial",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-013",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-013.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "AUT-000"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "workspace ceiling present empty -> deny all",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-014",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-014.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "ceiling on another workspace does not affect the matched workspace",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-015",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-015.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "AUT-003",
+        "SEC-003"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "configuration permits but policy denies (unknown-denied)",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-016",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-016.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "AUT-003",
+        "SEC-003"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "configuration and policy permit but consumer denies",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-017",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-017.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "EXE-007",
+        "LFC-008"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "all operands permit but grant gate denies (grant absent from input and chain)",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-018",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-018.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "LFC-008",
+        "LFC-012"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "grant wrong record type -> LFC-012 semantic denial",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-019",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-019.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "LFC-008"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "grant wrong bundle -> pou.grant-bundle-mismatch",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-020",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-020.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "LFC-008",
+        "WSP-008"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "grant wrong workspace -> pou.grant-workspace-mismatch",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-021",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-021.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "LFC-010",
+        "REG-008"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "grant wrong registry -> pou.grant-registry-context",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-022",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-022.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "EXE-007",
+        "LFC-003",
+        "LFC-004"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "missing lifecycle correlation record -> pou.missing-issuance",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-023",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-023.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "EXE-007",
+        "LFC-007"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "grant not yet valid -> pou.grant-validity",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-024",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-024.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "EXE-007",
+        "LFC-007"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "grant revoked -> pou.grant-revoked",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-025",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-025.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "EXE-007",
+        "LFC-007"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "grant expired -> pou.grant-validity",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-026",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-026.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "LFC-008",
+        "SEC-003"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "grant unknown constraint -> pou.grant-unknown-constraint",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-027",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-027.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "LFC-008",
+        "SEC-003"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "grant malformed max-actions -> pou.grant-unknown-constraint",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-030",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-030.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "global numeric above grant limit -> eligible",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-031",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-031.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "AUT-001",
+        "LFC-008"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "global numeric below grant limit -> pou.grant-ceiling (minimum wins)",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-032",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-032.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "AUT-001",
+        "LFC-008"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "workspace numeric below grant limit -> pou.grant-workspace-ceiling",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-034",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-034.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "both configured above grant limit -> eligible",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-035",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-035.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "AUT-001",
+        "LFC-008"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "zero global numeric present and denying",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-036",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-036.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "AUT-001",
+        "LFC-008"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "zero workspace numeric present and denying",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-037",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-037.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "AUT-000",
+        "AUT-001",
+        "LFC-008"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "capability denial precedes numeric denial (capability finding first)",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-038",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-038.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "AUT-001",
+        "LFC-008"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "multiple grant max-actions; larger entry exceeding ceiling denies",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-040",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-040.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "finite fraction in bundle -> router failure model-capture, no identities",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-042",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-042.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "unsafe integer in bundle -> router failure model-capture",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-043",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-043.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "BND-001",
+        "EXE-007"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "safe integer in bundle -> eligibility-v2 with identities",
+      "normative": true
+    },
+    {
+      "fixture_id": "POUV2-044",
+      "paths": [
+        "fixtures/pointofuse-v2/POUV2-044.json"
+      ],
+      "subject_type": "point-of-use-v2",
+      "validation_phase": "point-of-use-eligibility",
+      "expected_result": "fail",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [
+        "LFC-008",
+        "SEC-003"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "malformed-but-canonical grant content -> complete semantic denial with identities",
       "normative": true
     },
     {

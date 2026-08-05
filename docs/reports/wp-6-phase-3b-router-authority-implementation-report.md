@@ -174,19 +174,19 @@ No other file changed. `src/pointofuse/routing.ts` required no change: the route
 
 `boundary-v2.test.ts` now asserts the complete Phase-3B internal surface — **18 names** — absent from the package-root namespace: the router and `requiresV2` (routing.ts); `bridgeV1Input`, `bridgeV2Input`, `capabilityDenialFindings`, `deriveValidatedActiveGrantMaxActions`, `evaluateDetachedV1`, `evaluateV2Semantics`, `finalizeV2Report`, `grantGateFindings` (evaluate-v2.ts); `findingConfigNotGenuine`, `findingConfigVersion`, `findingWorkspaceUnknown`, `findingLegacyNotPermitted`, `findingEvaluationException`, `semanticGlobalCapabilityCeilingDenial`, `semanticWorkspaceCapabilityCeilingDenial`, `semanticGrantRecordTypeDenial` (findings-v2.ts). Additional assertions: `src/index.ts` contains no Phase-3B name at the source level; the package exports map remains exactly `{'.', './pi-adapter'}` with no wildcard, no `./src` deep-import, no `pointofuse`/`api` subpath. The package-root surface is unchanged.
 
-### m-1 — Deferred Phase-3C Rule IDs
+### m-1 — Deferred Phase-3C Rule IDs (RESOLVED in Phase 3C1, Model B)
 
-New Phase-3B semantic rule IDs currently emitted, with their emitting factories:
+Phase 3B emitted five provisional rule IDs that were not registered in the committed 114-rule catalog. **Phase 3C1 resolved the debt under Model B** (replace provisional IDs with final catalog-compliant IDs): the committed catalog conventions (family-dash-NNN rule IDs such as `AUT-*`/`LFC-*`) prohibit the placeholder `000-*` form and the use of finding codes (`POU2-020/021/022`) as rule IDs. The final mapping, applied in `src/pointofuse/findings-v2.ts` and registered in `src/semantic/rules.ts`:
 
-| Rule ID | Emitting factory |
-|---|---|
-| `000-GLOBAL-CAPABILITY-CEILING` | `semanticGlobalCapabilityCeilingDenial` (POU2-020) |
-| `POU2-020` | `semanticGlobalCapabilityCeilingDenial` |
-| `000-WORKSPACE-CAPABILITY-CEILING` | `semanticWorkspaceCapabilityCeilingDenial` (POU2-021) |
-| `POU2-021` | `semanticWorkspaceCapabilityCeilingDenial` |
-| `POU2-022` | `semanticGrantRecordTypeDenial` |
+| Provisional rule ID | Final rule ID | Emitting factory | Notes |
+|---|---|---|---|
+| `000-GLOBAL-CAPABILITY-CEILING` | `AUT-000` | `semanticGlobalCapabilityCeilingDenial` | Final catalog rule "Configured capability ceiling denies" (registered; sorting anchor: `AUT-000` sorts before the numeric findings' `AUT-001`/`LFC-008` anchors under the committed comparator, preserving capability-before-numeric report order). |
+| `POU2-020` | — (removed from ruleIds) | `semanticGlobalCapabilityCeilingDenial` | POU2-020 remains the finding CODE; finding codes are not rule IDs. |
+| `000-WORKSPACE-CAPABILITY-CEILING` | `AUT-000` | `semanticWorkspaceCapabilityCeilingDenial` | Same registered rule; the finding remains distinct by message key and finding code POU2-021. |
+| `POU2-021` | — (removed from ruleIds) | `semanticWorkspaceCapabilityCeilingDenial` | POU2-021 remains the finding CODE. |
+| `POU2-022` | `LFC-012` | `semanticGrantRecordTypeDenial` | Final catalog rule "RuntimeGrant record type"; `LFC-008` retained alongside. POU2-022 remains the finding CODE. |
 
-**DEFERRED TO AUTHORIZED PHASE 3C.** These rule IDs are not registered in the committed 114-rule semantic catalog, and the catalog is NOT complete for Phase 3B. The committed catalog count remains **114** (no catalog change was made — the Phase-3B scope prohibits rule-catalog modification). Registration is deferred because Phase 3C owns semantic rule-catalog additions, conformance fixtures, semantic AUT-*/POU2-* rules, digest/semantic vectors, runner context, and generated-corpus expansion. Required Phase-3C action: register each rule ID in `src/semantic/rules.ts` with its phase/category/enforcement classification; add conformance fixtures and vectors covering the capability-ceiling and grant-record-type findings; expand the generated corpus (byte-reproducible); integrate the focused suites into the default test command. **WP-6 Phase 3 cannot close until registration, fixtures, vectors, and conformance coverage are complete.**
+Finding code, stage, category, message key, eligibility, report order, and authority semantics are unchanged — only the emitted `ruleIds` metadata changed. The semantic catalog count is now **116** (114 + `AUT-000` + `LFC-012`); the Phase-3B report's earlier "deferred" status is superseded by the Phase-3C1 registration, conformance fixtures, vectors, and corpus expansion (see `docs/reports/wp-6-phase-3c1-conformance-integration-implementation-report.md`). **WP-6 Phase 3 cannot close until registration, fixtures, vectors, conformance coverage, and the closure review are complete (Phase 3C2).**
 
 ### Updated Test Files and Counts (after correction)
 

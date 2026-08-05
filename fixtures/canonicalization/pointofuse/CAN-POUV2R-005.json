@@ -1,0 +1,125 @@
+{
+  "vector_id": "CAN-POUV2R-005",
+  "subject_type": "point-of-use-result",
+  "canonical_projections": [
+    {
+      "pointOfUseResultIdentityProtocolVersion": "1",
+      "routingVariant": "v2",
+      "staticInputCorrelationIdentity": "sha-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "normalizedReport": {
+        "eligible": false,
+        "requestedUse": {
+          "capability": "project-gateway.workspace-read",
+          "operationClass": "read",
+          "resourceClass": "configured-artifact-area",
+          "scope": "exact:resource-1",
+          "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+        },
+        "capability": "project-gateway.workspace-read",
+        "scope": "exact:resource-1",
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+        "subjectCorrelations": {
+          "workspace": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+        },
+        "categories": [
+          "CONSUMER-SUPPORT-FAILURE",
+          "POINT-OF-USE-FAILURE"
+        ],
+        "ruleIds": [
+          "AUT-002",
+          "AUT-003"
+        ],
+        "findings": [
+          {
+            "phase": "point-of-use-eligibility",
+            "category": "POINT-OF-USE-FAILURE",
+            "messageKey": "pou.deny",
+            "ruleIds": [
+              "AUT-002"
+            ],
+            "subjectIdentity": "capability:project-gateway.workspace-read@pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "location": "/rules"
+          },
+          {
+            "phase": "point-of-use-eligibility",
+            "category": "POINT-OF-USE-FAILURE",
+            "messageKey": "pou.capability-unsupported",
+            "ruleIds": [
+              "AUT-003"
+            ],
+            "subjectIdentity": "capability:project-gateway.workspace-read@pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "location": "/rules"
+          }
+        ]
+      }
+    },
+    {
+      "pointOfUseResultIdentityProtocolVersion": "1",
+      "routingVariant": "v2",
+      "staticInputCorrelationIdentity": "sha-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "normalizedReport": {
+        "eligible": false,
+        "requestedUse": {
+          "capability": "project-gateway.workspace-read",
+          "operationClass": "read",
+          "resourceClass": "configured-artifact-area",
+          "scope": "exact:resource-1",
+          "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+        },
+        "capability": "project-gateway.workspace-read",
+        "scope": "exact:resource-1",
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+        "subjectCorrelations": {
+          "workspace": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+        },
+        "categories": [
+          "CONSUMER-SUPPORT-FAILURE",
+          "POINT-OF-USE-FAILURE"
+        ],
+        "ruleIds": [
+          "AUT-002",
+          "AUT-003"
+        ],
+        "findings": [
+          {
+            "phase": "point-of-use-eligibility",
+            "category": "POINT-OF-USE-FAILURE",
+            "messageKey": "pou.capability-unsupported",
+            "ruleIds": [
+              "AUT-003"
+            ],
+            "subjectIdentity": "capability:project-gateway.workspace-read@pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "location": "/rules"
+          },
+          {
+            "phase": "point-of-use-eligibility",
+            "category": "POINT-OF-USE-FAILURE",
+            "messageKey": "pou.deny",
+            "ruleIds": [
+              "AUT-002"
+            ],
+            "subjectIdentity": "capability:project-gateway.workspace-read@pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "location": "/rules"
+          }
+        ]
+      }
+    }
+  ],
+  "canonical_utf8": [
+    "{\"normalizedReport\":{\"capability\":\"project-gateway.workspace-read\",\"categories\":[\"CONSUMER-SUPPORT-FAILURE\",\"POINT-OF-USE-FAILURE\"],\"eligible\":false,\"findings\":[{\"category\":\"POINT-OF-USE-FAILURE\",\"location\":\"/rules\",\"messageKey\":\"pou.deny\",\"phase\":\"point-of-use-eligibility\",\"ruleIds\":[\"AUT-002\"],\"subjectIdentity\":\"capability:project-gateway.workspace-read@pgw:w:cf4339b1f56441936467dea1357dc30e\"},{\"category\":\"POINT-OF-USE-FAILURE\",\"location\":\"/rules\",\"messageKey\":\"pou.capability-unsupported\",\"phase\":\"point-of-use-eligibility\",\"ruleIds\":[\"AUT-003\"],\"subjectIdentity\":\"capability:project-gateway.workspace-read@pgw:w:cf4339b1f56441936467dea1357dc30e\"}],\"requestedUse\":{\"capability\":\"project-gateway.workspace-read\",\"operationClass\":\"read\",\"resourceClass\":\"configured-artifact-area\",\"scope\":\"exact:resource-1\",\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"ruleIds\":[\"AUT-002\",\"AUT-003\"],\"scope\":\"exact:resource-1\",\"subjectCorrelations\":{\"workspace\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"pointOfUseResultIdentityProtocolVersion\":\"1\",\"routingVariant\":\"v2\",\"staticInputCorrelationIdentity\":\"sha-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+    "{\"normalizedReport\":{\"capability\":\"project-gateway.workspace-read\",\"categories\":[\"CONSUMER-SUPPORT-FAILURE\",\"POINT-OF-USE-FAILURE\"],\"eligible\":false,\"findings\":[{\"category\":\"POINT-OF-USE-FAILURE\",\"location\":\"/rules\",\"messageKey\":\"pou.capability-unsupported\",\"phase\":\"point-of-use-eligibility\",\"ruleIds\":[\"AUT-003\"],\"subjectIdentity\":\"capability:project-gateway.workspace-read@pgw:w:cf4339b1f56441936467dea1357dc30e\"},{\"category\":\"POINT-OF-USE-FAILURE\",\"location\":\"/rules\",\"messageKey\":\"pou.deny\",\"phase\":\"point-of-use-eligibility\",\"ruleIds\":[\"AUT-002\"],\"subjectIdentity\":\"capability:project-gateway.workspace-read@pgw:w:cf4339b1f56441936467dea1357dc30e\"}],\"requestedUse\":{\"capability\":\"project-gateway.workspace-read\",\"operationClass\":\"read\",\"resourceClass\":\"configured-artifact-area\",\"scope\":\"exact:resource-1\",\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"ruleIds\":[\"AUT-002\",\"AUT-003\"],\"scope\":\"exact:resource-1\",\"subjectCorrelations\":{\"workspace\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"pointOfUseResultIdentityProtocolVersion\":\"1\",\"routingVariant\":\"v2\",\"staticInputCorrelationIdentity\":\"sha-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+  ],
+  "digest_domain": "PGAP-POINT-OF-USE-RESULT-v2\u0000",
+  "expected_sha256": [
+    "741f653f8cb52ec94ce74abac9f9b4f229ec1a2256151283f50ede643abafe67",
+    "839f47f11379ccbdef442caec5e8ec09e7bb1a59ebe7017cc9d948a3c4e048d8"
+  ],
+  "expected_serialized_digest": [
+    "sha-256:741f653f8cb52ec94ce74abac9f9b4f229ec1a2256151283f50ede643abafe67",
+    "sha-256:839f47f11379ccbdef442caec5e8ec09e7bb1a59ebe7017cc9d948a3c4e048d8"
+  ],
+  "rule_ids": [],
+  "coverage": [
+    "result-finding-sequence-difference"
+  ]
+}

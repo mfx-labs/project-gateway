@@ -259,6 +259,7 @@ def('TSK-005', 'Prospective deliverables', 'semantic-self-validation', 'AGGREGAT
     : [], ['TaskSpec']);
 
 // --- AuthorityPolicy ----------------------------------------------------------
+def('AUT-000', 'Configured capability ceiling denies', 'point-of-use-eligibility', 'AGGREGATE-RESPONSIBILITY-FAILURE', 'Trusted configuration/use', 'graph');
 def('AUT-001', 'Narrowing only', 'point-of-use-eligibility', 'AGGREGATE-RESPONSIBILITY-FAILURE', 'AuthorityPolicy/use', 'graph');
 def('AUT-002', 'Deny retained', 'point-of-use-eligibility', 'POINT-OF-USE-FAILURE', 'AuthorityPolicy/use', 'graph');
 def('AUT-003', 'Unknown operation denied', 'registry-compatibility', 'CONSUMER-SUPPORT-FAILURE', 'AuthorityPolicy/use', 'graph');
@@ -335,6 +336,7 @@ def('LFC-011', 'Content cannot establish lifecycle', 'semantic-self-validation',
   (ctx) => textMatches(ctx, hasLifecycleClaim, true)
     ? [emit('semantic-self-validation', 'AGGREGATE-RESPONSIBILITY-FAILURE', 'LFC-011', 'semantic.content-lifecycle', 'artifact content cannot establish lifecycle state', ctx, '/annotations')]
     : [], ALL_KINDS);
+def('LFC-012', 'RuntimeGrant record type', 'point-of-use-eligibility', 'POINT-OF-USE-FAILURE', 'RuntimeGrant', 'graph');
 
 // --- activation/occurrence/retry ------------------------------------------------
 def('EXE-001', 'One activation decision', 'trusted-lifecycle-verification', 'ACTIVATION-FAILURE', 'Activation', 'graph');

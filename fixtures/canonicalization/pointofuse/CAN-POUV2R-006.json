@@ -1,0 +1,91 @@
+{
+  "vector_id": "CAN-POUV2R-006",
+  "subject_type": "point-of-use-result",
+  "canonical_projections": [
+    {
+      "pointOfUseResultIdentityProtocolVersion": "1",
+      "routingVariant": "v2",
+      "staticInputCorrelationIdentity": "sha-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "normalizedReport": {
+        "eligible": true,
+        "requestedUse": {
+          "capability": "project-gateway.workspace-read",
+          "operationClass": "read",
+          "resourceClass": "configured-artifact-area",
+          "scope": "exact:resource-1",
+          "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+        },
+        "capability": "project-gateway.workspace-read",
+        "scope": "exact:resource-1",
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+        "subjectCorrelations": {
+          "workspace": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+        },
+        "categories": [
+          "POINT-OF-USE-FAILURE"
+        ],
+        "ruleIds": [
+          "AUT-002"
+        ],
+        "findings": []
+      }
+    },
+    {
+      "pointOfUseResultIdentityProtocolVersion": "1",
+      "routingVariant": "v2",
+      "staticInputCorrelationIdentity": "sha-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "normalizedReport": {
+        "eligible": false,
+        "requestedUse": {
+          "capability": "project-gateway.workspace-read",
+          "operationClass": "read",
+          "resourceClass": "configured-artifact-area",
+          "scope": "exact:resource-1",
+          "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+        },
+        "capability": "project-gateway.workspace-read",
+        "scope": "exact:resource-1",
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+        "subjectCorrelations": {
+          "workspace": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+        },
+        "categories": [
+          "POINT-OF-USE-FAILURE"
+        ],
+        "ruleIds": [
+          "EXE-007",
+          "LFC-007"
+        ],
+        "findings": [
+          {
+            "phase": "point-of-use-eligibility",
+            "category": "POINT-OF-USE-FAILURE",
+            "messageKey": "pou.grant-revoked",
+            "ruleIds": [
+              "LFC-007"
+            ],
+            "subjectIdentity": "capability:project-gateway.workspace-read@pgw:w:cf4339b1f56441936467dea1357dc30e",
+            "location": "/rules"
+          }
+        ]
+      }
+    }
+  ],
+  "canonical_utf8": [
+    "{\"normalizedReport\":{\"capability\":\"project-gateway.workspace-read\",\"categories\":[\"POINT-OF-USE-FAILURE\"],\"eligible\":true,\"findings\":[],\"requestedUse\":{\"capability\":\"project-gateway.workspace-read\",\"operationClass\":\"read\",\"resourceClass\":\"configured-artifact-area\",\"scope\":\"exact:resource-1\",\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"ruleIds\":[\"AUT-002\"],\"scope\":\"exact:resource-1\",\"subjectCorrelations\":{\"workspace\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"pointOfUseResultIdentityProtocolVersion\":\"1\",\"routingVariant\":\"v2\",\"staticInputCorrelationIdentity\":\"sha-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"}",
+    "{\"normalizedReport\":{\"capability\":\"project-gateway.workspace-read\",\"categories\":[\"POINT-OF-USE-FAILURE\"],\"eligible\":false,\"findings\":[{\"category\":\"POINT-OF-USE-FAILURE\",\"location\":\"/rules\",\"messageKey\":\"pou.grant-revoked\",\"phase\":\"point-of-use-eligibility\",\"ruleIds\":[\"LFC-007\"],\"subjectIdentity\":\"capability:project-gateway.workspace-read@pgw:w:cf4339b1f56441936467dea1357dc30e\"}],\"requestedUse\":{\"capability\":\"project-gateway.workspace-read\",\"operationClass\":\"read\",\"resourceClass\":\"configured-artifact-area\",\"scope\":\"exact:resource-1\",\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"ruleIds\":[\"EXE-007\",\"LFC-007\"],\"scope\":\"exact:resource-1\",\"subjectCorrelations\":{\"workspace\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"pointOfUseResultIdentityProtocolVersion\":\"1\",\"routingVariant\":\"v2\",\"staticInputCorrelationIdentity\":\"sha-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"}"
+  ],
+  "digest_domain": "PGAP-POINT-OF-USE-RESULT-v2\u0000",
+  "expected_sha256": [
+    "9c89921db38a13c3373942d4b9fe49851c648b7ccd0803a4c0733164a422002c",
+    "7dea178aa27f901dcd449356fa0cea96a5ff29152b4b092ff0be4ce971f30b7f"
+  ],
+  "expected_serialized_digest": [
+    "sha-256:9c89921db38a13c3373942d4b9fe49851c648b7ccd0803a4c0733164a422002c",
+    "sha-256:7dea178aa27f901dcd449356fa0cea96a5ff29152b4b092ff0be4ce971f30b7f"
+  ],
+  "rule_ids": [],
+  "coverage": [
+    "result-live-revocation-change"
+  ]
+}

@@ -1,0 +1,193 @@
+{
+  "vector_id": "CAN-POUV2-009",
+  "subject_type": "point-of-use-input",
+  "canonical_projections": [
+    {
+      "projectionProtocolVersion": "1",
+      "outerRouterVersion": "2",
+      "innerPointOfUseInputsVersion": "2",
+      "configurationVersion": "2",
+      "configurationIdentity": "sha-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "capabilityVocabularyVersion": "v1",
+      "inputWorkspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+      "requestedUseWorkspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+      "requestedUse": {
+        "capability": "project-gateway.workspace-read",
+        "operationClass": "read",
+        "resourceClass": "configured-artifact-area",
+        "scope": "exact:resource-1",
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+      },
+      "currentTime": "2026-08-04T06:10:00.000Z",
+      "configuredGlobalCapabilityCeiling": {
+        "state": "absent"
+      },
+      "configuredWorkspaceCapabilityCeiling": {
+        "state": "absent"
+      },
+      "configuredGlobalNumericCeiling": {
+        "state": "absent"
+      },
+      "configuredWorkspaceNumericCeiling": {
+        "state": "absent"
+      },
+      "consumerSupport": {
+        "consumerId": "test-consumer",
+        "supportedProtocolFeatures": [
+          "project-gateway.conformance-fixture"
+        ],
+        "supportedConsumerCapabilities": [
+          "project-gateway.workspace-read"
+        ],
+        "supportedExtensionNamespaces": [
+          "project-gateway.conformance-tag"
+        ]
+      },
+      "bundle": {
+        "state": "present",
+        "capturedModel": {
+          "instance_id": "b-1"
+        }
+      },
+      "policy": {
+        "state": "present",
+        "capturedModel": {
+          "instance_id": "p-1"
+        }
+      },
+      "grant": {
+        "state": "present",
+        "capturedModel": {
+          "record_id": "g-1",
+          "narrowed_constraints": [
+            {
+              "type": "scope",
+              "value": "exact:resource-1"
+            },
+            {
+              "type": "max-actions",
+              "value": 10
+            }
+          ]
+        }
+      },
+      "registry": {
+        "registryProtocolId": "project-gateway.registry",
+        "registrySnapshotFormatVersion": "1.0",
+        "registrySnapshotId": "reg-1",
+        "registrySnapshotDigest": "sha-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "lifecycleRecords": [
+        {
+          "recordId": "rec-1",
+          "model": {
+            "record_id": "rec-1"
+          }
+        }
+      ]
+    },
+    {
+      "projectionProtocolVersion": "1",
+      "outerRouterVersion": "2",
+      "innerPointOfUseInputsVersion": "2",
+      "configurationVersion": "2",
+      "configurationIdentity": "sha-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "capabilityVocabularyVersion": "v1",
+      "inputWorkspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+      "requestedUseWorkspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+      "requestedUse": {
+        "capability": "project-gateway.workspace-read",
+        "operationClass": "read",
+        "resourceClass": "configured-artifact-area",
+        "scope": "exact:resource-1",
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+      },
+      "currentTime": "2026-08-04T06:10:00.000Z",
+      "configuredGlobalCapabilityCeiling": {
+        "state": "absent"
+      },
+      "configuredWorkspaceCapabilityCeiling": {
+        "state": "absent"
+      },
+      "configuredGlobalNumericCeiling": {
+        "state": "absent"
+      },
+      "configuredWorkspaceNumericCeiling": {
+        "state": "absent"
+      },
+      "consumerSupport": {
+        "consumerId": "test-consumer",
+        "supportedProtocolFeatures": [
+          "project-gateway.conformance-fixture"
+        ],
+        "supportedConsumerCapabilities": [
+          "project-gateway.workspace-read"
+        ],
+        "supportedExtensionNamespaces": [
+          "project-gateway.conformance-tag"
+        ]
+      },
+      "bundle": {
+        "state": "present",
+        "capturedModel": {
+          "instance_id": "b-1"
+        }
+      },
+      "policy": {
+        "state": "present",
+        "capturedModel": {
+          "instance_id": "p-1"
+        }
+      },
+      "grant": {
+        "state": "present",
+        "capturedModel": {
+          "record_id": "g-1",
+          "narrowed_constraints": [
+            {
+              "type": "max-actions",
+              "value": 10
+            },
+            {
+              "type": "scope",
+              "value": "exact:resource-1"
+            }
+          ]
+        }
+      },
+      "registry": {
+        "registryProtocolId": "project-gateway.registry",
+        "registrySnapshotFormatVersion": "1.0",
+        "registrySnapshotId": "reg-1",
+        "registrySnapshotDigest": "sha-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "lifecycleRecords": [
+        {
+          "recordId": "rec-1",
+          "model": {
+            "record_id": "rec-1"
+          }
+        }
+      ]
+    }
+  ],
+  "canonical_utf8": [
+    "{\"bundle\":{\"capturedModel\":{\"instance_id\":\"b-1\"},\"state\":\"present\"},\"capabilityVocabularyVersion\":\"v1\",\"configurationIdentity\":\"sha-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"configurationVersion\":\"2\",\"configuredGlobalCapabilityCeiling\":{\"state\":\"absent\"},\"configuredGlobalNumericCeiling\":{\"state\":\"absent\"},\"configuredWorkspaceCapabilityCeiling\":{\"state\":\"absent\"},\"configuredWorkspaceNumericCeiling\":{\"state\":\"absent\"},\"consumerSupport\":{\"consumerId\":\"test-consumer\",\"supportedConsumerCapabilities\":[\"project-gateway.workspace-read\"],\"supportedExtensionNamespaces\":[\"project-gateway.conformance-tag\"],\"supportedProtocolFeatures\":[\"project-gateway.conformance-fixture\"]},\"currentTime\":\"2026-08-04T06:10:00.000Z\",\"grant\":{\"capturedModel\":{\"narrowed_constraints\":[{\"type\":\"scope\",\"value\":\"exact:resource-1\"},{\"type\":\"max-actions\",\"value\":10}],\"record_id\":\"g-1\"},\"state\":\"present\"},\"innerPointOfUseInputsVersion\":\"2\",\"inputWorkspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\",\"lifecycleRecords\":[{\"model\":{\"record_id\":\"rec-1\"},\"recordId\":\"rec-1\"}],\"outerRouterVersion\":\"2\",\"policy\":{\"capturedModel\":{\"instance_id\":\"p-1\"},\"state\":\"present\"},\"projectionProtocolVersion\":\"1\",\"registry\":{\"registryProtocolId\":\"project-gateway.registry\",\"registrySnapshotDigest\":\"sha-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"registrySnapshotFormatVersion\":\"1.0\",\"registrySnapshotId\":\"reg-1\"},\"requestedUse\":{\"capability\":\"project-gateway.workspace-read\",\"operationClass\":\"read\",\"resourceClass\":\"configured-artifact-area\",\"scope\":\"exact:resource-1\",\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"requestedUseWorkspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"}",
+    "{\"bundle\":{\"capturedModel\":{\"instance_id\":\"b-1\"},\"state\":\"present\"},\"capabilityVocabularyVersion\":\"v1\",\"configurationIdentity\":\"sha-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"configurationVersion\":\"2\",\"configuredGlobalCapabilityCeiling\":{\"state\":\"absent\"},\"configuredGlobalNumericCeiling\":{\"state\":\"absent\"},\"configuredWorkspaceCapabilityCeiling\":{\"state\":\"absent\"},\"configuredWorkspaceNumericCeiling\":{\"state\":\"absent\"},\"consumerSupport\":{\"consumerId\":\"test-consumer\",\"supportedConsumerCapabilities\":[\"project-gateway.workspace-read\"],\"supportedExtensionNamespaces\":[\"project-gateway.conformance-tag\"],\"supportedProtocolFeatures\":[\"project-gateway.conformance-fixture\"]},\"currentTime\":\"2026-08-04T06:10:00.000Z\",\"grant\":{\"capturedModel\":{\"narrowed_constraints\":[{\"type\":\"max-actions\",\"value\":10},{\"type\":\"scope\",\"value\":\"exact:resource-1\"}],\"record_id\":\"g-1\"},\"state\":\"present\"},\"innerPointOfUseInputsVersion\":\"2\",\"inputWorkspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\",\"lifecycleRecords\":[{\"model\":{\"record_id\":\"rec-1\"},\"recordId\":\"rec-1\"}],\"outerRouterVersion\":\"2\",\"policy\":{\"capturedModel\":{\"instance_id\":\"p-1\"},\"state\":\"present\"},\"projectionProtocolVersion\":\"1\",\"registry\":{\"registryProtocolId\":\"project-gateway.registry\",\"registrySnapshotDigest\":\"sha-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"registrySnapshotFormatVersion\":\"1.0\",\"registrySnapshotId\":\"reg-1\"},\"requestedUse\":{\"capability\":\"project-gateway.workspace-read\",\"operationClass\":\"read\",\"resourceClass\":\"configured-artifact-area\",\"scope\":\"exact:resource-1\",\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"requestedUseWorkspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"}"
+  ],
+  "digest_domain": "PGAP-POINT-OF-USE-INPUT-v2\u0000",
+  "expected_sha256": [
+    "6c6345875d4e2179aefe71d38ae6f722ae22f56da552ebc125bb448e135fb1e2",
+    "bfe6741c5195108ff61f96d2a7a5fbaaf0f43f152cd981424f75106c2e98b194"
+  ],
+  "expected_serialized_digest": [
+    "sha-256:6c6345875d4e2179aefe71d38ae6f722ae22f56da552ebc125bb448e135fb1e2",
+    "sha-256:bfe6741c5195108ff61f96d2a7a5fbaaf0f43f152cd981424f75106c2e98b194"
+  ],
+  "rule_ids": [
+    "AUT-000"
+  ],
+  "coverage": [
+    "constraint-array-order-model-byte"
+  ]
+}

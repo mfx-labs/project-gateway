@@ -1,0 +1,45 @@
+{
+  "vector_id": "CAN-POUV2R-004A",
+  "subject_type": "point-of-use-result",
+  "canonical_projections": [
+    {
+      "pointOfUseResultIdentityProtocolVersion": "1",
+      "routingVariant": "v2",
+      "staticInputCorrelationIdentity": "sha-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "normalizedReport": {
+        "eligible": true,
+        "requestedUse": {
+          "capability": "project-gateway.workspace-read",
+          "operationClass": "read",
+          "resourceClass": "configured-artifact-area",
+          "scope": "exact:resource-1",
+          "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e"
+        },
+        "capability": "project-gateway.workspace-read",
+        "scope": "exact:resource-1",
+        "workspaceId": "pgw:w:cf4339b1f56441936467dea1357dc30e",
+        "subjectCorrelations": {
+          "a": "1",
+          "b": "2"
+        },
+        "categories": [
+          "POINT-OF-USE-FAILURE"
+        ],
+        "ruleIds": [
+          "AUT-002"
+        ],
+        "findings": []
+      }
+    }
+  ],
+  "canonical_utf8": "{\"normalizedReport\":{\"capability\":\"project-gateway.workspace-read\",\"categories\":[\"POINT-OF-USE-FAILURE\"],\"eligible\":true,\"findings\":[],\"requestedUse\":{\"capability\":\"project-gateway.workspace-read\",\"operationClass\":\"read\",\"resourceClass\":\"configured-artifact-area\",\"scope\":\"exact:resource-1\",\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"ruleIds\":[\"AUT-002\"],\"scope\":\"exact:resource-1\",\"subjectCorrelations\":{\"a\":\"1\",\"b\":\"2\"},\"workspaceId\":\"pgw:w:cf4339b1f56441936467dea1357dc30e\"},\"pointOfUseResultIdentityProtocolVersion\":\"1\",\"routingVariant\":\"v2\",\"staticInputCorrelationIdentity\":\"sha-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+  "digest_domain": "PGAP-POINT-OF-USE-RESULT-v2\u0000",
+  "expected_sha256": "58f0cda5d10ae1c7a072788236f7bf311ba69e5d2445cf7776146bbb86d9ce7f",
+  "expected_serialized_digest": [
+    "sha-256:58f0cda5d10ae1c7a072788236f7bf311ba69e5d2445cf7776146bbb86d9ce7f"
+  ],
+  "rule_ids": [],
+  "coverage": [
+    "result-correlation-key-order-a"
+  ]
+}

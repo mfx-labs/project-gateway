@@ -33,15 +33,19 @@
 export {
   validateTrustedWorkspaceConfiguration,
   lookupValidatedWorkspace,
+  lookupValidatedArtifactLocation,
 } from './validate.js';
+export type { ValidatedArtifactLocationLookup } from './validate.js';
 export { snapshotTrustedWorkspaceConfigurationInput, TrustedSnapshotError } from './snapshot.js';
 export type { TrustedSnapshotErrorKind } from './snapshot.js';
 export { computeTrustedConfigurationIdentity, trustedConfigurationProjection } from './identity.js';
 export type { TrustedConfigurationIdentity } from './identity.js';
 export {
   TRUSTED_CONFIGURATION_VERSION,
+  TRUSTED_CONFIGURATION_VERSION_2,
 } from './types.js';
 export type {
+  TrustedConfigurationVersion,
   TrustedWorkspaceConfigurationInput,
   TrustedConfigurationProvenanceInput,
   TrustedWorkspaceInput,
@@ -114,3 +118,18 @@ export type {
   ExistingPathContainmentFindingCode,
   ExistingPathContainmentReport,
 } from './containment-findings.js';
+// ---------------------------------------------------------------------------
+// WP-6 Phase 2B-P: trusted artifact-location configuration (version-2
+// workspace operand). The artifact-location resolver evidence interface and
+// the fixed four-draft scope constant are internal entry points; the
+// configured directory grants no write authority and performs no
+// destination containment or persistence.
+// ---------------------------------------------------------------------------
+export { ARTIFACT_DRAFT_LOCATION_KINDS } from './artifact-location.js';
+export type {
+  ArtifactLocationResolver,
+  ArtifactLocationResolution,
+  ArtifactLocationResolutionSuccess,
+  ArtifactLocationResolutionFailure,
+  ArtifactLocationResolutionFailureCode,
+} from './artifact-location.js';

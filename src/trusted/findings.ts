@@ -42,7 +42,20 @@ export type TrustedConfigurationFindingCode =
   | 'TCF-026' // missing root resolver
   | 'TCF-027' // missing trusted host lane
   | 'TCF-028' // unsupported trusted host lane
-  | 'TCF-029'; // forbidden whole-filesystem workspace root
+  | 'TCF-029' // forbidden whole-filesystem workspace root
+  | 'TCF-030' // malformed version-2 artifact-location field
+  | 'TCF-031' // invalid absolute configured artifact path
+  | 'TCF-032' // missing ArtifactLocationResolver when a location is present
+  | 'TCF-033' // artifact-location resolver failure (thrown or reported error)
+  | 'TCF-034' // malformed artifact-location resolver result
+  | 'TCF-035' // configured artifact location not found
+  | 'TCF-036' // configured artifact location is not a directory (unsupported entry kind)
+  | 'TCF-037' // artifact-location symlink loop
+  | 'TCF-038' // final canonical artifact location is the whole-filesystem root
+  | 'TCF-039' // final canonical artifact location is outside the workspace root
+  | 'TCF-040' // final canonical artifact location equals the workspace root
+  | 'TCF-041' // ambiguous artifact-location resolution
+  | 'TCF-042'; // artifact location ambiguous across registered workspaces
 
 export interface TrustedConfigurationFinding {
   /** Stable fail-closed finding code (see catalog above). */

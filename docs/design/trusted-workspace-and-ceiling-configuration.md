@@ -344,6 +344,53 @@ Narrow security corrections adopted with the Phase-2A security correction:
 - Candidate paths remain untrusted; Phase 2A remains existing-path-only;
   Phase 2B remains blocked.
 
+## Trusted Artifact-Location Configuration (Phase 2B-P)
+
+Narrow normative addition adopted with the Phase-2B-P implementation
+(authoritative with the explicit version-2 configuration protocol):
+
+- Trusted configuration version `2` extends each workspace record with one
+  optional `artifactLocation` field containing a configured absolute
+  trusted-local path (plain string). Version 1 remains accepted,
+  byte-identical in identity, and unchanged in behavior; version-1 input
+  carrying the version-2 field fails strict unknown-field rejection; no
+  implicit migration and no workspace-root fallback exist.
+- Artifact-location cardinality is zero or one per version-2 workspace;
+  omission means no artifact-draft persistence location and grants no write
+  authority; omission and presence produce different canonical projections.
+- The configured artifact location is resolved exactly once through an
+  injected trusted ArtifactLocationResolver (the configuration core
+  performs no filesystem I/O). Successful validation proves the final
+  canonical target exists at validation time and is a directory; regular
+  files, sockets, FIFOs, devices, unknown entry types, broken links, loops,
+  inaccessible, ambiguous, and generic resolution errors fail closed.
+- The final canonical artifact directory must be a strict component-boundary
+  descendant of the canonical workspace root (equality prohibited), must
+  not be `/`, and must not resolve outside the workspace or under another
+  registered workspace. Only the final canonical directory is stored and
+  identity-bound.
+- The default ChatGPT-facing draft-location scope is exactly four
+  prospective draft aggregates: TaskSpec, AuthorityPolicy, ContextManifest,
+  CompletionContract. ExecutionBundle (derived/reference composition
+  aggregate) is not automatically a ChatGPT-authored draft and receives no
+  storage or persistence contract here; ExecutionResult (retrospective
+  execution output) is not a draft, is not TrustedReceipt, and receives no
+  storage or persistence contract here.
+- The configured directory is not write authority: it defines only the
+  region in which validated structured drafts of the four prospective draft
+  aggregates may later be considered for persistence (Phase 2B/WP-11);
+  destination containment, nearest-existing-ancestor handling, persistence,
+  and point-of-use race handling remain outside this prerequisite.
+- ArtifactLocationResolver evidence boundary (correction F-2BP-FR-01): the
+  resolver implementation is trusted, but its return value is STRICT tagged
+  protocol evidence that is descriptor-captured exactly once — protocol-
+  field getters and accessors are never invoked, Proxy `get` traps never
+  fire for protocol values, prototype-inherited fields are not accepted,
+  unknown fields and malformed tags fail closed, and malformed evidence
+  fails closed with a typed configuration finding; no exception escapes
+  for ordinary malformed evidence. The Phase-1 RootPathResolver contract is
+  unaffected.
+
 ## Supported WP-6 Host Lane (F-EL3)
 
 Initial WP-6 supported lane: **Linux; x86_64; POSIX-style filesystem

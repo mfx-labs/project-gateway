@@ -55,6 +55,9 @@ function workspaceProjection(workspace: ValidatedTrustedWorkspaceConfiguration['
   const out: Record<string, unknown> = { workspaceId: workspace.workspaceId, canonicalRoot: workspace.canonicalRoot };
   if (workspace.capabilities !== undefined) out['capabilities'] = [...workspace.capabilities];
   if (workspace.actionCeiling !== undefined) out['actionCeiling'] = workspace.actionCeiling;
+  // Version-2 artifact location: presence-aware; version-1 records never
+  // carry it, so the version-1 projection remains byte-identical.
+  if (workspace.artifactLocation !== undefined) out['artifactLocation'] = workspace.artifactLocation;
   return out;
 }
 

@@ -15,10 +15,13 @@ test('B: accepted version validates', () => {
 });
 
 test('B: unknown version fails closed with TCF-001', () => {
-  const report = validateTrustedWorkspaceConfiguration(validConfig({ configurationVersion: '2' }), validOptions());
-  assert.equal(report.ok, false);
-  assert.equal(report.findings[0]!.code, 'TCF-001');
-  assert.equal(report.findings[0]!.messageKey, 'trusted-config.version-unsupported');
+  // Version '2' is now the accepted Phase-2B-P version; '3' is unknown.
+  for (const version of ['3', '0', 'v1']) {
+    const report = validateTrustedWorkspaceConfiguration(validConfig({ configurationVersion: version }), validOptions());
+    assert.equal(report.ok, false, version);
+    assert.equal(report.findings[0]!.code, 'TCF-001', version);
+    assert.equal(report.findings[0]!.messageKey, 'trusted-config.version-unsupported', version);
+  }
 });
 
 test('B: missing version fails closed (never inferred from fields)', () => {

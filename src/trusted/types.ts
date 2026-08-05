@@ -24,10 +24,17 @@ import type {
   ValidatedTrustedExtensionSet,
 } from './extension-set.js';
 import type { RootPathResolver } from './roots.js';
+import type { ArtifactLocationResolver } from './artifact-location.js';
 import type { TRUSTED_HOST_LANE } from './host-lane.js';
 
-/** Accepted trusted-configuration version (canonical, single representation). */
+/** Accepted trusted-configuration version 1 (canonical, single representation). */
 export const TRUSTED_CONFIGURATION_VERSION = '1';
+
+/** Accepted trusted-configuration version 2: version-1 shape plus optional per-workspace artifact location (Phase 2B-P). */
+export const TRUSTED_CONFIGURATION_VERSION_2 = '2';
+
+/** Accepted trusted-configuration version identifiers (exact dispatch; no inference). */
+export type TrustedConfigurationVersion = typeof TRUSTED_CONFIGURATION_VERSION | typeof TRUSTED_CONFIGURATION_VERSION_2;
 
 /** Input model: caller-supplied runtime object, captured via descriptor snapshot. */
 export interface TrustedWorkspaceConfigurationInput {
@@ -53,6 +60,15 @@ export interface TrustedWorkspaceInput {
   readonly capabilities?: readonly string[];
   /** Workspace numeric action ceiling. */
   readonly actionCeiling?: number;
+  /**
+   * Version-2 only: configured absolute trusted-local artifact location
+   * (plain string). Validated through the injected ArtifactLocationResolver;
+   * the final canonical artifact directory must be a strict descendant of
+   * the canonical workspace root, must exist at validation time, and must be
+   * a directory. Presence grants no write authority. Version-1 input
+   * carrying this field fails strict unknown-field rejection.
+   */
+  readonly artifactLocation?: string;
 }
 
 export interface TrustedExtensionSetInput {
@@ -84,6 +100,15 @@ export interface TrustedConfigurationValidationOptions {
    * duplicate/overlap evaluation always uses resolved canonical roots.
    */
   readonly resolveRootPath: RootPathResolver;
+  /**
+   * Version-2 injected trusted artifact-location resolver (Phase 2B-P).
+   * Required at runtime when at least one version-2 workspace declares an
+   * artifact location; not required for version-1 configurations or for
+   * version-2 configurations in which every workspace omits artifactLocation.
+   * Never invoked by request or repository content; the core performs no
+   * node:fs calls. When supplied but unused it is not protocol-significant.
+   */
+  readonly resolveArtifactLocation?: ArtifactLocationResolver;
 }
 
 /** Validated workspace record: deeply immutable, contains no authority semantics. */
@@ -102,6 +127,13 @@ export interface ValidatedWorkspaceRecord {
   readonly capabilities?: readonly string[];
   /** Present only when declared. */
   readonly actionCeiling?: number;
+  /**
+   * Version-2 only, present only when configured: final canonical resolved
+   * artifact directory (trusted-process internal; strict descendant of
+   * canonicalRoot; proven to exist and be a directory at validation time).
+   * Presence grants no write authority.
+   */
+  readonly artifactLocation?: string;
 }
 
 /**
@@ -117,7 +149,7 @@ export interface ValidatedGlobalCapabilityCeiling {
 
 /** Validated trusted-local control-plane configuration object. */
 export interface ValidatedTrustedWorkspaceConfiguration {
-  readonly configurationVersion: typeof TRUSTED_CONFIGURATION_VERSION;
+  readonly configurationVersion: TrustedConfigurationVersion;
   readonly capabilityVocabularyVersion: string;
   /** Accepted trusted host-lane operand (identity-bound). */
   readonly hostLane: typeof TRUSTED_HOST_LANE;

@@ -87,12 +87,19 @@ import {
 import { computeTrustedConfigurationIdentity, TRUSTED_CONFIG_DIGEST_RE } from './identity.js';
 import {
   TRUSTED_CONFIGURATION_VERSION,
+  TRUSTED_CONFIGURATION_VERSION_2,
   type TrustedConfigurationValidationOptions,
   type ValidatedGlobalCapabilityCeiling,
   type ValidatedTrustedWorkspaceConfiguration,
   type ValidatedWorkspaceRecord,
 } from './types.js';
 import { markValidatedTrustedWorkspaceConfiguration, isGenuineValidatedTrustedWorkspaceConfiguration } from './configuration-brand.js';
+import {
+  ARTIFACT_DRAFT_LOCATION_KINDS,
+  canonicalizeConfiguredArtifactPath,
+  resolveConfiguredArtifactLocation,
+  type ArtifactLocationValidationFailureCode,
+} from './artifact-location.js';
 
 function finding(
   code: TrustedConfigurationFinding['code'],
@@ -105,6 +112,33 @@ function finding(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Map an artifact-location validation failure to its deterministic TCF finding (static root-safe message). */
+function artifactLocationFailureFinding(
+  code: ArtifactLocationValidationFailureCode,
+  location: string,
+): TrustedConfigurationFinding {
+  switch (code) {
+    case 'not-found':
+      return finding('TCF-035', 'artifact-location.not-found', 'configured artifact location does not resolve to an existing entry', location);
+    case 'symlink-loop':
+      return finding('TCF-037', 'artifact-location.symlink-loop', 'configured artifact location resolution detected a symlink loop', location);
+    case 'not-directory':
+      return finding('TCF-036', 'artifact-location.not-directory', 'configured artifact location does not resolve to a directory', location);
+    case 'resolver-result-malformed':
+      return finding('TCF-034', 'artifact-location.resolver-result-malformed', 'artifact-location resolver result is malformed or outside the supported lane', location);
+    case 'root-whole-filesystem':
+      return finding('TCF-038', 'artifact-location.root-whole-filesystem', 'artifact location is the whole-filesystem root and is prohibited', location);
+    case 'equals-workspace-root':
+      return finding('TCF-040', 'artifact-location.equals-workspace-root', 'artifact location equals the workspace root and is prohibited', location);
+    case 'outside-workspace':
+      return finding('TCF-039', 'artifact-location.outside-workspace', 'artifact location is not a strict descendant of the workspace root', location);
+    case 'ambiguous':
+      return finding('TCF-041', 'artifact-location.ambiguous', 'artifact-location resolution is ambiguous', location);
+    default: // 'resolver-failed'
+      return finding('TCF-033', 'artifact-location.resolver-failed', 'artifact-location resolver failed', location);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +161,11 @@ const WORKSPACE_RECORD_KEYS: ReadonlySet<string> = new Set([
   'recordVersion',
   'capabilities',
   'actionCeiling',
+]);
+/** Version-2 workspace-record shape: version-1 fields plus one optional artifactLocation. */
+const WORKSPACE_RECORD_KEYS_V2: ReadonlySet<string> = new Set([
+  ...WORKSPACE_RECORD_KEYS,
+  'artifactLocation',
 ]);
 const GLOBAL_CEILING_KEYS: ReadonlySet<string> = new Set(['capabilities']);
 const EXTENSION_SET_KEYS: ReadonlySet<string> = new Set([
@@ -430,15 +469,20 @@ export function validateTrustedWorkspaceConfiguration(
   }
 
   // 1. Configuration version: explicit only, never inferred from fields.
+  //    Exact dispatch: version 1 uses the exact version-1 shape; version 2
+  //    uses the version-2 shape (version-1 fields plus one optional
+  //    per-workspace artifact location). No permissive union-superset
+  //    parsing; no implicit migration; unknown versions fail closed.
   const configurationVersion = snapshot['configurationVersion'];
   if (typeof configurationVersion !== 'string' || configurationVersion.length === 0) {
     findings.push(finding('TCF-001', 'trusted-config.version-missing', 'configuration version is missing', '/configurationVersion'));
     return failTrustedReport(findings);
   }
-  if (configurationVersion !== TRUSTED_CONFIGURATION_VERSION) {
+  if (configurationVersion !== TRUSTED_CONFIGURATION_VERSION && configurationVersion !== TRUSTED_CONFIGURATION_VERSION_2) {
     findings.push(finding('TCF-001', 'trusted-config.version-unsupported', 'unsupported configuration version', '/configurationVersion'));
     return failTrustedReport(findings);
   }
+  const isVersion2 = configurationVersion === TRUSTED_CONFIGURATION_VERSION_2;
 
   // 2. Capability vocabulary version: explicit, no inference, no auto-upgrade.
   const vocabularyVersion = snapshot['capabilityVocabularyVersion'];
@@ -505,6 +549,26 @@ export function validateTrustedWorkspaceConfiguration(
   const seenIds = new Set<string>();
   const rootList: string[] = [];
 
+  // Version-2 ArtifactLocationResolver requirement (Phase 2B-P): required
+  // when at least one version-2 workspace declares an artifact location;
+  // not required for version-1 configurations or for version-2
+  // configurations in which every workspace omits artifactLocation. When
+  // supplied but unused it is not protocol-significant.
+  const workspaceKeys = isVersion2 ? WORKSPACE_RECORD_KEYS_V2 : WORKSPACE_RECORD_KEYS;
+  let artifactLocationDeclared = false;
+  if (isVersion2) {
+    for (const entry of workspacesRaw) {
+      if (isRecord(entry) && typeof entry['artifactLocation'] === 'string') {
+        artifactLocationDeclared = true;
+        break;
+      }
+    }
+    if (artifactLocationDeclared && typeof options.resolveArtifactLocation !== 'function') {
+      findings.push(finding('TCF-032', 'artifact-location.resolver-missing', 'artifact-location resolver is required when a version-2 workspace declares an artifact location', '/options/resolveArtifactLocation'));
+      return failTrustedReport(findings);
+    }
+  }
+
   for (let i = 0; i < workspacesRaw.length; i++) {
     const location = `/workspaces/${i}`;
     const entry = workspacesRaw[i];
@@ -513,8 +577,8 @@ export function validateTrustedWorkspaceConfiguration(
       return failTrustedReport(findings);
     }
 
-    // Strict workspace-record shape first.
-    if (!checkUnknownFields(entry, WORKSPACE_RECORD_KEYS, location, findings)) {
+    // Strict version-specific workspace-record shape first.
+    if (!checkUnknownFields(entry, workspaceKeys, location, findings)) {
       return failTrustedReport(findings);
     }
 
@@ -533,7 +597,7 @@ export function validateTrustedWorkspaceConfiguration(
     // Mixed-version rule: any declared record version must equal the top-level version.
     const recordVersion = entry['recordVersion'];
     if (recordVersion !== undefined) {
-      if (typeof recordVersion !== 'string' || recordVersion !== TRUSTED_CONFIGURATION_VERSION) {
+      if (typeof recordVersion !== 'string' || recordVersion !== configurationVersion) {
         findings.push(finding('TCF-019', 'trusted-config.version-mixed', 'workspace record version does not match the configuration version', `${location}/recordVersion`));
         return failTrustedReport(findings);
       }
@@ -594,13 +658,65 @@ export function validateTrustedWorkspaceConfiguration(
       return failTrustedReport(findings);
     }
 
+    // Version-2 artifact location (Phase 2B-P): optional, zero-or-one per
+    // workspace. The configured absolute trusted-local path is lexically
+    // canonicalized, resolved exactly once through the injected
+    // ArtifactLocationResolver, and the final canonical artifact directory
+    // must be a strict component-boundary descendant of the workspace root
+    // (equality and `/` prohibited). Only the final canonical directory is
+    // stored and identity-bound; presence grants no write authority.
+    let artifactLocationCanonical: string | undefined;
+    const artifactLocationRaw = entry['artifactLocation'];
+    if (artifactLocationRaw !== undefined) {
+      if (!isVersion2) {
+        // Unreachable: version-1 strict shape rejects the field first.
+        findings.push(finding('TCF-030', 'artifact-location.malformed', 'artifact location is not supported in version-1 configurations', `${location}/artifactLocation`));
+        return failTrustedReport(findings);
+      }
+      if (typeof artifactLocationRaw !== 'string') {
+        findings.push(finding('TCF-030', 'artifact-location.malformed', 'artifact location must be a configured absolute path string', `${location}/artifactLocation`));
+        return failTrustedReport(findings);
+      }
+      const configured = canonicalizeConfiguredArtifactPath(artifactLocationRaw);
+      if (!configured.ok) {
+        findings.push(finding('TCF-031', 'artifact-location.path-invalid', 'configured artifact location is not a valid absolute trusted-local path', `${location}/artifactLocation`));
+        return failTrustedReport(findings);
+      }
+      const outcome = resolveConfiguredArtifactLocation(
+        configured.canonical,
+        canonical.canonical,
+        options.resolveArtifactLocation!,
+      );
+      if (!outcome.ok) {
+        findings.push(artifactLocationFailureFinding(outcome.code, `${location}/artifactLocation`));
+        return failTrustedReport(findings);
+      }
+      artifactLocationCanonical = outcome.canonical;
+    }
+
     const record: ValidatedWorkspaceRecord = Object.freeze({
       workspaceId,
       canonicalRoot: canonical.canonical,
       ...(cap.set !== undefined ? { capabilities: cap.set } : {}),
       ...(actionCeiling !== undefined ? { actionCeiling } : {}),
+      ...(artifactLocationCanonical !== undefined ? { artifactLocation: artifactLocationCanonical } : {}),
     });
     records.push(record);
+  }
+
+  // Defense-in-depth (Phase-2A pattern): a final canonical artifact
+  // directory must not fall under any OTHER registered workspace root.
+  // Phase-1 disjoint-root invariance makes this unreachable for validated
+  // configurations; the check keeps the guarantee explicit.
+  for (const record of records) {
+    if (record.artifactLocation === undefined) continue;
+    for (const other of records) {
+      if (other.workspaceId === record.workspaceId) continue;
+      if (isRootAncestorOrEqual(other.canonicalRoot, record.artifactLocation)) {
+        findings.push(finding('TCF-042', 'artifact-location.workspace-ambiguity', 'artifact location is ambiguous across registered workspaces', `/workspaces`));
+        return failTrustedReport(findings);
+      }
+    }
   }
 
   // Canonical workspace ordering (registration order is non-semantic for
@@ -610,7 +726,7 @@ export function validateTrustedWorkspaceConfiguration(
   );
 
   const configuration: ValidatedTrustedWorkspaceConfiguration = Object.freeze({
-    configurationVersion: TRUSTED_CONFIGURATION_VERSION,
+    configurationVersion,
     capabilityVocabularyVersion: CAPABILITY_VOCABULARY_VERSION,
     hostLane: TRUSTED_HOST_LANE,
     provenance,
@@ -674,4 +790,43 @@ export function lookupValidatedWorkspace(
     if (record.workspaceId === workspaceId) return record;
   }
   return undefined;
+}
+
+/**
+ * Immutable internal artifact-location lookup metadata (Phase 2B-P).
+ * Correlates the configuration identity, workspace ID, the canonical
+ * artifact directory, and the fixed four-draft scope. Grants no write
+ * authority; contains no destination-containment decision, persistence
+ * handle, RuntimeGrant, approval, or ExecutionBundle/ExecutionResult
+ * storage information.
+ */
+export interface ValidatedArtifactLocationLookup {
+  readonly configurationIdentity: string;
+  readonly workspaceId: string;
+  /** Trusted-process-internal final canonical artifact directory. */
+  readonly canonicalArtifactRoot: string;
+  /** Fixed four-prospective-draft scope (versioned protocol constant). */
+  readonly draftKinds: readonly string[];
+}
+
+/**
+ * Deterministic artifact-location lookup on a validated configuration.
+ * Returns undefined for: non-genuine configurations; version-1
+ * configurations; unknown workspace IDs; and version-2 workspaces that
+ * omit artifactLocation. Never exposed through the package root.
+ */
+export function lookupValidatedArtifactLocation(
+  configuration: ValidatedTrustedWorkspaceConfiguration,
+  workspaceId: string,
+): ValidatedArtifactLocationLookup | undefined {
+  if (!isGenuineValidatedTrustedWorkspaceConfiguration(configuration)) return undefined;
+  if (configuration.configurationVersion !== TRUSTED_CONFIGURATION_VERSION_2) return undefined;
+  const record = lookupValidatedWorkspace(configuration, workspaceId);
+  if (record === undefined || record.artifactLocation === undefined) return undefined;
+  return Object.freeze({
+    configurationIdentity: configuration.identity,
+    workspaceId,
+    canonicalArtifactRoot: record.artifactLocation,
+    draftKinds: ARTIFACT_DRAFT_LOCATION_KINDS,
+  });
 }

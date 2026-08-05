@@ -120,9 +120,12 @@ test('H: internal barrel exposes only cohesive Phase-2A entry points', () => {
   ]) {
     assert.equal(name in trustedBarrel, true, `internal barrel must retain ${name}`);
   }
-  // Low-level helpers are module-local.
+  // Low-level helpers are module-local. parseWorkspaceRelativePath is the
+  // single contract-authorized barrel re-export (WP-7 CON-001 / CMP-006):
+  // WP-7 consumes the committed parser through the barrel, never by deep
+  // import. All other low-level helpers remain module-local.
   for (const name of ['parseWorkspaceRelativePath', 'combineWorkspaceRootAndComponents', 'fromRootPathResolver', 'sortContainmentFindings', 'containmentFinding', 'failContainmentReport', 'CONTAINMENT_DECISION_DIGEST_DOMAIN']) {
-    assert.equal(name in trustedBarrel, false, `internal barrel must not export ${name}`);
+    assert.equal(name in trustedBarrel, name === 'parseWorkspaceRelativePath', `internal barrel export status must match for ${name}`);
   }
 });
 

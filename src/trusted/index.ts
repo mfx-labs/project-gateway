@@ -90,6 +90,7 @@ export type {
 // external projections.
 // ---------------------------------------------------------------------------
 export { evaluateExistingPathContainment } from './containment-validate.js';
+export { parseWorkspaceRelativePath } from './containment-path.js';
 export {
   computeContainmentDecisionIdentity,
   containmentDecisionProjection,

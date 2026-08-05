@@ -32,7 +32,11 @@
     "test:conformance": "node --test \"dist-test/tests/integration/*.test.js\"",
     "test:security": "node --test \"dist-test/tests/security/*.test.js\"",
     "test:pi-adapter": "node --test \"dist-test/tests/pi-adapter/unit/*.test.js\" \"dist-test/tests/pi-adapter/integration/*.test.js\" \"dist-test/tests/pi-adapter/security/*.test.js\" \"dist-test/tests/pi-adapter/compatibility/*.test.js\"",
-    "test:pointofuse-v2": "node --test \"dist-test/tests/pointofuse-v2/*.test.js\""
+    "test:pointofuse-v2": "node --test \"dist-test/tests/pointofuse-v2/*.test.js\"",
+    "test:wp7-reader": "node --test \"dist-test/tests/wp7/reader/*.test.js\"",
+    "test:wp7-git": "node --test \"dist-test/tests/wp7/git/*.test.js\"",
+    "test:wp7-fff": "node --test \"dist-test/tests/wp7/fff/*.test.js\"",
+    "test:wp7-security": "node --test \"dist-test/tests/wp7/security/*.test.js\""
   },
   "license": "UNLICENSED",
   "dependencies": {

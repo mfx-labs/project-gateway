@@ -46,7 +46,11 @@ test('security: production modules perform no hidden filesystem/network/process 
   // The Pi adapter is a separate module boundary with its own security suite
   // (tests/pi-adapter/security), which verifies that its only I/O is the
   // environment-gated host harness; it is excluded here by boundary.
-  const prodFiles = walk(DIST).filter((p) => !p.includes('conformance') && !p.includes('/adapters/'));
+  // WP-7 internal modules (reader/git/fff) are likewise a separate module
+  // boundary with their own security suite (tests/wp7/security) verifying
+  // that the only process I/O is the constrained trusted Git executable and
+  // descriptor-bound reads; they are excluded here by boundary.
+  const prodFiles = walk(DIST).filter((p) => !p.includes('conformance') && !p.includes('/adapters/') && !p.includes('/reader/') && !p.includes('/git/') && !p.includes('/fff/'));
   for (const p of prodFiles) {
     if (p.includes('runner.js') || p.includes('corpus-bundle')) continue;
     const src = readFileSync(p, 'utf8');

@@ -251,7 +251,23 @@ All 16 areas independently reassessed. Every area: **COMPLETE**.
 3. Senior-review correction — addressed all 40 findings.
 4. Focused rereview — CORRECTIONS REQUIRED (6 findings: R-01…R-06).
 5. This final focused correction — addresses all 6 findings.
-6. Final rereview — still pending.
+6. Final rereview — accepted.
+7. WP-7-A baseline commit — `64623c78b167c9aa50ab9c2e5f146e7cc9741c34`.
+8. Human-authorized GIT-018 erratum — applied after the WP-7-A baseline commit (see below).
+
+---
+
+## GIT-018 Erratum Note (human-authorized)
+
+A narrow, human-authorized erratum was applied to the normative contract after the WP-7-A baseline commit:
+
+- **Original accepted contract text** (GIT-018) specified `diff --no-color --no-ext-diff --textconv=false`.
+- **Git 2.45.4 rejects** the `--textconv=false` syntax (`error: option 'textconv' takes no value`); the supported lane accepts `--no-textconv`.
+- **The human-authorized erratum** replaces `--textconv=false` with `--no-textconv` in GIT-018.
+- **Security intent is unchanged**: textconv (external text-conversion commands) remains disabled; `--no-textconv` is the exact semantic equivalent accepted by the supported Git version and is part of the fixed allowlisted diff argv alongside `--no-ext-diff`, `-c diff.external=`, and `-c core.attributesfile=/dev/null`.
+- **Requirement ID remains GIT-018**; requirement numbering, error codes, limits, and the requirement inventory (237 normative requirements) are unchanged.
+- **No source implementation was changed by the erratum**: the WP-7-B implementation already used `--no-textconv`; the erratum aligns the normative contract with the implementation.
+- The earlier review records (including this report's historical finding rows) accurately recorded the pre-erratum contract text and remain valid as superseded history.
 
 ---
 

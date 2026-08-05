@@ -92,6 +92,7 @@ import {
   type ValidatedTrustedWorkspaceConfiguration,
   type ValidatedWorkspaceRecord,
 } from './types.js';
+import { markValidatedTrustedWorkspaceConfiguration, isGenuineValidatedTrustedWorkspaceConfiguration } from './configuration-brand.js';
 
 function finding(
   code: TrustedConfigurationFinding['code'],
@@ -554,6 +555,19 @@ export function validateTrustedWorkspaceConfiguration(
       return failTrustedReport(findings);
     }
 
+    // Global product ceiling (correction F-2A-02): the canonical POSIX
+    // filesystem root `/` represents the complete host filesystem and is
+    // prohibited for a trusted workspace declaration even when supplied by a
+    // trusted local administrator (trusted local configuration is constrained
+    // by the global product ceiling). The check runs after final canonical
+    // resolution, so literal `/`, repeated separators, lexical forms
+    // normalizing to `/`, resolver output `/`, and symlinked/aliased
+    // configured roots resolving to `/` all fail closed.
+    if (canonical.canonical === '/') {
+      findings.push(finding('TCF-029', 'trusted-config.root-whole-filesystem', 'workspace root is the whole-filesystem root and is prohibited', `${location}/root`));
+      return failTrustedReport(findings);
+    }
+
     // Root uniqueness over resolved canonical roots: duplicates,
     // parent-child, containment, and overlap fail the entire load.
     for (const existing of rootList) {
@@ -626,6 +640,15 @@ export function validateTrustedWorkspaceConfiguration(
     identity: identity.digest,
   });
 
+  // Runtime genuineness (correction F-2A-01): brand the exact final
+  // validated object after complete construction and deep freezing. The
+  // intermediate `configuration` object (identity: '') is never branded;
+  // a failed or partial validation never reaches this point; a marking
+  // failure cannot yield partial success (WeakSet.add cannot fail for an
+  // object). The brand is module-private, non-serialized, and absent from
+  // canonical bytes, identity, projections, findings, and declarations.
+  markValidatedTrustedWorkspaceConfiguration(validated);
+
   return Object.freeze({
     ok: true,
     findings: Object.freeze(sortTrustedFindings(findings)),
@@ -636,11 +659,17 @@ export function validateTrustedWorkspaceConfiguration(
 /**
  * Deterministic workspace lookup on a validated configuration.
  * Returns the validated record for the exact workspace identity, or undefined.
+ *
+ * Defense-in-depth (correction F-2A-01): a configuration that is not the
+ * runtime-genuine object produced by a successful Phase-1 validation in
+ * this process returns undefined — a structural lookalike, clone, or forged
+ * object can never retrieve a trusted canonical root through this helper.
  */
 export function lookupValidatedWorkspace(
   configuration: ValidatedTrustedWorkspaceConfiguration,
   workspaceId: string,
 ): ValidatedWorkspaceRecord | undefined {
+  if (!isGenuineValidatedTrustedWorkspaceConfiguration(configuration)) return undefined;
   for (const record of configuration.workspaces) {
     if (record.workspaceId === workspaceId) return record;
   }

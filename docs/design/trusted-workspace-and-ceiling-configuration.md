@@ -295,6 +295,55 @@ contract exists; (7) any ambiguity fails closed.
 WP-6 defines and returns these containment decisions. WP-11 owns the later
 controlled mutation and point-of-use race handling.
 
+## Candidate-Path Trust Classification and Phase Slicing (Phase 2A)
+
+Narrow clarification adopted with the Phase-2A implementation:
+
+- Candidate paths are **untrusted workspace-relative request data** (WP-0
+  remote-producer zone): ChatGPT/MCP requests, prompts, generated content,
+  repository content, artifact content, and project-visible documents are
+  never trusted configuration and never select or infer a local root.
+- The primary Phase-2A request protocol accepts workspace-relative paths
+  only; absolute request paths (POSIX, Windows drive, UNC) are rejected.
+  The candidate path is combined with the trusted canonical workspace root
+  only inside the trusted process using a reviewed POSIX component
+  algorithm.
+- Phase 2A covers existing-path containment decisions only (read/inspect
+  purposes, prospective, point-of-use revalidation required). It performs
+  no filesystem operation and grants no authority.
+- File deletion and generic mutations (generic write, create, overwrite,
+  rename, move, source-code editing) are outside the MVP per WP-0 and
+  ADR-001/004 and are not containment operation classes.
+- Phase 2B (artifact-draft destination containment) remains blocked until a
+  trusted artifact location is authoritative and identity-bound (an
+  additive, separately reviewed configuration prerequisite); a workspace
+  root is not an artifact location.
+
+## Runtime Genuineness and Whole-Filesystem Root Prohibition (F-2A-01/F-2A-02)
+
+Narrow security corrections adopted with the Phase-2A security correction:
+
+- Only a runtime-genuine configuration produced by a successful Phase-1
+  validation may provide workspace roots to later trusted consumers
+  (containment evaluation, workspace lookup). Genuineness is represented by
+  a module-private runtime brand (accepted WeakSet pattern); structural
+  lookalikes, clones, spreads, JSON round-trips, Proxy wrappers, and
+  correct-digest imitations are not validated configurations and are
+  rejected fail closed.
+- The canonical workspace root `/` is prohibited. A configured workspace
+  must represent a bounded local project; `/` represents the complete host
+  filesystem and violates explicit-project scoping and the prohibition on
+  generic filesystem access. The prohibition derives from the global
+  project/generic-filesystem product ceiling and applies even when `/` is
+  supplied by a trusted local administrator (trusted local configuration is
+  constrained by the product ceiling). Rejection occurs after final
+  canonical resolution: literal `/`, repeated separators, lexical forms
+  normalizing to `/`, resolver output `/`, and symlinked or aliased
+  configured roots resolving to `/` all fail the entire trusted
+  configuration load.
+- Candidate paths remain untrusted; Phase 2A remains existing-path-only;
+  Phase 2B remains blocked.
+
 ## Supported WP-6 Host Lane (F-EL3)
 
 Initial WP-6 supported lane: **Linux; x86_64; POSIX-style filesystem

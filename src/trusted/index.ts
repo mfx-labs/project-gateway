@@ -77,3 +77,40 @@ export type {
   TrustedConfigurationFindingCode,
   TrustedConfigurationReport,
 } from './findings.js';
+// ---------------------------------------------------------------------------
+// WP-6 Phase 2A: existing-path containment decision core (internal entry
+// points). The containment request is untrusted workspace-relative request
+// data; the validated configuration and the injected resolver are trusted
+// operands. Raw resolved absolute paths remain trusted-process internal and
+// are never exposed through the package root, findings, public identity, or
+// external projections.
+// ---------------------------------------------------------------------------
+export { evaluateExistingPathContainment } from './containment-validate.js';
+export {
+  computeContainmentDecisionIdentity,
+  containmentDecisionProjection,
+} from './containment-identity.js';
+export type { ContainmentDecisionIdentity, ContainmentDecisionIdentityInput } from './containment-identity.js';
+export {
+  CONTAINMENT_PROTOCOL_VERSION,
+  CONTAINMENT_OPERATION_CLASS,
+  CONTAINMENT_PURPOSES,
+} from './containment-types.js';
+export type {
+  ContainmentPurpose,
+  ExistingPathContainmentRequestInput,
+  ExistingPathContainmentOptions,
+  ExistingPathContainmentDecision,
+} from './containment-types.js';
+export type {
+  ExistingPathResolver,
+  ExistingPathResolution,
+  ExistingPathResolutionSuccess,
+  ExistingPathResolutionFailure,
+  ExistingPathResolutionFailureCode,
+} from './containment-resolver.js';
+export type {
+  ExistingPathContainmentFinding,
+  ExistingPathContainmentFindingCode,
+  ExistingPathContainmentReport,
+} from './containment-findings.js';

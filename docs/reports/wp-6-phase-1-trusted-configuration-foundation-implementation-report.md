@@ -637,3 +637,49 @@ Phase 2 authorization is a separate decision.
 Recommend a new independent final rereview of the F-RR-1-corrected
 Phase-1 implementation and this report before any acceptance or commit
 decision.
+
+## Post-Closure Security Correction (F-2A-01 / F-2A-02)
+
+Appended after the Phase-1 commit and closure; this section does not
+rewrite the original Phase-1 history.
+
+- Phase 1 was previously committed and closed at
+  `a93eacad45e439b88a77b695023c3352cb520df3`.
+- The later Phase-2A focused review exposed two missing prerequisite
+  protections, both corrected as additive fail-closed security
+  corrections under the WP-6 Phase 2A security-correction authorization:
+  1. **F-2A-01 — runtime configuration genuineness:** the Phase-1
+     validator now brands the exact final validated configuration object
+     with a module-private WeakSet brand (`src/trusted/configuration-brand.ts`,
+     accepted WP-5A pattern). Only runtime-genuine validated objects may
+     provide workspace roots to later trusted consumers; structural
+     lookalikes, clones, spreads, JSON round-trips, Proxy wrappers, and
+     correct-digest imitations are rejected (containment TCP-021;
+     `lookupValidatedWorkspace` returns undefined for non-genuine
+     objects). The brand is non-serialized, absent from identity,
+     projections, canonical bytes, findings, and declarations, and is not
+     exported from the barrel or package root.
+  2. **F-2A-02 — forbidden whole-filesystem workspace root:** the Phase-1
+     root-registration validation now rejects any canonical resolved
+     workspace root equal to `/` (TCF-029) after final canonical
+     resolution — literal `/`, repeated separators, lexical forms
+     normalizing to `/`, resolver output `/`, and symlinked or aliased
+     configured roots resolving to `/` fail the entire trusted
+     configuration load. The prohibition derives from the global
+     project/generic-filesystem product ceiling and applies even when `/`
+     is supplied by a trusted local administrator.
+- `TRUSTED_CONFIGURATION_VERSION` remains `'1'`: the corrections remove a
+  globally prohibited value from the accepted input domain and add a
+  runtime property outside the canonical shape; no field or
+  interpretation of any accepted value changes, and no previously valid
+  successful identity changes.
+- Finding models: TCF-001…TCF-029 (28 → 29); the containment model adds
+  TCP-021 (Phase 2A).
+- No Phase-2B or Phase-3 behavior was added; no dependency was added;
+  excluded paths remain untouched.
+- The authoritative implementation after correction includes the
+  branding and root-prohibition behavior described above; the Phase-2A
+  implementation report records the full corrected verification evidence
+  (821/821 tests, conformance 531/531, schemas 51/51, semantic rules
+  114/114, digest vectors 19/19, corpus byte-reproducible, no-I/O scan
+  passing).

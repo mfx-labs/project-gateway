@@ -41,7 +41,8 @@ export type TrustedConfigurationFindingCode =
   | 'TCF-025' // unknown field (strict-shape violation)
   | 'TCF-026' // missing root resolver
   | 'TCF-027' // missing trusted host lane
-  | 'TCF-028'; // unsupported trusted host lane
+  | 'TCF-028' // unsupported trusted host lane
+  | 'TCF-029'; // forbidden whole-filesystem workspace root
 
 export interface TrustedConfigurationFinding {
   /** Stable fail-closed finding code (see catalog above). */

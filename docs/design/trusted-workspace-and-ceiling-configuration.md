@@ -391,6 +391,106 @@ Narrow normative addition adopted with the Phase-2B-P implementation
   for ordinary malformed evidence. The Phase-1 RootPathResolver contract is
   unaffected.
 
+## Prospective Artifact-Draft Destination Containment (Phase 2B)
+
+Narrow normative addition adopted with the Phase-2B implementation
+(authoritative with the explicit Phase-2B destination-containment protocol):
+
+- A prospective artifact-draft destination request is UNTRUSTED
+  artifact-root-relative request data (one or more non-empty components,
+  single `/` separators, Unicode accepted without normalization). Empty,
+  `.`, `..`, absolute (leading slash), Windows drive, UNC, backslash,
+  repeated or trailing separators, NUL, prohibited control characters, and
+  empty components are rejected; destination equality with the artifact root
+  is structurally impossible. A fixed documented maximum request size bound
+  applies before any resolver invocation. Unlike the Phase-2A workspace-
+  relative grammar, `..` is rejected outright (no bounded pops) per F-EL2.
+- Alias model (Model B, alias-aware resolution): the authoritative committed
+  contract — F-EL2 (non-existent destination paths: the nearest existing
+  ancestor resolves within the trusted root; only validated remaining
+  components are lexically appended; any existing intermediate symlink that
+  resolves outside the root is rejected) and the Path Resolution and
+  Containment Rules (a path is contained if and only if its fully resolved
+  absolute form is within the resolved root) — requires intermediate
+  ancestor symlinks to be resolved, not rejected. Phase 2B therefore
+  separates the LEXICAL request prefix (whose entry exists and resolves to a
+  directory) from the CANONICAL existing directory ancestor (the resolved
+  form of that prefix). The lexical-to-canonical correlation is trusted host
+  evidence supplied by the injected ProspectiveDestinationResolver; the pure
+  core verifies structural correlation (exact prefix, exact tail,
+  prefix-plus-tail equals the request, root canonical correlation, ancestor
+  canonical containment, exact entry-kind literals, target-state/tail
+  consistency) and never claims core-side proof of alias resolution. The
+  core never requires `canonical ancestor + lexical tail == lexical absolute
+  destination` (invalid across aliases). A zero-length lexical prefix means
+  the ancestor is the artifact root itself.
+- The resolver is a dedicated trusted injected boundary (distinct from
+  RootPathResolver, ExistingPathResolver, and ArtifactLocationResolver). It
+  receives exactly one internally constructed request (protocol version,
+  configuration-bound canonical artifact root, derived absolute prospective
+  destination) and returns one strict success or failure record. Success
+  evidence is one exact eight-own-key observed-state record: current
+  canonical artifact root, artifact-root entry kind `directory`, lexical
+  existing-directory prefix components, canonical existing directory
+  ancestor, existing-ancestor entry kind `directory`, destination tail
+  components, and target state (`missing`, `existing-file`,
+  `existing-directory`, `existing-symlink`, `dangling-symlink`,
+  `unsupported-kind`). Failure evidence is one exact three-own-key
+  subject-aware record (`artifact-root` | `existing-ancestor` |
+  `final-target` | `resolution` plus a closed code vocabulary with a
+  documented subject/code compatibility table). Evidence is descriptor-
+  captured exactly once under the F-2BP-FR-01 requirements (no getters, zero
+  Proxy `get`, accessors/inherited/symbols/non-enumerable/unsupported
+  prototypes/unknown fields rejected, traps and revoked Proxies converted to
+  typed findings, no escaping exception, exactly one invocation).
+- Artifact-root freshness: Phase 2B revalidates the configuration-bound
+  canonical artifact-root path (never the raw alias discarded by Phase-2B-P)
+  at evaluation time; the observed current canonical root must exactly equal
+  the configuration-bound root, the root entry kind must be `directory`, and
+  the canonical existing directory ancestor must equal the root or lie
+  strictly beneath it at a component boundary. A deleted, non-directory,
+  redirected, or differently resolving root fails closed. Replacement at the
+  same canonical path remains subject to immediate point-of-use
+  revalidation.
+- Existing-target policy: only a `missing` final target may produce a
+  prospective containment decision (create-only MVP). Every existing final
+  target — regular file, directory, symlink, dangling symlink, or
+  unsupported kind — is rejected with a deterministic finding; no overwrite
+  authority is created by detecting an existing state. An existing final
+  symlink is never treated as missing and never becomes the directory
+  ancestor.
+- The decision is prospective trusted-process containment data: it grants no
+  write, overwrite, persistence, approval, RuntimeGrant, or execution
+  authority and contains no timestamp or freshness duration. It binds the
+  destination-containment protocol version, operation class
+  (`artifact-draft-destination`), purpose
+  (`persist-validated-artifact-draft`), configuration identity, host lane,
+  workspace ID, artifact kind, canonical artifact-relative destination,
+  current canonical artifact root, lexical prefix, canonical ancestor,
+  destination tail, target state `missing`, and the literal
+  `pointOfUseRevalidationRequired: true` marker; identity uses the distinct
+  domain `PGAP-TRUSTED-DESTINATION-v1\0`. Point-of-use revalidation by
+  WP-11 immediately before any actual mutation remains mandatory; the
+  decision does not prove that a later write is safe.
+- Findings use the new TAD namespace (contiguous from TAD-001), deterministic
+  ordering, static root-safe path-safe messages, and the documented 18-stage
+  precedence (configuration genuineness, configuration version, workspace,
+  artifact-location presence, expected configuration identity, artifact
+  kind, request structure, destination grammar and size, resolver presence,
+  resolver invocation, evidence capture and shape, artifact-root state,
+  root canonical correlation, ancestor state, prefix/containment
+  correlation, tail/target-state cross-validation, existing-target policy,
+  decision identity). Descriptor-derived capture of the untrusted request is
+  a SAFETY BOUNDARY PRE-STEP, not a semantic stage: it executes after the
+  configuration genuineness and version gates and before any request-field
+  read; if capture fails, TAD-007 is returned before any request-dependent
+  semantic stage (workspace, artifact-location presence, expected identity,
+  artifact kind, destination grammar) can be evaluated, and stages 3–8 are
+  evaluated only against the detached captured snapshot, never the original
+  caller object. Failure yields no decision and no decision identity; the
+  resolver is invoked zero times before the resolver stage and exactly once
+  when reached.
+
 ## Supported WP-6 Host Lane (F-EL3)
 
 Initial WP-6 supported lane: **Linux; x86_64; POSIX-style filesystem

@@ -133,3 +133,44 @@ export type {
   ArtifactLocationResolutionFailure,
   ArtifactLocationResolutionFailureCode,
 } from './artifact-location.js';
+// ---------------------------------------------------------------------------
+// WP-6 Phase 2B: prospective artifact-draft destination containment (internal
+// entry points). The request is untrusted artifact-root-relative request
+// data; the runtime-genuine validated configuration and the injected
+// prospective-destination resolver are trusted operands. Decisions are
+// prospective trusted-process containment data granting no write authority;
+// raw canonical paths remain trusted-process internal (F-5) and are never
+// exposed through the package root, findings, public identity, or external
+// projections.
+// ---------------------------------------------------------------------------
+export { evaluateProspectiveArtifactDestination } from './destination-validate.js';
+export type { ProspectiveArtifactDestinationReport } from './destination-findings.js';
+export {
+  computeDestinationDecisionIdentity,
+  destinationDecisionProjection,
+  DESTINATION_DECISION_DIGEST_RE,
+} from './destination-identity.js';
+export type { DestinationDecisionIdentity, DestinationDecisionIdentityInput } from './destination-identity.js';
+export {
+  DESTINATION_CONTAINMENT_PROTOCOL_VERSION,
+  DESTINATION_CONTAINMENT_OPERATION_CLASS,
+  DESTINATION_CONTAINMENT_PURPOSE,
+} from './destination-types.js';
+export type {
+  ArtifactDraftKind,
+  ProspectiveArtifactDestinationRequest,
+  ProspectiveArtifactDestinationOptions,
+  ProspectiveArtifactDestinationDecision,
+  ProspectiveDestinationResolutionRequest,
+  ProspectiveDestinationResolver,
+  ProspectiveDestinationResolution,
+  ProspectiveDestinationResolutionSuccess,
+  ProspectiveDestinationResolutionFailure,
+  ProspectiveDestinationResolutionFailureSubject,
+  ProspectiveDestinationResolutionFailureCode,
+  ProspectiveDestinationTargetState,
+} from './destination-types.js';
+export type {
+  DestinationContainmentFinding,
+  DestinationContainmentFindingCode,
+} from './destination-findings.js';

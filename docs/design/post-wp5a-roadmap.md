@@ -7,9 +7,21 @@ ACCEPTED; open findings at approval: zero). ADR-023 through ADR-027 are
 Accepted. The planning package is authoritative and closed. WP-6 has been
 implemented and closed (`b07fea95d0a1ed20361dec441fc500766969536f`). WP-7
 (Controlled project reader, Git inspection, and internal discovery (FFF)) is
-the current work package: WP-7-A (foundation and contract consolidation) is
-human-authorized; WP-7-B implementation and WP-7-C integration/closure are
-**not** authorized and have not started.
+the current work package was WP-7; WP-7 is now **closed**. Historical
+chronology (preserved): WP-7-A (foundation and contract consolidation) was
+human-authorized, completed, and is **closed**; WP-7-B (runtime
+implementation) was human-authorized and completed at
+`7fa2b15c8bab8b373751affac08acc3e9225aba8` and is **closed** — the WP-7
+runtime implementation is complete. Current state: WP-7-C (integration,
+full verification, and closure preparation) was human-authorized; the senior
+closure review returned seven actionable findings (C-01…C-07), all
+addressed; the final focused closure rereview identified a final zero-test
+issue plus follow-on items (Z-01…Z-05), all addressed by the final
+correction; the **final closure rereview accepted** WP-7-C with **zero open
+findings**; WP-7-C is **closed** by the commit containing this update, and
+WP-7 is **closed** by the commit containing this update. WP-8 is **not
+authorized** and has not started. No release, publication, installation, or
+deployment action has occurred for WP-7.
 
 **Normative cross-references:** `project-gateway-scope-and-principles.md`
 (WP-0), ADR-002, ADR-003, ADR-006, ADR-020, ADR-022, ADR-023 (sequencing

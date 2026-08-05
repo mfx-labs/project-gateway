@@ -12,6 +12,8 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { createGitFixture, createWp7Fixture, type Wp7Fixture, WORKSPACE_ALPHA } from '../helpers.js';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { statSync } from 'node:fs';
 import { initializeGitHostLane, revalidateGitHostLane, validateHostDirectory } from '../../../src/git/host-lane.js';
 import { preflightGitRepository, captureRepositoryPreflightFingerprint, revalidateRepositoryPreflightFingerprint, isUnbornRepository } from '../../../src/git/preflight.js';
 import { GitInspectionService } from '../../../src/git/service.js';
@@ -468,18 +470,115 @@ describe('WP-7 Git: service operations', () => {
     if (!r.ok) assert.equal(r.failure.code, 'ERR-WS-UNKNOWN');
   });
 
-  it('timeout produces ERR-GIT-TIMEOUT for a hung operation', async () => {
-    // A valid but expensive operation is not guaranteed to time out at 5s in
-    // tests; instead verify the mapping function through a direct service
-    // call with an already-failing path is impractical. We verify the wrapper
-    // maps timeout by checking the error constructors instead.
-    const r = await service.log(
-      { operation: 'git-log', workspaceId: WORKSPACE_ALPHA, maxRecords: 5 },
-      {},
-    );
-    // The repo is tiny; this must succeed quickly. Timeout behavior is
-    // covered by the wrapper-level unit tests in the security suite.
-    assert.equal(r.ok, true);
+  it('timeout produces ERR-GIT-TIMEOUT for a hung launch (deterministic)', async () => {
+    // C-06: replace the previous non-test (a quick log that never exercised
+    // timeout) with a deterministic hung-launch at the constrained process
+    // boundary. A test-owned executable that sleeps is launched through the
+    // real GitInspectionService with a lane descriptor whose fingerprint
+    // matches that executable; the wrapper's pinned OPERATION_TIMEOUT_MS
+    // (5000) must kill it and map to ERR-GIT-TIMEOUT.
+    const fixture = createWp7Fixture();
+    const g = createGitFixture();
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'wp7-hang-'));
+    try {
+      const hangBin = path.join(scratch, 'git-hang');
+      fs.writeFileSync(hangBin, `#!${process.execPath}\nsetTimeout(() => {}, 120000);\n`);
+      fs.chmodSync(hangBin, 0o755);
+      const st = statSync(hangBin);
+      const fakeLane = {
+        absolutePath: hangBin,
+        version: '2.45.4',
+        initialFingerprint: {
+          dev: st.dev,
+          ino: st.ino,
+          mode: st.mode,
+          size: st.size,
+          mtimeMs: st.mtimeMs,
+          sha256: createHash('sha256').update(fs.readFileSync(hangBin)).digest('hex'),
+        },
+      };
+      const { validateTrustedWorkspaceConfiguration, TRUSTED_HOST_LANE } = await import('../../../src/trusted/index.js');
+      const report = validateTrustedWorkspaceConfiguration(
+        {
+          configurationVersion: '1',
+          capabilityVocabularyVersion: 'v1',
+          provenance: { sourceKind: 'trusted-local-control-plane' },
+          workspaces: [{ workspaceId: WORKSPACE_ALPHA, root: g.root }],
+        },
+        { hostLane: TRUSTED_HOST_LANE, resolveRootPath: (p: string) => p },
+      );
+      if (!report.ok) throw new Error('hang fixture config invalid');
+      const svc = new GitInspectionService({
+        configuration: report.configuration!,
+        gitLane: fakeLane,
+        envDirs: { HOME: fixture.home, TMPDIR: fixture.tmpdir },
+      });
+      const t0 = Date.now();
+      const r = await svc.status({ operation: 'git-status', workspaceId: WORKSPACE_ALPHA }, {});
+      const elapsed = Date.now() - t0;
+      assert.equal(r.ok, false);
+      if (!r.ok) {
+        assert.equal(r.failure.code, 'ERR-GIT-TIMEOUT');
+        assert.ok(!JSON.stringify(r.failure).includes('stderr'), 'no raw stderr in timeout failure');
+      }
+      assert.ok(elapsed >= 4000, `timeout must be enforced by the wrapper (elapsed ${elapsed}ms)`);
+      svc.dispose();
+    } finally {
+      g.cleanup();
+      fixture.cleanup();
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  it('cancellation kills a hung git launch and maps to ERR-OP-CANCELLED (deterministic)', async () => {
+    const fixture = createWp7Fixture();
+    const g = createGitFixture();
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'wp7-hang-'));
+    try {
+      const hangBin = path.join(scratch, 'git-hang');
+      fs.writeFileSync(hangBin, `#!${process.execPath}\nsetTimeout(() => {}, 120000);\n`);
+      fs.chmodSync(hangBin, 0o755);
+      const st = statSync(hangBin);
+      const fakeLane = {
+        absolutePath: hangBin,
+        version: '2.45.4',
+        initialFingerprint: {
+          dev: st.dev,
+          ino: st.ino,
+          mode: st.mode,
+          size: st.size,
+          mtimeMs: st.mtimeMs,
+          sha256: createHash('sha256').update(fs.readFileSync(hangBin)).digest('hex'),
+        },
+      };
+      const { validateTrustedWorkspaceConfiguration, TRUSTED_HOST_LANE } = await import('../../../src/trusted/index.js');
+      const report = validateTrustedWorkspaceConfiguration(
+        {
+          configurationVersion: '1',
+          capabilityVocabularyVersion: 'v1',
+          provenance: { sourceKind: 'trusted-local-control-plane' },
+          workspaces: [{ workspaceId: WORKSPACE_ALPHA, root: g.root }],
+        },
+        { hostLane: TRUSTED_HOST_LANE, resolveRootPath: (p: string) => p },
+      );
+      if (!report.ok) throw new Error('hang fixture config invalid');
+      const svc = new GitInspectionService({
+        configuration: report.configuration!,
+        gitLane: fakeLane,
+        envDirs: { HOME: fixture.home, TMPDIR: fixture.tmpdir },
+      });
+      const ctrl = new AbortController();
+      const pending = svc.status({ operation: 'git-status', workspaceId: WORKSPACE_ALPHA }, { signal: ctrl.signal });
+      setTimeout(() => ctrl.abort(), 100);
+      const r = await pending;
+      assert.equal(r.ok, false);
+      if (!r.ok) assert.equal(r.failure.code, 'ERR-OP-CANCELLED');
+      svc.dispose();
+    } finally {
+      g.cleanup();
+      fixture.cleanup();
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
   });
 });
 

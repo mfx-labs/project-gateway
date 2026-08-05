@@ -8,6 +8,8 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
+import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import {
   validateTrustedWorkspaceConfiguration,
@@ -18,6 +20,124 @@ import {
 } from '../../src/trusted/index.js';
 
 export const WORKSPACE_ALPHA = 'pgw:w:aaaaaaaaaaaaaaaa';
+
+/**
+ * WP-7-C — shared mutation-tripwire fingerprint model (test-only).
+ *
+ * Records, per tree, the exact path set (files, directories, symlinks),
+ * regular-file content SHA-256 / size / mode, directory modes, and symlink
+ * identity + link target (via lstat/readlink). Symlinks are recorded but
+ * NEVER followed; targets outside the fingerprint root are not walked.
+ * atime is excluded exactly as the contract accepts (RO-004/RO-005).
+ * Lock files (*.lock) are tracked separately and must be absent after.
+ */
+export interface FingerprintEntry {
+  readonly kind: 'file' | 'dir' | 'link' | 'other';
+  readonly sha256?: string;
+  readonly size?: number;
+  readonly mode: number;
+  readonly linkTarget?: string;
+}
+
+export type TreeFingerprint = {
+  readonly entries: Map<string, FingerprintEntry>;
+  readonly locks: string[];
+};
+
+/** Fingerprint a tree without following any symlink. Fail-closed (Z-05):
+ * any fs failure (enumeration, lstat, readlink, hashing, permissions) throws
+ * with a bounded RELATIVE-path diagnostic; nothing is silently omitted. */
+export function fingerprintTree(dir: string): TreeFingerprint {
+  const entries = new Map<string, FingerprintEntry>();
+  const locks: string[] = [];
+  const walk = (d: string, rel: string): void => {
+    let dirents: fs.Dirent[];
+    try {
+      dirents = fs.readdirSync(d, { withFileTypes: true });
+    } catch (err) {
+      throw new Error(
+        `fingerprint: cannot enumerate '${rel === '' ? '.' : rel}' (${(err as NodeJS.ErrnoException).code ?? 'error'})`,
+      );
+    }
+    for (const e of dirents) {
+      const p = path.join(d, e.name);
+      const relPath = rel === '' ? e.name : `${rel}/${e.name}`;
+      let st: fs.Stats;
+      try {
+        st = fs.lstatSync(p);
+      } catch (err) {
+        throw new Error(
+          `fingerprint: cannot stat '${relPath}' (${(err as NodeJS.ErrnoException).code ?? 'error'})`,
+        );
+      }
+      if (e.isDirectory() && st.isDirectory()) {
+        entries.set(`${relPath}/`, { kind: 'dir', mode: st.mode & 0o777 });
+        walk(p, relPath);
+      } else if (e.isFile() && st.isFile()) {
+        let data: Buffer;
+        try {
+          data = fs.readFileSync(p);
+        } catch (err) {
+          throw new Error(
+            `fingerprint: cannot hash '${relPath}' (${(err as NodeJS.ErrnoException).code ?? 'error'})`,
+          );
+        }
+        entries.set(relPath, {
+          kind: 'file',
+          sha256: createHash('sha256').update(data).digest('hex'),
+          size: st.size,
+          mode: st.mode & 0o777,
+        });
+        if (relPath.includes('.lock') || relPath.endsWith('.lock')) locks.push(relPath);
+      } else if (e.isSymbolicLink() && st.isSymbolicLink()) {
+        let target: string;
+        try {
+          target = fs.readlinkSync(p);
+        } catch (err) {
+          throw new Error(
+            `fingerprint: cannot readlink '${relPath}' (${(err as NodeJS.ErrnoException).code ?? 'error'})`,
+          );
+        }
+        entries.set(relPath, {
+          kind: 'link',
+          linkTarget: target,
+          mode: st.mode & 0o777,
+        });
+      } else {
+        // Other kinds (socket, fifo, device) — recorded by path set only.
+        entries.set(relPath, { kind: 'other', mode: st.mode & 0o777 });
+      }
+    }
+  };
+  walk(dir, '');
+  return { entries, locks };
+}
+
+/** Assert two tree fingerprints are identical (path set, content, size, mode, symlinks). */
+export function assertTreesEqual(a: TreeFingerprint, b: TreeFingerprint, label: string): void {
+  const aKeys = [...a.entries.keys()].sort();
+  const bKeys = [...b.entries.keys()].sort();
+  assert.deepEqual(bKeys, aKeys, `${label}: path set changed`);
+  for (const key of aKeys) {
+    const ea = a.entries.get(key)!;
+    const eb = b.entries.get(key)!;
+    assert.equal(eb.kind, ea.kind, `${label}: kind changed for ${key}`);
+    if (ea.kind === 'file') {
+      assert.equal(eb.sha256, ea.sha256, `${label}: content changed for ${key}`);
+      assert.equal(eb.size, ea.size, `${label}: size changed for ${key}`);
+    }
+    if (ea.kind === 'link') {
+      assert.equal(eb.linkTarget, ea.linkTarget, `${label}: symlink target changed for ${key}`);
+    }
+    assert.equal(eb.mode, ea.mode, `${label}: mode changed for ${key}`);
+  }
+  assert.deepEqual(b.locks, [], `${label}: leftover lock files`);
+}
+
+/** SHA-256 of a binary file (used for the Git executable tripwire). */
+export function sha256File(p: string): string {
+  return createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+}
 
 export interface Wp7Fixture {
   readonly root: string;

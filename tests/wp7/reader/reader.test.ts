@@ -293,8 +293,10 @@ describe('WP-7 reader: controlled operations', () => {
       // mkfifo via fs.mkfifoSync is unavailable; use execFileSync mkfifo (test-only)
       const { execFileSync } = await import('node:child_process');
       execFileSync('mkfifo', [fifoPath]);
-    } catch {
-      return; // lane without mkfifo: skip
+    } catch (err: unknown) {
+      // C-06: on the supported lane (Linux) mkfifo must exist; a silent
+      // pass here would hide the FIFO rejection evidence.
+      throw new Error(`mkfifo unavailable on the supported Linux lane: ${String(err)}`);
     }
     const r = await service.readText(
       { operation: 'read-text', workspaceId: WORKSPACE_ALPHA, path: 'pipe.fifo' },
@@ -333,18 +335,28 @@ describe('WP-7 reader: concurrency and cancellation', () => {
     assert.ok(limitFailures.length >= 1, 'fifth concurrent operation must fail with ERR-LIMIT-CONCURRENCY');
   });
 
-  it('cancellation during operation returns ERR-OP-CANCELLED', async () => {
+  it('cancellation before admission returns ERR-OP-CANCELLED and recovery works', async () => {
+    // C-06: the previous "cancellation during operation" test allowed either
+    // outcome (the fs read may complete before the abort fires on fast
+    // lanes), which is a silent-pass pattern. The deterministic contract
+    // surface is: an already-aborted signal fails with ERR-OP-CANCELLED and
+    // subsequent operations recover. Deterministic in-flight cancellation
+    // evidence lives in the FFF suite (blocking synthetic capability) and
+    // the Git suite (hung-launch cancellation), where the abort can be
+    // forced to land mid-operation.
     const ctrl = new AbortController();
-    // Abort after a short delay while the operation is in flight
-    const promise = service.readText(
+    ctrl.abort();
+    const r1 = await service.readText(
       { operation: 'read-text', workspaceId: WORKSPACE_ALPHA, path: 'docs/notes.md' },
       { signal: ctrl.signal },
     );
-    setTimeout(() => ctrl.abort(), 1);
-    const r = await promise;
-    // The operation may complete before the abort fires; both are valid, but
-    // if it failed it must be the cancellation code.
-    if (!r.ok) assert.equal(r.failure.code, 'ERR-OP-CANCELLED');
+    assert.equal(r1.ok, false);
+    if (!r1.ok) assert.equal(r1.failure.code, 'ERR-OP-CANCELLED');
+    const r2 = await service.readText(
+      { operation: 'read-text', workspaceId: WORKSPACE_ALPHA, path: 'docs/notes.md' },
+      NO_CTRL,
+    );
+    assert.equal(r2.ok, true);
   });
 
   it('repeated operations work after cancellation', async () => {

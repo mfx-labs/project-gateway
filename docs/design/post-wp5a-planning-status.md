@@ -6,9 +6,19 @@ accepted final review: POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED;
 open findings at approval: zero). The human approval has been recorded in
 ADR-023 through ADR-027 (all Accepted). The approval-recording mismatch
 F-EL-A is closed. WP-6 has been implemented and closed
-(`b07fea95d0a1ed20361dec441fc500766969536f`); WP-7 is the current work
-package (WP-7-A foundation and contract consolidation is human-authorized;
-WP-7-B/WP-7-C not authorized). Each disposition
+(`b07fea95d0a1ed20361dec441fc500766969536f`); the current work package is
+**none** — WP-7 is **closed**. WP-7-A (foundation and contract
+consolidation) is **closed**; WP-7-B (runtime implementation) is **closed**
+at `7fa2b15c8bab8b373751affac08acc3e9225aba8` (WP-7 runtime implementation
+is complete); WP-7-C (integration, full verification, and closure
+preparation) was human-authorized — the senior closure review findings
+(C-01…C-07) and the final focused closure rereview findings (Z-01…Z-05)
+were all addressed, and the **final closure rereview accepted** WP-7-C with
+**zero open findings**; WP-7-C is **closed** and WP-7 is **closed**, with
+the closure baseline being **the commit containing this update**. WP-8 is
+**not authorized**; the next gate is **explicit human authorization for
+WP-8**. No push, release, publication, installation, or deployment has
+occurred. Each disposition
 is one of RESOLVED (by this planning package or earlier closed packages),
 DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
 

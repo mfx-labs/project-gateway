@@ -5,8 +5,10 @@ date 2026-08-05; planning commit `97022a49d9029449f304a2b1e47f9dc8da4d4a89`;
 accepted final review: POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED;
 open findings at approval: zero). The human approval has been recorded in
 ADR-023 through ADR-027 (all Accepted). The approval-recording mismatch
-F-EL-A is closed. WP-6 remains pending a separate eligibility and
-implementation-authorization decision and has not started. Each disposition
+F-EL-A is closed. WP-6 has been implemented and closed
+(`b07fea95d0a1ed20361dec441fc500766969536f`); WP-7 is the current work
+package (WP-7-A foundation and contract consolidation is human-authorized;
+WP-7-B/WP-7-C not authorized). Each disposition
 is one of RESOLVED (by this planning package or earlier closed packages),
 DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
 

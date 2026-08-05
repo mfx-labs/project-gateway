@@ -38,7 +38,7 @@ wall clock. All external state arrives through explicit interfaces:
 | `src/identity/` | Identity/lineage validation over the injected identity-state view; `MemoryIdentityState` for tests and the conformance runner only (no persistence). |
 | `src/references/` | Exact-reference validation: resolver output is treated as untrusted and revalidated; every reference field is compared; no path/alias/latest/partial/fallback resolution exists. |
 | `src/registry/` | RegistrySnapshot semantic evaluation and artifact/consumer registry compatibility against the accepted snapshot. |
-| `src/semantic/` | The 114-rule semantic catalog with stable rule IDs; structurally enforced rules are registered and satisfied at the structural phase. |
+| `src/semantic/` | The 116-rule semantic catalog with stable rule IDs; structurally enforced rules are registered and satisfied at the structural phase. |
 | `src/bundle/` | Bundle and cross-artifact workspace/lineage compatibility (evaluation only). |
 | `src/lifecycle/` | Trusted lifecycle graph validation and registry-context evaluation over caller-supplied records. |
 | `src/pointofuse/` | Point-of-use eligibility with injected time, ceilings, support, and revocations. |

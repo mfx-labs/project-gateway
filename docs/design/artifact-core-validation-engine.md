@@ -79,12 +79,13 @@ verification:
   `PGAP-REGISTRY-SNAPSHOT-v1\0`.
 - RFC 8785 serialization sorts object keys by UTF-16 code units, uses shortest
   control-character escapes, emits safe integers only, and never reorders
-  arrays. All 19 committed digest vectors are recomputed by the test suite and
-  the conformance runner.
+  arrays. All 36 committed digest vectors (the WP-3 set plus the WP-6 Phase-3
+  PointOfUse input/result vectors) are recomputed by the test suite and the
+  conformance runner.
 
 ## Rule Dispatch
 
-Every one of the 114 semantic rule IDs has an implementation-owned
+Every one of the 116 semantic rule IDs has an implementation-owned
 classification: a real semantic evaluator, an explicit structural-enforcement
 mapping (schema resource + validator keyword + path → rule IDs), a graph/
 trusted-state evaluator, or a raw/canonical/pipeline enforcement. The dispatch
@@ -201,5 +202,5 @@ exception text.
 `ConformanceRunner` loads the embedded manifest and corpus, validates dependency
 metadata, evaluates entries in deterministic order, executes only the phases
 applicable to each declared outcome, and reports mismatches by fixture ID with a
-stable reason. The committed corpus executes 531/531 entries with zero
+stable reason. The committed corpus executes 587/587 entries with zero
 mismatches.

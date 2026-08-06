@@ -126,9 +126,20 @@ implementation acceptance readiness granted); the **WP-8-D implementation
 is HUMAN-ACCEPTED** and the **implementation acceptance and
 commit-preparation report
 (`docs/reports/wp-8d-implementation-acceptance-and-commit-preparation-report.md`)
-records the acceptance**; **WP-8-D is not yet closed because the commit
-baseline has not been created**; the **next gate is the WP-8-D HUMAN
-COMMIT AUTHORIZATION**; **WP-8-D staging and commit are
+records the acceptance**; the **WP-8-D implementation baseline commit
+`29582bbb2c748be3c60179e19584092fceb1eaa8` (subject `feat: establish
+WP-8-D durable storage operations`, parent `bd832606…`) was created and
+is **independently verified** (commit metadata, exact 42-path inventory,
+committed-blob manifest, no-drift audit, production-write unreachability,
+and the full test battery); the **focused implementation rereview is
+accepted with zero findings** and the **implementation baseline is
+accepted**; the **post-commit baseline verification and closure report
+(`docs/reports/wp-8d-post-commit-baseline-verification-and-closure-report.md`)
+records the verification and prepares the closure documentation**;
+**WP-8-D is not yet closed** — the phase becomes closed only after the
+closure documentation commit is separately authorized and created; the
+**next gate is the WP-8-D CLOSURE COMMIT AUTHORIZATION**;
+**WP-8-D staging and commit are
 not authorized**; WP-8
 implementation is **not closed**. WP-9 and later
 packages are **not authorized**. No push, release,

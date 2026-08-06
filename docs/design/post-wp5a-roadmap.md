@@ -21,8 +21,8 @@ issue plus follow-on items (Z-01…Z-05), all addressed by the final
 correction; the **final closure rereview accepted** WP-7-C with **zero open
 findings**; WP-7-C is **closed** and WP-7 is **closed** at
 `6b94d811dac8c41062ea4cbd57e56b1fe39b6419`. Current state: WP-8-A
-(Foundation and Contract Consolidation) is **human-authorized** and remains
-**in progress**: the senior contract review required corrections
+(Foundation and Contract Consolidation) was **human-authorized** as a
+**documentation-only contract phase** and is **closed**: the senior contract review required corrections
 (W8A-C01…W8A-C13), the first focused rereview required additional
 corrections (W8A-R01…W8A-R08), and the **final focused rereview found four
 bounded MINOR documentation findings** (W8A-F01…W8A-F04); the **final
@@ -32,10 +32,26 @@ documentation spot check found one bounded MINOR finding** (empty
 the **WP-8-A contract is accepted**; the **WP-8-A baseline commit**
 (subject `docs: establish WP-8-A contract baseline`) is the commit
 containing this update; the authoritative WP-8 contract and foundation
-report have been produced and corrected. WP-8-A is **not closed**; the
-**baseline commit is established by this commit**; WP-8 implementation is **not
-authorized**; WP-8 is **not closed**; WP-9 and later packages are **not
-authorized**. No release,
+report have been produced and corrected. **WP-8-A is closed** at the
+baseline commit `0965d668204540073b1346947db1c6193f9fd4dc`. Current
+state: **WP-8-B (Non-Mutating Format, Validation, and Determinism
+Foundation) is human-authorized**; its **non-mutating foundation
+implementation is complete**; the **WP-8-B senior implementation review
+returned corrections required** (one MODERATE finding W8B-C01 and three
+MINOR findings W8B-C02…W8B-C04); the **focused implementation correction
+closed all four findings**; the **focused implementation rereview
+returned three MINOR findings (W8B-M01…W8B-M03)**; the **final micro
+implementation correction closed all three**; the **final micro
+implementation rereview returned `WP-8-B FINAL MICRO IMPLEMENTATION
+REREVIEW: ACCEPTED` with `OPEN FINDINGS: 0`**; the **WP-8-B
+implementation is accepted** and the **WP-8-B baseline commit** (subject
+`feat: establish WP-8-B non-mutating foundation`) is the commit
+containing this update; **WP-8-B closure remains pending independent
+baseline-commit verification**; the **next gate is the WP-8-B baseline
+commit verification**;
+the WP-8-B **commit is not authorized**; **WP-8-C and later phases are
+not authorized**; WP-8 implementation is **not closed**; WP-9 and later
+packages are **not authorized**. No release,
 publication, installation, or deployment action has occurred for WP-8.
 
 **Normative cross-references:** `project-gateway-scope-and-principles.md`

@@ -29,9 +29,25 @@ bounded MINOR finding** (empty `CSR-010` requirement body); the **final
 micro spot check returned `WP-8-A FINAL MICRO SPOT CHECK: ACCEPTED`
 with `OPEN FINDINGS: 0`**; the WP-8-A **contract is accepted**; the
 **WP-8-A baseline commit** (subject `docs: establish WP-8-A contract
-baseline`) is the commit containing this update. WP-8 **implementation is
-not authorized**; the **next gate is the WP-8-A baseline commit
-verification**. WP-9 and later
+baseline`) is the commit containing this update; **WP-8-A is closed** at
+the baseline commit `0965d668204540073b1346947db1c6193f9fd4dc`. WP-8-B
+(Non-Mutating Format, Validation, and Determinism Foundation) is
+**human-authorized**; the **WP-8-B non-mutating foundation implementation
+is complete**; the **WP-8-B senior implementation review returned
+corrections required** (one MODERATE finding W8B-C01 and three MINOR
+findings W8B-C02…W8B-C04); the **focused implementation correction
+closed all four findings**; the **focused implementation rereview
+returned three MINOR findings (W8B-M01…W8B-M03)**; the **final micro
+implementation correction closed all three**; the **final micro
+implementation rereview returned `WP-8-B FINAL MICRO IMPLEMENTATION
+REREVIEW: ACCEPTED` with `OPEN FINDINGS: 0`**; the **WP-8-B
+implementation is accepted** and the **WP-8-B baseline commit** (subject
+`feat: establish WP-8-B non-mutating foundation`) is the commit
+containing this update; **WP-8-B closure remains pending independent
+baseline-commit verification**; the WP-8-B
+**commit is not authorized**; **WP-8-C and later phases are not
+authorized**; WP-8 implementation is **not closed**; the **next gate is
+the WP-8-B baseline commit verification**. WP-9 and later
 packages are **not authorized**. No push, release,
 publication, installation, or deployment has occurred. Each disposition
 is one of RESOLVED (by this planning package or earlier closed packages),

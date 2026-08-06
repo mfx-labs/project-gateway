@@ -7,7 +7,8 @@ open findings at approval: zero). The human approval has been recorded in
 ADR-023 through ADR-027 (all Accepted). The approval-recording mismatch
 F-EL-A is closed. WP-6 has been implemented and closed
 (`b07fea95d0a1ed20361dec441fc500766969536f`); the current work package is
-**none** — WP-7 is **closed**. WP-7-A (foundation and contract
+**WP-8-A — Foundation and Contract Consolidation**; WP-7 is **closed** at
+`6b94d811dac8c41062ea4cbd57e56b1fe39b6419`. WP-7-A (foundation and contract
 consolidation) is **closed**; WP-7-B (runtime implementation) is **closed**
 at `7fa2b15c8bab8b373751affac08acc3e9225aba8` (WP-7 runtime implementation
 is complete); WP-7-C (integration, full verification, and closure
@@ -15,10 +16,24 @@ preparation) was human-authorized — the senior closure review findings
 (C-01…C-07) and the final focused closure rereview findings (Z-01…Z-05)
 were all addressed, and the **final closure rereview accepted** WP-7-C with
 **zero open findings**; WP-7-C is **closed** and WP-7 is **closed**, with
-the closure baseline being **the commit containing this update**. WP-8 is
-**not authorized**; the next gate is **explicit human authorization for
-WP-8**. No push, release, publication, installation, or deployment has
-occurred. Each disposition
+the closure baseline being the WP-7 closure commit
+`6b94d811dac8c41062ea4cbd57e56b1fe39b6419`. WP-8-A (Foundation and
+Contract Consolidation) is **human-authorized** as a **documentation-only
+contract phase**; the authoritative WP-8 contract and foundation report
+have been produced and corrected. The **senior contract review returned
+corrections required** (W8A-C01…W8A-C13); the **first focused rereview
+returned corrections required** (W8A-R01…W8A-R08); the **final focused
+rereview returned corrections required — four MINOR findings**
+(W8A-F01…W8A-F04); the **final documentation spot check found one
+bounded MINOR finding** (empty `CSR-010` requirement body); the **final
+micro spot check returned `WP-8-A FINAL MICRO SPOT CHECK: ACCEPTED`
+with `OPEN FINDINGS: 0`**; the WP-8-A **contract is accepted**; the
+**WP-8-A baseline commit** (subject `docs: establish WP-8-A contract
+baseline`) is the commit containing this update. WP-8 **implementation is
+not authorized**; the **next gate is the WP-8-A baseline commit
+verification**. WP-9 and later
+packages are **not authorized**. No push, release,
+publication, installation, or deployment has occurred. Each disposition
 is one of RESOLVED (by this planning package or earlier closed packages),
 DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
 

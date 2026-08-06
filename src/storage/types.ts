@@ -9,6 +9,7 @@
  * `src/storage/**`) may authorize or perform a mutation, and no capability
  * instance or factory exists in this phase.
  */
+import type { ReadCapability } from './capabilities/authenticity.js';
 
 /** Supported layout version constant (contract LAY-001, LAY-006). */
 export const STORAGE_LAYOUT_VERSION = 'v1' as const;
@@ -513,4 +514,413 @@ export interface InitializationResult {
   readonly namespaceIdentities?: readonly NamespaceIdentity[];
   readonly metadataDigests?: readonly { readonly namespaceKind: NamespaceKind; readonly recordByteDigest: string }[];
   readonly findings?: readonly StorageFinding[];
+}
+
+// ─── WP-8-E: read-only store scan, registry views, recovery assessment ────
+// Type-level vocabulary only (contract §13 RDS-004…007, §14 RGY, §16 CSA,
+// §24 DTM). No value in this module authorizes mutation; this slice performs
+// no write, rename, unlink, quarantine, lock break, audit publication, or
+// capability minting. Observations, views, assessments, and plans are plain
+// data: they contain no raw filesystem paths, no record payload bytes, no
+// lock nonce, and no capability objects.
+
+/** Closed per-candidate classification vocabulary (WP-8-E scope; codes stay within §18.1). */
+export type RecordCandidateClassification =
+  | 'valid-immutable-record'
+  | 'malformed'
+  | 'unsupported-version'
+  | 'digest-mismatch'
+  | 'wrong-derived-location'
+  | 'wrong-type'
+  | 'wrong-uid-or-mode'
+  | 'unexpected-hard-link'
+  | 'foreign-entry'
+  | 'incomplete-relationship'
+  | 'duplicate-conflicting-identity';
+
+/** WPR-023 closed crash-reappearing temporary categories (16.3/CSA-015). */
+export type TemporaryObjectClassification =
+  | 'orphan-referencing-published'
+  | 'incomplete-unpublished'
+  | 'malformed-temporary'
+  | 'temporary-other';
+
+/** Closed writer-lock observation vocabulary (LOK-004…008; observation only). */
+export type LockObservationKind = 'writer-lock-present' | 'writer-lock-foreign' | 'writer-lock-malformed';
+
+/** Descriptor facts for one scanned object (never a path). */
+export interface ScannedObjectStat {
+  readonly fileType: 'regular' | 'directory' | 'symlink' | 'special';
+  readonly uid: number;
+  readonly mode: number;
+  readonly nlink: number;
+  readonly size: number;
+  readonly dev: number;
+  readonly ino: number;
+}
+
+/** Envelope facts extracted by the scan (never payload bytes). */
+export interface RecordObservationFacts {
+  readonly recordId?: string;
+  readonly revision?: number;
+  readonly createdAt?: string;
+  readonly payloadDigest?: string;
+  /** Domain-separated digest of the canonical record bytes. */
+  readonly recordDigest?: string;
+  readonly previousRecordDigest?: string;
+  readonly referenceDigests?: readonly string[];
+}
+
+/** Audit association facts extracted from the audit payload (D-8 payload shape). */
+export interface AuditAssociationFacts {
+  readonly eventKind: string;
+  readonly primaryRecordId?: string;
+  readonly primaryDigest?: string;
+}
+
+export interface ScanObservationBase {
+  /** Deterministic observation identity: domain digest over kind/location/entry. */
+  readonly id: string;
+  readonly entry: string;
+  /** Closed ERR-STO-* code (Section 18.1). */
+  readonly code: string;
+  /** Absent only for foreign entries that are never opened. */
+  readonly stat?: ScannedObjectStat;
+}
+
+export interface RecordScanObservation extends ScanObservationBase {
+  readonly kind: 'record';
+  readonly recordClass: RecordClassId;
+  readonly shard: string;
+  readonly classification: RecordCandidateClassification;
+  readonly envelope?: RecordObservationFacts;
+}
+
+export interface AuditScanObservation extends ScanObservationBase {
+  readonly kind: 'audit-event';
+  readonly recordClass: 'authoritative-audit-event';
+  readonly shard: string;
+  readonly classification: RecordCandidateClassification;
+  readonly envelope?: RecordObservationFacts;
+  readonly auditAssociation?: AuditAssociationFacts;
+}
+
+export interface TemporaryScanObservation extends ScanObservationBase {
+  readonly kind: 'temporary-object';
+  readonly classification: TemporaryObjectClassification;
+  readonly envelope?: RecordObservationFacts;
+  /** True when the temporary name and a verified published record share one inode (WPR-023 (a)). */
+  readonly sharesInodeWithPublished: boolean;
+}
+
+export interface LockScanObservation extends ScanObservationBase {
+  readonly kind: 'lock-object';
+  readonly classification: LockObservationKind;
+  readonly lock?: LockFacts;
+}
+
+export interface ForeignScanObservation extends ScanObservationBase {
+  readonly kind: 'foreign-object';
+  readonly recordClass?: RecordClassId;
+  readonly classification: 'foreign-entry';
+}
+
+export type ScanObservation =
+  | RecordScanObservation
+  | AuditScanObservation
+  | TemporaryScanObservation
+  | LockScanObservation
+  | ForeignScanObservation;
+
+/** Stored lock-record facts observable without disclosure (no nonce; 18.3/ERM-004). */
+export interface LockFacts {
+  readonly lockVersion?: string;
+  readonly storeInstanceMatches: boolean;
+  readonly actionIdentityDigestPresent: boolean;
+  readonly pid?: number;
+  readonly processStartTime?: number;
+  readonly acquisitionTime?: number;
+  readonly maxAgeMs?: number;
+  readonly bootIdentityPresent: boolean;
+}
+
+/** Scan mode vocabulary (F2: the generation token binds the mode). */
+export type ScanMode = 'registry' | 'recovery';
+
+/**
+ * Deterministic scan continuation cursor (records/audit surface only). The
+ * request `generation` binds store identity, namespace identity, effective
+ * entry/byte limits, scan mode, fail-closed behavior, and the class-order
+ * model version; the `surfaceGeneration` binds the cross-page structural
+ * snapshot — `records/` and `audit/` parent presence and identity, the
+ * expected record-class presence set, `audit-event` presence, and the
+ * identities of every present class directory (F3-G). A cursor is rejected
+ * unless its request generation equals the current request's computed
+ * generation (ERR-STO-REQ-INVALID; F2) and its surface generation equals
+ * the re-read structural snapshot (ERR-STO-ROOT-IDENTITY-CHANGED; F3-G).
+ * Plain deterministic data with no authority semantics; never carries a
+ * raw store identity, device, or inode value.
+ */
+export interface ScanCursor {
+  /** Deterministic request-compatibility generation digest (F2). */
+  readonly generation: string;
+  /** Deterministic cross-page structural snapshot digest (F3-G). */
+  readonly surfaceGeneration: string;
+  readonly recordClass: RecordClassId;
+  readonly shard: string;
+  readonly entry: string;
+}
+
+/** Scan bounds (contract 19.1 totalScanEntries/totalScanBytes/recoveryScanEntries; LMT-006/010). */
+export interface ScanBounds {
+  /** Scan mode; the generation token binds it (F2). */
+  readonly mode: ScanMode;
+  readonly entryLimit: number;
+  readonly byteLimit: number;
+  /** True for recovery scans: over-limit fails closed instead of truncating (recoveryScanEntries row). */
+  readonly failClosed: boolean;
+}
+
+/** Immutable facts of the scanned snapshot the derived view is valid for (RGY-005). */
+export interface ScanFacts {
+  /** Deterministic generation token: domain digest over store identity + bounds. */
+  readonly generation: string;
+  readonly scannedEntries: number;
+  readonly scannedBytes: number;
+  readonly truncated: boolean;
+  readonly failClosed: boolean;
+}
+
+/** One verified primary record in a derived view. */
+export interface VerifiedRecordView {
+  readonly observationId: string;
+  readonly shard: string;
+  readonly entry: string;
+  readonly recordId: string;
+  readonly recordClass: RecordClassId;
+  readonly revision: number;
+  readonly createdAt: string;
+  readonly payloadDigest: string;
+  readonly recordDigest: string;
+  readonly previousRecordDigest?: string;
+}
+
+/** One verified audit event in a derived view. */
+export interface AuditEventView {
+  readonly observationId: string;
+  readonly eventId: string;
+  readonly eventKind: string;
+  readonly createdAt: string;
+  readonly recordDigest: string;
+  readonly primaryRecordId?: string;
+  readonly primaryDigest?: string;
+  readonly associated: boolean;
+}
+
+export interface DuplicateConflictFinding {
+  readonly identity: string;
+  readonly kind: 'duplicate-identity' | 'conflict-revision';
+  readonly code: string;
+  readonly observationIds: readonly string[];
+}
+
+export interface MissingAuditFinding {
+  readonly observationId: string;
+  readonly recordId: string;
+  readonly recordClass: RecordClassId;
+  readonly recordDigest: string;
+}
+
+export interface DanglingAuditFinding {
+  readonly observationId: string;
+  readonly eventId: string;
+  readonly eventKind: string;
+  readonly primaryRecordId?: string;
+  readonly primaryDigest?: string;
+  readonly code: string;
+}
+
+/** Deterministic in-memory registry view over one scanned snapshot (RGY-001…010). */
+export interface RegistryView {
+  readonly source: ScanFacts;
+  /** Verified records grouped by class (taxonomy order); entries sorted by (shard, entry). */
+  readonly recordsByClass: Readonly<Record<string, readonly VerifiedRecordView[]>>;
+  /** Verified records grouped by logical identity; each group sorted by (revision, record digest). */
+  readonly recordsByIdentity: Readonly<Record<string, readonly VerifiedRecordView[]>>;
+  /** Highest revision per identity whose record is verified and chain-resolved (mechanical; RGY-002). */
+  readonly latestResolvableRevision: Readonly<Record<string, VerifiedRecordView>>;
+  readonly duplicateConflicts: readonly DuplicateConflictFinding[];
+  /** Verified audit events grouped by referenced primary identity; sorted by (createdAt, event id). */
+  readonly auditByPrimary: Readonly<Record<string, readonly AuditEventView[]>>;
+  readonly missingAudit: readonly MissingAuditFinding[];
+  readonly danglingAudit: readonly DanglingAuditFinding[];
+  readonly findings: readonly StorageFinding[];
+}
+
+/** WPR-023 orphan temporary observation (CSA-010/015; observation only). */
+export interface OrphanTemporaryFinding {
+  readonly observationId: string;
+  readonly entry: string;
+  readonly classification: TemporaryObjectClassification;
+  readonly recordId?: string;
+  readonly recordDigest?: string;
+  readonly sharesInodeWithPublished: boolean;
+}
+
+/** Persistent writer-lock observation (LOK-004…008; liveness is never assumed). */
+export interface LockObservationFinding {
+  readonly observationId: string;
+  readonly classification: LockObservationKind;
+  readonly parseable: boolean;
+  readonly storeInstanceMatches?: boolean;
+  readonly pid?: number;
+  readonly processStartTime?: number;
+  readonly acquisitionTime?: number;
+  readonly maxAgeMs?: number;
+  readonly bootIdentityPresent: boolean;
+}
+
+export interface IncompletePublicationFinding {
+  readonly kind: 'missing-audit' | 'dangling-audit' | 'orphan-temporary';
+  readonly recordId?: string;
+  readonly recordClass?: RecordClassId;
+  readonly eventId?: string;
+  readonly observationId: string;
+  readonly code: string;
+}
+
+export interface ObjectFinding {
+  readonly observationId: string;
+  readonly classification: string;
+  readonly code: string;
+  /** Envelope identity when the object carried one (never a path). */
+  readonly recordId?: string;
+}
+
+export interface DispositionFinding extends ObjectFinding {
+  readonly reason: string;
+}
+
+export interface ReconstructionCandidateFinding {
+  readonly recordId: string;
+  readonly recordClass: RecordClassId;
+  readonly recordDigest: string;
+  readonly observationId: string;
+  readonly reason: string;
+}
+
+/** Bounded recovery assessment over one scanned snapshot (CSA-001…015; observation only). */
+export interface RecoveryAssessment {
+  readonly source: ScanFacts;
+  readonly verifiedDurableRecords: readonly VerifiedRecordView[];
+  readonly verifiedAuditEvidence: readonly AuditEventView[];
+  readonly orphanTemporaryObjects: readonly OrphanTemporaryFinding[];
+  readonly persistentLockObservations: readonly LockObservationFinding[];
+  readonly incompletePublicationStates: readonly IncompletePublicationFinding[];
+  readonly malformedOrForeignObjects: readonly ObjectFinding[];
+  readonly quarantineEligible: readonly ObjectFinding[];
+  readonly requiresDisposition: readonly DispositionFinding[];
+  readonly reconstructionCandidates: readonly ReconstructionCandidateFinding[];
+  readonly findings: readonly StorageFinding[];
+}
+
+export type RecoveryActionCategory =
+  | 'quarantine'
+  | 'orphan-removal'
+  | 'audit-reconstruction'
+  | 'lock-recovery'
+  | 'disposition';
+
+export type RecoveryActionSafety = 'safe' | 'unsafe' | 'requires-external-disposition';
+
+/** One advisory recovery-plan action (Section 5 of the WP-8-E scope; never executable data). */
+export interface RecoveryPlanAction {
+  readonly actionId: string;
+  readonly targetLogicalIdentity: string;
+  readonly targetKind: 'primary-record' | 'audit-event' | 'temporary-object' | 'lock-object' | 'foreign-object';
+  readonly category: RecoveryActionCategory;
+  readonly observedEvidence: readonly string[];
+  readonly reason: string;
+  readonly requiredCapability: 'recovery' | 'control-plane';
+  readonly requiredOperation: 'quarantine' | 'orphan-removal' | 'audit-reconstruction' | 'lock-recovery' | 'disposition';
+  readonly verifyImmediatelyBeforeMutation: boolean;
+  readonly safety: RecoveryActionSafety;
+}
+
+/** Structured, deterministic, non-authoritative recovery plan (advisory data only). */
+export interface RecoveryPlan {
+  readonly advisoryOnly: true;
+  readonly source: ScanFacts;
+  readonly actions: readonly RecoveryPlanAction[];
+  readonly summary: { readonly total: number; readonly safe: number; readonly unsafe: number; readonly requiresExternalDisposition: number };
+}
+
+/** Registry-view derivation request (read-only composition boundary; RDS-005). */
+export interface RegistryViewRequest {
+  /** Genuine WP-6 validated trusted configuration (runtime-branded). */
+  readonly trustedConfiguration: unknown;
+  /** Genuine branded `TrustedStorageBootstrapInput`. */
+  readonly trustedInput: unknown;
+  /** Optional continuation from a previous truncated registry scan. */
+  readonly continuation?: ScanCursor;
+}
+
+export interface RegistryViewResult {
+  readonly ok: boolean;
+  readonly view?: RegistryView;
+  /** Resume cursor when the scan truncated with forward progress (F1-B). */
+  readonly continuation?: ScanCursor;
+  /**
+   * Findings. A truncated result WITHOUT a continuation is the detectable
+   * no-progress state: the byte profile cannot make progress, and the
+   * caller must restart without the cursor with a larger byte limit (the
+   * request generation binds byte limits, so a raised limit invalidates the
+   * old cursor with ERR-STO-REQ-INVALID anyway).
+   */
+  readonly findings?: readonly StorageFinding[];
+}
+
+/** Recovery-scan request (read-only composition boundary; CSA, LMT-006/010). */
+export interface RecoveryScanRequest {
+  readonly trustedConfiguration: unknown;
+  readonly trustedInput: unknown;
+}
+
+export interface RecoveryScanResult {
+  readonly ok: boolean;
+  readonly assessment?: RecoveryAssessment;
+  readonly plan?: RecoveryPlan;
+  readonly findings?: readonly StorageFinding[];
+}
+
+/** Test-only scan injection hooks (drift/crash determinism; no production use). */
+export interface ScanHooks {
+  /** Runs after each directory readdir, before the post-snapshot identity check. */
+  readonly afterReaddir?: (location: {
+    readonly surface: 'records' | 'audit' | 'tmp' | 'locks';
+    readonly recordClass?: RecordClassId;
+    readonly shard?: string;
+  }) => void;
+}
+
+/** Read-only store scan input (RDS-004/007; LMT-006/010). */
+export interface StoreScanInput {
+  readonly capability: ReadCapability;
+  readonly namespaceRoot: string;
+  readonly bounds: ScanBounds;
+  readonly continuation?: ScanCursor;
+  readonly hooks?: ScanHooks;
+}
+
+/** Bounded store-scan result (records/audit, plus tmp/locks in recovery mode). */
+export interface StoreScanResult {
+  readonly ok: boolean;
+  readonly observations: readonly ScanObservation[];
+  readonly findings: readonly StorageFinding[];
+  readonly scannedEntries: number;
+  readonly scannedBytes: number;
+  readonly truncated: boolean;
+  readonly continuation?: ScanCursor;
+  /** Deterministic generation digest of this scan (present on success). */
+  readonly generation?: string;
 }

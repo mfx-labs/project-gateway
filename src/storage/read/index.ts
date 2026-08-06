@@ -42,8 +42,8 @@ function validateClassAndIdentity(recordClass: RecordClassId, rawIdentifier: str
   return { ok: true };
 }
 
-/** Internal store revalidation shared by the three read-side operations. */
-function revalidateStore(request: { readonly trustedConfiguration: unknown; readonly trustedInput: unknown }): { readonly ok: boolean; readonly storeInstance?: VerifiedStoreInstance; readonly code?: string; readonly message?: string } {
+/** Internal store revalidation shared by the read-side operations. */
+export function revalidateStore(request: { readonly trustedConfiguration: unknown; readonly trustedInput: unknown }): { readonly ok: boolean; readonly storeInstance?: VerifiedStoreInstance; readonly code?: string; readonly message?: string } {
   if (!isGenuineTrustedStorageBootstrapInput(request.trustedInput)) {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'trusted input is not genuine' };
   }
@@ -65,7 +65,8 @@ function revalidateStore(request: { readonly trustedConfiguration: unknown; read
   });
 }
 
-function namespaceRootFor(storeInstance: VerifiedStoreInstance): string {
+/** Verified store-records namespace root (fixed derivation; CSR-002). */
+export function namespaceRootFor(storeInstance: VerifiedStoreInstance): string {
   return `${storeInstance.parentIdentity.canonicalPath}/store-v1`;
 }
 

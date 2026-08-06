@@ -6,9 +6,8 @@ accepted final review: POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED;
 open findings at approval: zero). The human approval has been recorded in
 ADR-023 through ADR-027 (all Accepted). The approval-recording mismatch
 F-EL-A is closed. WP-6 has been implemented and closed
-(`b07fea95d0a1ed20361dec441fc500766969536f`); the current work package is **WP-8-D — Durable Single-Record
-Publication, Exact Reads, and Locking** (current sub-phase: focused
-decision-package correction); WP-7 is **closed** at
+(`b07fea95d0a1ed20361dec441fc500766969536f`); the current work package is **WP-8-E — Audit, Registry Indexes, and
+Recovery (read-only slice; contract §29 phase 4)**; WP-7 is **closed** at
 `6b94d811dac8c41062ea4cbd57e56b1fe39b6419`. WP-7-A (foundation and contract
 consolidation) is **closed**; WP-7-B (runtime implementation) is **closed**
 at `7fa2b15c8bab8b373751affac08acc3e9225aba8` (WP-7 runtime implementation
@@ -136,14 +135,30 @@ accepted with zero findings** and the **implementation baseline is
 accepted**; the **post-commit baseline verification and closure report
 (`docs/reports/wp-8d-post-commit-baseline-verification-and-closure-report.md`)
 records the verification and prepares the closure documentation**;
-**WP-8-D is not yet closed** — the phase becomes closed only after the
-closure documentation commit is separately authorized and created; the
-**next gate is the WP-8-D CLOSURE COMMIT AUTHORIZATION**;
-**WP-8-D staging and commit are
-not authorized**; WP-8
+**WP-8-D is closed** at commit
+`23a30b212dbe1f2ffa05e2b69314754730aeb222` (subject `docs: close WP-8-D
+durable storage operations`); the **next gate is the WP-8-E
+implementation acceptance**; WP-8
 implementation is **not closed**. WP-9 and later
 packages are **not authorized**. No push, release,
-publication, installation, or deployment has occurred. Each disposition
+publication, installation, or deployment has occurred.
+
+**WP-8-E (contract §29 phase 4 — audit, registry indexes, and recovery;
+read-only slice) is implemented**: WP-8-D is **closed** at commit
+`23a30b212dbe1f2ffa05e2b69314754730aeb222` (subject `docs: close WP-8-D
+durable storage operations`); the **WP-8-E read-only registry and
+recovery slice** is implemented under `src/storage/registry/` and
+`src/storage/recovery/` (read-only store scan, closed 11-way candidate
+classification, deterministic registry views, bounded recovery assessment,
+advisory recovery plan; no mutation of any kind); the **static-guard and
+global-security boundaries are extended** with exact module/API
+allowlists; the **implementation report
+(`docs/reports/wp-8e-registry-recovery-read-slice-implementation-report.md`)
+is complete** with the full verification evidence; **WP-8-E is not yet
+closed** — implementation acceptance and the next review gate remain
+pending; retention and migration remain out of scope; WP-8 implementation
+is **not closed**. WP-9 and later packages are **not authorized**. No push,
+release, publication, installation, or deployment has occurred. Each disposition
 is one of RESOLVED (by this planning package or earlier closed packages),
 DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
 

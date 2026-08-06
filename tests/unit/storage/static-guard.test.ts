@@ -1,8 +1,9 @@
 /**
- * WP-8-C static guards: per-module filesystem API allowlists, exact-name
- * import discipline, capability-brand path scoping, creator-consumer import
- * edges, absence of ambient authority, export/package deltas, and contract
- * integrity (ADR-028 decision E; W8C-D06/D14).
+ * WP-8-C/WP-8-D/WP-8-E static guards: per-module filesystem API
+ * allowlists, exact-name import discipline, capability-brand path scoping,
+ * creator-consumer import edges, absence of ambient authority,
+ * export/package deltas, and contract integrity (ADR-028 decision E;
+ * W8C-D06/D14).
  *
  * These checks are static/test-time only; they do not mutate anything.
  *
@@ -54,6 +55,9 @@ const FS_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   'src/storage/locks/lock.ts': ['openSync', 'closeSync', 'writeSync', 'readFileSync', 'fsyncSync', 'fstatSync', 'unlinkSync', 'constants'],
   'src/storage/read/read-record.ts': ['openSync', 'closeSync', 'fstatSync', 'readFileSync', 'constants'],
   'src/storage/read/enumerate.ts': ['readdirSync', 'openSync', 'closeSync', 'fstatSync', 'constants'],
+  // WP-8-E: the read-only store scan (records/audit/tmp/locks surfaces). The
+  // allowlist is deliberately read-only: no mutating fs API is delegated.
+  'src/storage/recovery/scan.ts': ['readdirSync', 'openSync', 'closeSync', 'fstatSync', 'readFileSync', 'constants'],
 };
 
 /** Complete filesystem API name vocabulary (denied outside the allowlist). */
@@ -79,7 +83,7 @@ const CREATOR_EDGES: Readonly<Record<string, readonly string[]>> = {
   createTrustedWriteRequest: ['src/storage/publication/index.ts'],
   createWriteCapability: ['src/storage/publication/index.ts'],
   createProvisioningCapability: ['src/storage/publication/index.ts'],
-  createReadCapability: ['src/storage/read/index.ts'],
+  createReadCapability: ['src/storage/read/index.ts', 'src/storage/registry/compose.ts', 'src/storage/recovery/compose.ts'],
   createVerifyCapability: ['src/storage/read/index.ts'],
 };
 
@@ -470,12 +474,16 @@ test('static guard: no timers, randomness, or environment dependence in storage 
   }
 });
 
-test('static guard: no forbidden later-phase directories exist (W8B-C03; WP-8-D)', () => {
-  for (const d of ['registry', 'recovery', 'retention']) {
+test('static guard: no forbidden later-phase directories exist (W8B-C03; WP-8-D/E)', () => {
+  for (const d of ['retention']) {
     assert.equal(existsSync(join(STORAGE_SRC, d)), false, `src/storage/${d} must not exist in this phase`);
   }
   // WP-8-D authorized directories exist exactly once each.
   for (const d of ['publication', 'locks', 'read', 'audit']) {
+    assert.equal(existsSync(join(STORAGE_SRC, d)), true, `src/storage/${d} must exist in this phase`);
+  }
+  // WP-8-E authorized directories exist exactly once each (read-only slice).
+  for (const d of ['registry', 'recovery']) {
     assert.equal(existsSync(join(STORAGE_SRC, d)), true, `src/storage/${d} must exist in this phase`);
   }
 });
@@ -526,22 +534,44 @@ test('static guard: locks-only entropy/process exception does not leak (D-3)', (
   }
 });
 
-test('static guard: read tree is mutation-free and readdirSync is the enumeration owner (WP-8-D)', () => {
-  const readTree = ['src/storage/read/read-record.ts', 'src/storage/read/enumerate.ts'];
+test('static guard: read/scan tree is mutation-free and readdirSync is the scan owner (WP-8-D/E)', () => {
+  const readTree = ['src/storage/read/read-record.ts', 'src/storage/read/enumerate.ts', 'src/storage/recovery/scan.ts'];
   const mutating = /\b(writeSync|linkSync|unlinkSync|mkdirSync|fsyncSync|fchmodSync|renameSync|rmSync|rmdirSync|cpSync|chmodSync|chownSync)\b/;
   for (const path of readTree) {
     const content = readFileSync(join(STORAGE_SRC, path.replace('src/storage/', '')), 'utf8');
     assert.equal(mutating.test(content), false, `${path} imports or uses a mutating filesystem API`);
   }
-  // readdirSync is confined to the enumeration module (and provision.ts's
-  // fixed entry-set verification) in the storage tree.
-  const readdirOwners = ['src/storage/read/enumerate.ts', 'src/storage/initialization/provision.ts'];
+  // readdirSync is confined to the enumeration module, the provisioning
+  // classifier, and the WP-8-E recovery scan module in the storage tree.
+  const readdirOwners = ['src/storage/read/enumerate.ts', 'src/storage/initialization/provision.ts', 'src/storage/recovery/scan.ts'];
   const files = collectTsFiles(STORAGE_SRC);
   for (const file of files) {
     const path = rel(file);
     if (/readdirSync/.test(readFileSync(file, 'utf8'))) {
       assert.ok(readdirOwners.includes(path), `${path} uses readdirSync outside the authorized owners`);
     }
+  }
+});
+
+test('static guard: registry/recovery boundaries hold (WP-8-E)', () => {
+  const files = collectTsFiles(STORAGE_SRC);
+  const fsFree = ['src/storage/registry/classify.ts', 'src/storage/registry/derive.ts', 'src/storage/registry/compose.ts', 'src/storage/recovery/assess.ts', 'src/storage/recovery/plan.ts', 'src/storage/recovery/compose.ts'];
+  const scanAllowlist = FS_ALLOWLIST['src/storage/recovery/scan.ts'] ?? [];
+  const mutating = ['writeSync', 'linkSync', 'unlinkSync', 'mkdirSync', 'fsyncSync', 'fchmodSync', 'renameSync', 'rmSync', 'rmdirSync', 'cpSync', 'chmodSync', 'chownSync'];
+  for (const name of mutating) {
+    assert.equal(scanAllowlist.includes(name), false, `scan allowlist must not contain the mutating API ${name}`);
+  }
+  for (const path of fsFree) {
+    const content = readFileSync(join(STORAGE_SRC, path.replace('src/storage/', '')), 'utf8');
+    for (const name of FS_API_NAMES) {
+      assert.equal(new RegExp(`\\b${name}\\b`).test(content), false, `${path} references filesystem API ${name} (fs-free boundary)`);
+    }
+  }
+  // The WP-8-E slice performs no recovery mutation: no quarantine/lock-break/
+  // reconstruction/removal operation export exists anywhere in src/storage.
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    assert.equal(/quarantineObject|breakLock|removeOrphan|reconstructAudit|executerecovery|performRecovery|issueRecoveryOperation/i.test(content), false, `${rel(file)} contains a recovery-mutation operation marker`);
   }
 });
 

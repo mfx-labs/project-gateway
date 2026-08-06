@@ -52,3 +52,5 @@ export {
   verifyStoreMetadataAtPath,
 } from './read/read-record.js';
 export { enumerateClassByIdentity } from './read/enumerate.js';
+export * from './registry/index.js';
+export * from './recovery/index.js';

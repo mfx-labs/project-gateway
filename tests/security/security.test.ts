@@ -28,12 +28,13 @@ const DIST = join(__dirname, '..', '..', '..', 'dist');
  * `node:fs` API allowlists, exact-name import discipline, brand-path scoping,
  * creator-consumer edges, and export/package/dependency/contract invariants.
  *
- * ONLY the exact compiled modules listed here — the five independently
- * verified filesystem-bearing WP-8-C sources mapped to their deterministic
- * compiled outputs — are delegated to that boundary. A blanket `/storage/`
- * or `dist/storage/**` exclusion is deliberately NOT used: every other
- * compiled storage module (barrels, the orchestrator, state classifier,
- * metadata profile, capability and trusted-input modules, and any future
+ * ONLY the exact compiled modules listed here — the filesystem-bearing
+ * WP-8-C sources, the WP-8-D sources, and the WP-8-E read-only scan source
+ * mapped to their deterministic compiled outputs — are delegated to that
+ * boundary. A blanket `/storage/` or `dist/storage/**` exclusion is
+ * deliberately NOT used: every other compiled storage module (barrels, the
+ * orchestrator, state classifier, metadata profile, capability and
+ * trusted-input modules, pure registry/recovery derivation, and any future
  * or sibling module) remains subject to this global blanket no-I/O
  * assertion. The predicate matches exact normalized compiled paths only and
  * fails closed on anything else.
@@ -49,6 +50,10 @@ const STORAGE_FS_DELEGATED_MODULES: ReadonlySet<string> = new Set([
   'storage/locks/lock.js',
   'storage/read/read-record.js',
   'storage/read/enumerate.js',
+  // WP-8-E: the read-only store scan (sole new scan owner; read-only
+  // allowlist; every other registry/recovery module is fs-free and remains
+  // subject to this blanket assertion).
+  'storage/recovery/scan.js',
 ]);
 
 /**
@@ -186,14 +191,15 @@ test('security: bounded traversal resists deep nesting', () => {
 });
 
 test('security: storage fs-module delegation is exact and fail-closed', () => {
-  // Accepted: the exact compiled paths of the five independently verified
-  // filesystem-bearing WP-8-C sources.
+  // Accepted: the exact compiled paths of the filesystem-bearing WP-8-C/D
+  // sources plus the WP-8-E read-only scan module.
   const accepted = [
     'dist/storage/root/resolve.js',
     'dist/storage/initialization/provision.js',
     'dist/storage/probe/probe.js',
     'dist/storage/probe/scratch.js',
     'dist/storage/metadata/bootstrap-persist.js',
+    'dist/storage/recovery/scan.js',
   ];
   for (const path of accepted) {
     assert.equal(isStorageFsDelegatedModule(path), true, `expected delegation for ${path}`);
@@ -240,7 +246,7 @@ test('security: storage fs-module delegation is exact and fail-closed', () => {
   for (const path of rejected) {
     assert.equal(isStorageFsDelegatedModule(path), false, `must reject ${path}`);
   }
-  // The delegated set among the real compiled tree is exactly the five paths.
+  // The delegated set among the real compiled tree is exactly the delegated set.
   const delegatedInTree = walk(DIST).filter((p) => isStorageFsDelegatedModule(p)).map((p) => p.slice(DIST.length + 1).split(sep).join('/')).sort();
   assert.deepEqual(delegatedInTree, [...STORAGE_FS_DELEGATED_MODULES].sort());
 });

@@ -207,3 +207,101 @@ export interface CapabilityDescriptor {
   readonly kind: CapabilityKind;
   readonly mutationCapable: boolean;
 }
+
+// ─── WP-8-C: trusted root, initialization, and metadata domain types ──────
+// Type-level vocabulary for the trusted-root/bootstrap phase. No value in
+// this module authorizes mutation; the initialization capability is the only
+// mutation gate and is created only by the gated factory in
+// `src/storage/capabilities/authenticity.ts`.
+
+/** Descriptor-bound identity of the trusted parent or a namespace root. */
+export interface RootIdentity {
+  /** Canonical absolute path (never derived from env, argv, cwd, or request). */
+  readonly canonicalPath: string;
+  readonly dev: number;
+  readonly ino: number;
+  readonly fileType: 'directory' | 'file' | 'symlink' | 'other';
+}
+
+/** Descriptor-bound identity of one versioned namespace root. */
+export interface NamespaceIdentity {
+  readonly kind: NamespaceKind;
+  readonly canonicalPath: string;
+  readonly dev: number;
+  readonly ino: number;
+}
+
+/** Per-namespace and aggregate initialization state vocabulary. */
+export type InitializationStateKind =
+  | 'ABSENT'
+  | 'PROVISIONAL'
+  | 'INITIALIZED'
+  | 'PARTIAL'
+  | 'FOREIGN'
+  | 'IDENTITY_DRIFTED'
+  | 'MALFORMED_METADATA'
+  | 'UNSUPPORTED_VERSION';
+
+/** Per-namespace state classification with the fixed entry set. */
+export interface NamespaceState {
+  readonly kind: NamespaceKind;
+  readonly state: InitializationStateKind;
+  /** Fixed expected entries present under the namespace root. */
+  readonly entries: readonly string[];
+  /** True when an unknown or unexpected entry was detected (fails closed). */
+  readonly unknownEntries: boolean;
+  /** Namespace root identity when the directory exists and was verified. */
+  readonly identity?: NamespaceIdentity;
+}
+
+/** Aggregate initialization state over both namespaces. */
+export interface AggregateState {
+  readonly state: InitializationStateKind;
+  readonly namespaces: readonly NamespaceState[];
+}
+
+/** Bounded, deterministic compatibility-probe result (FSL-010). */
+export interface ProbeResultProfile {
+  readonly sameDevice: boolean;
+  readonly hardLink: 'supported' | 'unsupported';
+  readonly directoryFsync: 'supported' | 'unsupported';
+  readonly regularFileFsync: 'supported' | 'unsupported';
+  readonly exclusiveCreation: 'supported' | 'unsupported';
+  readonly noFollow: 'supported' | 'unsupported';
+  readonly caseSensitive: boolean;
+}
+
+/** Immutable per-namespace StoreMetadata facts (LAY-002, FSL-010). */
+export interface StoreMetadataFacts {
+  readonly metadataFormatVersion: '1';
+  readonly layoutVersion: string;
+  readonly namespaceKind: NamespaceKind;
+  readonly namespaceIdentity: NamespaceIdentity;
+  readonly parentIdentity: RootIdentity;
+  readonly lane: string;
+  readonly probe: ProbeResultProfile;
+  readonly configurationIdentity: string;
+  readonly actionIdentity: string;
+  readonly limitProfileIdentity: LimitProfileIdentity;
+}
+
+/** Re-derivable stable facts used for metadata replay comparison (probe integrity is carried by the payload digest). */
+export type StoreMetadataExpectation = Omit<StoreMetadataFacts, 'probe'>;
+
+/** Parsed, verified StoreMetadata model (canonical envelope + digests). */
+export interface VerifiedStoreMetadata {
+  readonly facts: StoreMetadataExpectation;
+  readonly payloadDigest: string;
+  readonly recordByteDigest: string;
+  readonly canonicalUtf8: string;
+}
+
+/** Truthful initialization result; namespace identities are results, never retroactive bindings. */
+export interface InitializationResult {
+  readonly ok: boolean;
+  readonly state?: InitializationStateKind;
+  readonly parentIdentity?: RootIdentity;
+  readonly namespaceIdentities?: readonly NamespaceIdentity[];
+  readonly metadataDigests?: readonly { readonly namespaceKind: NamespaceKind; readonly recordByteDigest: string }[];
+  readonly findings?: readonly StorageFinding[];
+}

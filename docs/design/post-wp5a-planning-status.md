@@ -62,9 +62,29 @@ rereview and the final status micro spot check returned `WP-8-C FINAL
 STATUS MICRO SPOT CHECK: ACCEPTED` with `OPEN FINDINGS: 0`**; the
 **WP-8-C decision baseline is ACCEPTED** and the **WP-8-C
 decision-baseline commit** (subject `docs: establish WP-8-C decision
-baseline`) is the commit containing this update; the **next gate is
-human authorization of WP-8-C implementation**; **WP-8-C implementation is not
-authorized**; **WP-8-D and later phases are not authorized**; WP-8
+baseline`) is the commit containing this update; **WP-8-C implementation
+was human-authorized and is complete** (trusted root, provisioning, probe,
+metadata bootstrap, trusted input, and initialization capability; the
+production control-plane action-provenance producer is **not implemented**
+and **production initialization is unreachable**); the **implementation is
+not yet accepted**; the **focused security-test integration correction is
+complete** (exact compiled-module delegation in the global no-I/O security
+test; blanket storage exclusion not used; full default workflow
+**1358/1358**); the **senior security implementation review returned
+corrections required** (two MODERATE findings W8C-S01…S02 and four MINOR
+findings W8C-S03…S06); the **focused security implementation correction
+closed all six**; the **focused security implementation rereview found the
+six findings functionally closed** and returned corrections required only
+for **two MINOR evidence findings**; the **final security-evidence micro
+correction closed both evidence findings**; the **final historical-evidence
+label correction closed the remaining labeling inconsistency**; the **final
+historical-evidence micro spot check returned `WP-8-C FINAL HISTORICAL-
+EVIDENCE MICRO SPOT CHECK: ACCEPTED` with `OPEN FINDINGS: 0`**; the
+**WP-8-C implementation is ACCEPTED** and the **WP-8-C implementation
+baseline commit** (subject `feat: establish WP-8-C trusted storage
+bootstrap`) is the commit containing this update; the
+**next gate is the independent WP-8-C implementation-commit verification**; **WP-8-D and later phases are not
+authorized**; WP-8
 implementation is **not closed**. WP-9 and later
 packages are **not authorized**. No push, release,
 publication, installation, or deployment has occurred. Each disposition

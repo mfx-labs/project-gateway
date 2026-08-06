@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   parseRawJsonInput,
@@ -20,6 +20,48 @@ import {
 const reg = createSchemaRegistry();
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const DIST = join(__dirname, '..', '..', '..', 'dist');
+
+/**
+ * WP-8-C exact compiled-module delegation (focused security-test integration
+ * correction). The WP-8 storage boundary owns a stricter dedicated security
+ * suite (`tests/unit/storage/static-guard.test.ts`) that enforces per-module
+ * `node:fs` API allowlists, exact-name import discipline, brand-path scoping,
+ * creator-consumer edges, and export/package/dependency/contract invariants.
+ *
+ * ONLY the exact compiled modules listed here — the five independently
+ * verified filesystem-bearing WP-8-C sources mapped to their deterministic
+ * compiled outputs — are delegated to that boundary. A blanket `/storage/`
+ * or `dist/storage/**` exclusion is deliberately NOT used: every other
+ * compiled storage module (barrels, the orchestrator, state classifier,
+ * metadata profile, capability and trusted-input modules, and any future
+ * or sibling module) remains subject to this global blanket no-I/O
+ * assertion. The predicate matches exact normalized compiled paths only and
+ * fails closed on anything else.
+ */
+const STORAGE_FS_DELEGATED_MODULES: ReadonlySet<string> = new Set([
+  'storage/root/resolve.js',
+  'storage/initialization/provision.js',
+  'storage/probe/probe.js',
+  'storage/probe/scratch.js',
+  'storage/metadata/bootstrap-persist.js',
+]);
+
+/**
+ * Exact-path delegation predicate. Normalizes platform separators to
+ * forward slashes and returns true ONLY for the exact delegated compiled
+ * module paths. Path-traversal spellings, near-match filenames, nested
+ * descendants, sibling files, and hypothetical future modules all fail
+ * closed (they are not members of the exact set).
+ */
+export function isStorageFsDelegatedModule(compiledPath: string): boolean {
+  const normalized = compiledPath.split(sep).join('/');
+  // Accept both absolute compiled paths (.../dist/storage/...) and
+  // dist-relative spellings; anything else fails closed.
+  const marker = '/dist/';
+  const idx = normalized.lastIndexOf(marker);
+  const rel = idx === -1 ? (normalized.startsWith('dist/') ? normalized.slice('dist/'.length) : normalized) : normalized.slice(idx + marker.length);
+  return STORAGE_FS_DELEGATED_MODULES.has(rel);
+}
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -50,7 +92,13 @@ test('security: production modules perform no hidden filesystem/network/process 
   // boundary with their own security suite (tests/wp7/security) verifying
   // that the only process I/O is the constrained trusted Git executable and
   // descriptor-bound reads; they are excluded here by boundary.
-  const prodFiles = walk(DIST).filter((p) => !p.includes('conformance') && !p.includes('/adapters/') && !p.includes('/reader/') && !p.includes('/git/') && !p.includes('/fff/'));
+  // WP-8 storage: ONLY the exact compiled filesystem-bearing modules listed
+  // in STORAGE_FS_DELEGATED_MODULES are delegated to the stricter dedicated
+  // storage static guard (tests/unit/storage/static-guard.test.ts); every
+  // other compiled storage module remains subject to this assertion.
+  const prodFiles = walk(DIST)
+    .filter((p) => !p.includes('conformance') && !p.includes('/adapters/') && !p.includes('/reader/') && !p.includes('/git/') && !p.includes('/fff/'))
+    .filter((p) => !isStorageFsDelegatedModule(p));
   for (const p of prodFiles) {
     if (p.includes('runner.js') || p.includes('corpus-bundle')) continue;
     const src = readFileSync(p, 'utf8');
@@ -130,6 +178,66 @@ test('security: bounded traversal resists deep nesting', () => {
   const r = parseRawJsonInput(deep, { subjectClass: 'artifact' });
   assert.equal(r.ok, false);
   if (!r.ok) assert.equal(r.report.findings[0]?.category, 'RESOURCE-LIMIT');
+});
+
+test('security: storage fs-module delegation is exact and fail-closed', () => {
+  // Accepted: the exact compiled paths of the five independently verified
+  // filesystem-bearing WP-8-C sources.
+  const accepted = [
+    'dist/storage/root/resolve.js',
+    'dist/storage/initialization/provision.js',
+    'dist/storage/probe/probe.js',
+    'dist/storage/probe/scratch.js',
+    'dist/storage/metadata/bootstrap-persist.js',
+  ];
+  for (const path of accepted) {
+    assert.equal(isStorageFsDelegatedModule(path), true, `expected delegation for ${path}`);
+  }
+  // Native platform-separator construction of an exact path is accepted.
+  assert.equal(isStorageFsDelegatedModule(['storage', 'root', 'resolve.js'].join(sep)), true, 'native separator normalization');
+  // Rejected: barrels, orchestrator, state, metadata profile, capability and
+  // trusted-input modules, siblings, near-matches, tricks, and futures.
+  const rejected = [
+    'dist/storage/index.js',
+    'storage/index.js',
+    'storage/root/index.js',
+    'storage/initialization/index.js',
+    'storage/probe/index.js',
+    'storage/metadata/index.js',
+    'storage/capabilities/index.js',
+    'storage/trusted-input/index.js',
+    'storage/initialization/initialize.js',
+    'storage/initialization/state.js',
+    'storage/metadata/store-metadata.js',
+    'storage/capabilities/authenticity.js',
+    'storage/trusted-input/bootstrap-input.js',
+    'storage/root/identity.js',
+    'storage/root/overlap.js',
+    'storage/root/resolve2.js',
+    'storage/root/resolvex.js',
+    'storage/root/xresolve.js',
+    'storage/root/resolve.jsx',
+    'storage/root/resolve.js.bak',
+    'storage/root/not-resolve.js',
+    'storage/root/resolve-helper.js',
+    'storage/root/sub/resolve.js',
+    'storage/root/sub/provision.js',
+    'storage/../storage/root/resolve.js',
+    'storage/root/../root/resolve.js',
+    'storage/root/future.js',
+    'storage/future/whatever.js',
+    'storage\\root\\resolve.js',
+    'storage/root/resolve',
+    'resolve.js',
+    'dist/storage/root/resolve.ts',
+    'dist/storage/root/resolve.js/extra',
+  ];
+  for (const path of rejected) {
+    assert.equal(isStorageFsDelegatedModule(path), false, `must reject ${path}`);
+  }
+  // The delegated set among the real compiled tree is exactly the five paths.
+  const delegatedInTree = walk(DIST).filter((p) => isStorageFsDelegatedModule(p)).map((p) => p.slice(DIST.length + 1).split(sep).join('/')).sort();
+  assert.deepEqual(delegatedInTree, [...STORAGE_FS_DELEGATED_MODULES].sort());
 });
 
 test('security: deterministic finding order', () => {

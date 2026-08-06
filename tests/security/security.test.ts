@@ -44,6 +44,11 @@ const STORAGE_FS_DELEGATED_MODULES: ReadonlySet<string> = new Set([
   'storage/probe/probe.js',
   'storage/probe/scratch.js',
   'storage/metadata/bootstrap-persist.js',
+  // WP-8-D exact fs-bearing modules (ADR-029 implementation constraints):
+  'storage/publication/publish-record.js',
+  'storage/locks/lock.js',
+  'storage/read/read-record.js',
+  'storage/read/enumerate.js',
 ]);
 
 /**

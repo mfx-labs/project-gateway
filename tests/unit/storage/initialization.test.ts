@@ -13,7 +13,7 @@ import { mkdtempSync, chmodSync, statSync, mkdirSync, rmSync, readFileSync, writ
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { markValidatedTrustedWorkspaceConfiguration } from '../../../src/trusted/configuration-brand.js';
-import { createStorageBootstrapActionProvenance } from '../../../src/storage/trusted-input/bootstrap-input.js';
+import { createStorageBootstrapActionProvenance, createTrustedStorageBootstrapInput } from '../../../src/storage/trusted-input/bootstrap-input.js';
 import { initializeTrustedStore } from '../../../src/storage/initialization/initialize.js';
 import { classifyNamespaceOpenError } from '../../../src/storage/initialization/provision.js';
 import { defaultLimitProfile } from '../../../src/storage/limits/limits.js';
@@ -115,11 +115,20 @@ test('initialization: foreign metadata fails closed without repair', () => {
 test('initialization: unknown entries fail closed', () => {
   const env = makeEnv();
   assert.equal(initializeTrustedStore(request(env.dir)).ok, true);
-  mkdirSync(join(env.dir, 'store-v1', 'records'), { mode: 0o700 });
+  // A truly unknown entry (not a phase-3 member) fails closed; the phase-3
+  // classifier policy (D-7) accepts records/audit/locks as fixed entries.
+  mkdirSync(join(env.dir, 'store-v1', 'evil'), { mode: 0o700 });
   const result = initializeTrustedStore(request(env.dir));
   assert.equal(result.ok, false);
   assert.equal(result.findings?.[0]?.code, 'ERR-STO-INTEGRITY');
+  // A deferred phase-4 entry (index) also fails closed (D-7 state D).
+  const env2 = makeEnv();
+  assert.equal(initializeTrustedStore(request(env2.dir)).ok, true);
+  mkdirSync(join(env2.dir, 'store-v1', 'index'), { mode: 0o700 });
+  const result2 = initializeTrustedStore(request(env2.dir));
+  assert.equal(result2.ok, false);
   rmSync(env.dir, { recursive: true, force: true });
+  rmSync(env2.dir, { recursive: true, force: true });
 });
 
 test('initialization: non-genuine or mismatched operands fail closed', () => {
@@ -266,4 +275,181 @@ test('initialization: namespace open-error classification is deterministic (W8C-
   assert.equal(classifyNamespaceOpenError(undefined), 'drifted');
   assert.equal(classifyNamespaceOpenError('EIO'), 'drifted');
   assert.equal(classifyNamespaceOpenError('EOTHER'), 'drifted');
+});
+
+// ─── WP-8-D: phase-3 classifier policy (ADR-029 D-7/M-2) ───────────────────
+
+import { classifyNamespace, NAMESPACE_CLASSIFIER_ENTRIES } from '../../../src/storage/initialization/provision.js';
+import { createInitializationCapability } from '../../../src/storage/capabilities/authenticity.js';
+import type { RootIdentity } from '../../../src/storage/types.js';
+
+function classifierEnv() {
+  const env = makeEnv();
+  const input = (() => {
+    const r = createTrustedStorageBootstrapInput(genuineConfig(), createStorageBootstrapActionProvenance({
+      actionIdentity: 'classify-action',
+      locator: env.dir,
+      serviceUid: UID,
+      forbiddenRoots: [],
+      configurationIdentity: CONFIG_IDENTITY,
+      limitProfile: defaultLimitProfile(),
+    }), { locator: env.dir, serviceUid: UID, forbiddenRoots: [], limitProfile: defaultLimitProfile() });
+    assert.equal(r.ok, true);
+    return r.input!;
+  })();
+  const stat = statSync(env.dir);
+  const parent: RootIdentity = { canonicalPath: env.dir, dev: Number(stat.dev), ino: Number(stat.ino), fileType: 'directory' };
+  const capability = createInitializationCapability({ trustedInput: input, parentIdentity: parent })!;
+  const nsRoot = join(env.dir, 'store-v1');
+  const seed = (entries: readonly string[]): void => {
+    mkdirSync(nsRoot, { recursive: true, mode: 0o700 });
+    for (const e of entries) {
+      try {
+        mkdirSync(join(nsRoot, e), { mode: 0o700 });
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      }
+    }
+  };
+  return { env, capability, parent, nsRoot, seed, cleanup: () => rmSync(env.dir, { recursive: true, force: true }) };
+}
+
+test('classifier: phase-2 initialized store is upgradeable, never foreign (state A)', () => {
+  const c = classifierEnv();
+  try {
+    c.seed(['metadata', 'tmp']);
+    const ns = classifyNamespace(c.capability, c.parent, 'store-records', UID, true);
+    assert.equal(ns.state, 'PROVISIONAL');
+    assert.equal(ns.phase3UpgradeRequired, true);
+    assert.equal(ns.unknownEntries, false);
+  } finally {
+    c.cleanup();
+  }
+});
+
+test('classifier: upgrade in progress and incomplete phase-3 sets are PROVISIONAL regardless of the metadata flag (states B/C)', () => {
+  const c = classifierEnv();
+  try {
+    // B: allowed subset without the metadata dir yet.
+    c.seed(['tmp', 'records']);
+    const b = classifyNamespace(c.capability, c.parent, 'store-records', UID, false);
+    assert.equal(b.state, 'PROVISIONAL');
+    assert.equal(b.unknownEntries, false);
+    // C: metadata + tmp + a proper subset of records/audit/locks, with
+    // verified metadata: still PROVISIONAL (never FOREIGN).
+    c.seed(['metadata', 'tmp', 'records', 'audit']);
+    const cState = classifyNamespace(c.capability, c.parent, 'store-records', UID, true);
+    assert.equal(cState.state, 'PROVISIONAL');
+    assert.equal(cState.phase3UpgradeRequired, undefined);
+    assert.equal(cState.unknownEntries, false);
+  } finally {
+    c.cleanup();
+  }
+});
+
+test('classifier: foreign and deferred entries fail closed (state D)', () => {
+  const c = classifierEnv();
+  try {
+    // Deferred phase-4 entry present.
+    c.seed(['metadata', 'tmp', 'records', 'audit', 'locks', 'index']);
+    const d = classifyNamespace(c.capability, c.parent, 'store-records', UID, true);
+    assert.equal(d.state, 'FOREIGN');
+    assert.equal(d.unknownEntries, true);
+    // Arbitrary unknown entry.
+    c.seed(['metadata', 'tmp', 'records', 'audit', 'locks', 'quarantine']);
+    assert.equal(classifyNamespace(c.capability, c.parent, 'store-records', UID, true).state, 'FOREIGN');
+    c.seed(['metadata', 'tmp', 'evil']);
+    assert.equal(classifyNamespace(c.capability, c.parent, 'store-records', UID, true).state, 'FOREIGN');
+  } finally {
+    c.cleanup();
+  }
+});
+
+test('classifier: exact verified phase-3 set is INITIALIZED (state E); partial set after crash stays PROVISIONAL', () => {
+  const c = classifierEnv();
+  try {
+    c.seed(['metadata', 'tmp', 'records', 'audit', 'locks']);
+    const e = classifyNamespace(c.capability, c.parent, 'store-records', UID, true);
+    assert.equal(e.state, 'INITIALIZED');
+    assert.equal(e.entries.length, 5);
+  } finally {
+    c.cleanup();
+  }
+  // Crash-partial set (some phase-3 dirs missing): PROVISIONAL, retryable,
+  // deterministic retry path — never FOREIGN.
+  const c2 = classifierEnv();
+  try {
+    c2.seed(['metadata', 'tmp', 'records']);
+    const partial = classifyNamespace(c2.capability, c2.parent, 'store-records', UID, true);
+    assert.equal(partial.state, 'PROVISIONAL');
+    assert.equal(partial.unknownEntries, false);
+  } finally {
+    c2.cleanup();
+  }
+});
+
+test('classifier: the phase-3 fixed entry set is committed policy, not caller input', () => {
+  assert.deepEqual([...NAMESPACE_CLASSIFIER_ENTRIES], ['metadata', 'tmp', 'records', 'audit', 'locks']);
+});
+
+
+test('classifier state-D: a regular file at a fixed entry path fails closed (wrong type)', () => {
+  const c = classifierEnv();
+  try {
+    c.seed(['metadata', 'tmp']);
+    writeFileSync(join(c.nsRoot, 'records'), 'not a directory', { mode: 0o600 });
+    const ns = classifyNamespace(c.capability, c.parent, 'store-records', UID, true);
+    assert.equal(ns.state, 'FOREIGN');
+    assert.equal(ns.unknownEntries, false, 'the entry NAME is known; the OBJECT is invalid');
+  } finally {
+    c.cleanup();
+  }
+});
+
+test('classifier state-D: a symlink at a fixed entry path fails closed (no-follow)', () => {
+  const c = classifierEnv();
+  try {
+    c.seed(['metadata', 'tmp', 'records', 'audit', 'locks']);
+    const target = join(c.nsRoot, 'metadata');
+    rmSync(join(c.nsRoot, 'tmp'), { recursive: true, force: true });
+    symlinkSync(target, join(c.nsRoot, 'tmp'));
+    const ns = classifyNamespace(c.capability, c.parent, 'store-records', UID, true);
+    assert.equal(ns.state, 'FOREIGN');
+  } finally {
+    c.cleanup();
+  }
+});
+
+test('classifier state-D: wrong mode at a fixed entry path fails closed', () => {
+  const c = classifierEnv();
+  try {
+    c.seed(['metadata', 'tmp', 'records', 'audit', 'locks']);
+    chmodSync(join(c.nsRoot, 'locks'), 0o644);
+    const ns = classifyNamespace(c.capability, c.parent, 'store-records', UID, true);
+    assert.equal(ns.state, 'FOREIGN');
+    assert.equal(ns.unknownEntries, false);
+  } finally {
+    c.cleanup();
+  }
+});
+
+test('classifier state-D: wrong UID at a fixed entry path fails closed (privilege-gated)', (t) => {
+  const c = classifierEnv();
+  try {
+    c.seed(['metadata', 'tmp', 'records', 'audit', 'locks']);
+    try {
+      chownSync(join(c.nsRoot, 'audit'), 12345, 12345);
+    } catch {
+      // Deterministic synthetic coverage for wrong-UID policy lives in the
+      // committed stat-policy tests (verifyDirectoryStat); the classifier
+      // reuses that exact predicate, so this integration variant may skip
+      // only when the environment lacks chown privileges.
+      t.skip('chown requires privileges; wrong-UID coverage is provided by the synthetic stat-policy tests');
+      return;
+    }
+    const ns = classifyNamespace(c.capability, c.parent, 'store-records', UID, true);
+    assert.equal(ns.state, 'FOREIGN');
+  } finally {
+    c.cleanup();
+  }
 });

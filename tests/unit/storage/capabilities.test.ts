@@ -141,9 +141,198 @@ test('capabilities: binding contains only pre-initialization facts', () => {
   assert.equal(capability.binding.configurationIdentity, CONFIG_IDENTITY);
   assert.equal(capability.binding.actionIdentity, 'action-1');
   assert.deepEqual(capability.binding.namespaceDerivations, { configNamespace: 'config-v1', storeNamespace: 'store-v1' });
-  assert.deepEqual(capability.binding.operationSet, ['namespace-initialize']);
+  assert.deepEqual(capability.binding.operationSet, ['namespace-initialize']); // M-1: least authority per issuance
   // No namespace identity or metadata digest exists in the binding.
   assert.equal('namespaceIdentities' in capability.binding, false);
   assert.equal('metadataDigests' in capability.binding, false);
   rmSync(parent.dir, { recursive: true, force: true });
+});
+
+// ─── WP-8-D: write/read/verify capabilities and provisioning issuer ───────
+
+import {
+  createWriteCapability,
+  createReadCapability,
+  createVerifyCapability,
+  createProvisioningCapability,
+  isGenuineWriteCapability,
+  isGenuineReadCapability,
+  isGenuineVerifyCapability,
+  WRITE_OPERATION_SET,
+  READ_OPERATION_SET,
+  VERIFY_OPERATION_SET,
+  type WriteCapability,
+} from '../../../src/storage/capabilities/authenticity.js';
+import {
+  createStorageWriteActionProvenance,
+  createTrustedWriteRequest,
+  isGenuineStorageWriteActionProvenance,
+  isGenuineTrustedWriteRequest,
+} from '../../../src/storage/trusted-input/bootstrap-input.js';
+import type { VerifiedStoreInstance } from '../../../src/storage/types.js';
+
+const WRITE_ACTION = 'write-action-1';
+
+function writeProvenance(actionIdentity = WRITE_ACTION) {
+  return createStorageWriteActionProvenance({
+    actionIdentity,
+    locator: '/trusted/parent',
+    serviceUid: UID,
+    forbiddenRoots: [],
+    configurationIdentity: CONFIG_IDENTITY,
+    limitProfile: defaultLimitProfile(),
+  });
+}
+
+function writeRequest(actionIdentity = WRITE_ACTION): NonNullable<ReturnType<typeof createTrustedWriteRequest>['request']> {
+  const p = writeProvenance(actionIdentity);
+  const result = createTrustedWriteRequest(genuineConfig(), p, { locator: '/trusted/parent', serviceUid: UID, forbiddenRoots: [], limitProfile: defaultLimitProfile() });
+  assert.equal(result.ok, true);
+  return result.request!;
+}
+
+function makeStoreInstance(overrides: Partial<VerifiedStoreInstance> = {}): VerifiedStoreInstance {
+  const parent = makeParent();
+  return {
+    parentIdentity: parent.identity,
+    namespaces: [
+      { kind: 'configuration', canonicalPath: `${parent.identity.canonicalPath}/config-v1`, dev: parent.identity.dev, ino: parent.identity.ino + 1 },
+      { kind: 'store-records', canonicalPath: `${parent.identity.canonicalPath}/store-v1`, dev: parent.identity.dev, ino: parent.identity.ino + 2 },
+    ],
+    configurationIdentity: CONFIG_IDENTITY,
+    serviceUid: UID,
+    limitProfile: defaultLimitProfile(),
+    ...overrides,
+  };
+}
+
+test('capabilities: write capability requires a genuine trusted write request and verified store instance', () => {
+  const store = makeStoreInstance();
+  const request = writeRequest();
+  const capability = createWriteCapability({ trustedWriteRequest: request, storeInstance: store });
+  assert.ok(capability !== undefined);
+  assert.equal(isGenuineWriteCapability(capability), true);
+  assert.deepEqual(capability!.binding.operationSet, [...WRITE_OPERATION_SET]);
+  assert.equal(capability!.binding.actionIdentity, WRITE_ACTION);
+  // Structural forgery of either operand fails.
+  assert.equal(createWriteCapability({ trustedWriteRequest: { ...request }, storeInstance: store }), undefined);
+  assert.equal(createWriteCapability({ trustedWriteRequest: request, storeInstance: { ...store, configurationIdentity: 'sha-256:' + 'b'.repeat(64) } }), undefined);
+  // Cross-kind: a bootstrap input is never a write request.
+  assert.equal(createWriteCapability({ trustedWriteRequest: makeInput(), storeInstance: store }), undefined);
+  rmSync(store.parentIdentity.canonicalPath, { recursive: true, force: true });
+});
+
+test('capabilities: write capability verify/assertExpected/disposal semantics', () => {
+  const store = makeStoreInstance();
+  const capability = createWriteCapability({ trustedWriteRequest: writeRequest(), storeInstance: store })!;
+  assert.deepEqual(capability.verify('record-publish'), { ok: true });
+  assert.equal(capability.verify('read-record' as never).ok, false);
+  const expected = {
+    storeInstance: store,
+    configurationIdentity: CONFIG_IDENTITY,
+    serviceUid: UID,
+    limitProfile: defaultLimitProfile(),
+  };
+  assert.deepEqual(capability.assertExpected(expected), { ok: true });
+  assert.equal(capability.assertExpected({ ...expected, serviceUid: UID + 1 }).ok, false);
+  assert.equal(capability.assertExpected({ ...expected, storeInstance: makeStoreInstance() }).ok, false);
+  capability.dispose();
+  assert.equal(capability.verify('record-publish').ok, false);
+  assert.equal(capability.verify('record-publish').reason, 'disposed');
+  rmSync(store.parentIdentity.canonicalPath, { recursive: true, force: true });
+});
+
+test('capabilities: write capability rejects forged, cloned, proxied and detached uses', () => {
+  const store = makeStoreInstance();
+  const capability = createWriteCapability({ trustedWriteRequest: writeRequest(), storeInstance: store })!;
+  assert.equal(isGenuineWriteCapability(JSON.parse(JSON.stringify(capability))), false);
+  assert.equal(isGenuineWriteCapability({ ...capability }), false);
+  assert.equal(isGenuineWriteCapability(new Proxy(capability, {})), false);
+  assert.equal(isGenuineWriteCapability(Object.create(capability)), false);
+  const captured = capability.verify;
+  assert.equal(captured.call({}, 'record-publish').ok, false);
+  assert.equal(captured.call({}, 'record-publish').reason, 'not-genuine');
+  rmSync(store.parentIdentity.canonicalPath, { recursive: true, force: true });
+});
+
+test('capabilities: write capability generation advances on configuration replacement', () => {
+  const store = makeStoreInstance();
+  const first = createWriteCapability({ trustedWriteRequest: writeRequest(), storeInstance: store })!;
+  assert.equal(first.verify('record-publish').ok, true);
+  const second = createWriteCapability({ trustedWriteRequest: writeRequest(), storeInstance: store })!;
+  assert.equal(second.verify('record-publish').ok, true);
+  // Configuration replacement (new identity) advances the generation.
+  // Trusted-configuration replacement advances the generation for the same
+  // store through a new initialization (the write creator itself correlates
+  // the request with the store instance and can never mint a mismatched
+  // capability).
+  const inputB = makeInput(genuineConfig('sha-256:' + 'b'.repeat(64)));
+  const reinit = createInitializationCapability({ trustedInput: inputB, parentIdentity: store.parentIdentity })!;
+  assert.equal(reinit.verify('namespace-initialize').ok, true);
+  assert.equal(first.verify('record-publish').ok, false);
+  assert.equal(first.verify('record-publish').reason, 'stale-generation');
+  assert.equal(second.verify('record-publish').ok, false);
+  rmSync(store.parentIdentity.canonicalPath, { recursive: true, force: true });
+});
+
+test('capabilities: read and verify capabilities are distinct non-mutating domains', () => {
+  const store = makeStoreInstance();
+  const input = makeInput();
+  // The real flow initializes the store first, recording the generation.
+  const initCap = createInitializationCapability({ trustedInput: input, parentIdentity: store.parentIdentity })!;
+  assert.equal(initCap.verify('namespace-initialize').ok, true);
+  const read = createReadCapability({ trustedInput: input, storeInstance: store });
+  const verify = createVerifyCapability({ trustedInput: input, storeInstance: store });
+  assert.ok(read !== undefined && verify !== undefined);
+  assert.equal(isGenuineReadCapability(read), true);
+  assert.equal(isGenuineVerifyCapability(verify), true);
+  assert.equal(isGenuineReadCapability(verify), false, 'cross-kind substitution must fail');
+  assert.equal(isGenuineVerifyCapability(read), false, 'cross-kind substitution must fail');
+  assert.deepEqual(read!.binding.operationSet, [...READ_OPERATION_SET]);
+  assert.deepEqual(verify!.binding.operationSet, [...VERIFY_OPERATION_SET]);
+  // Forged input fails both creators.
+  assert.equal(createReadCapability({ trustedInput: { ...input }, storeInstance: store }), undefined);
+  assert.equal(createVerifyCapability({ trustedInput: { ...input }, storeInstance: store }), undefined);
+  read!.dispose();
+  verify!.dispose();
+  rmSync(store.parentIdentity.canonicalPath, { recursive: true, force: true });
+});
+
+test('capabilities: provisioning issuer shares the initialization domain (M-1)', () => {
+  const store = makeStoreInstance();
+  const input = makeInput();
+  const provisioning = createProvisioningCapability({ trustedInput: input, storeInstance: store });
+  assert.ok(provisioning !== undefined);
+  // Same authenticity domain: the initialization-family verifier accepts it.
+  assert.equal(isGenuineInitializationCapability(provisioning), true);
+  assert.deepEqual(provisioning!.verify('provision-phase3'), { ok: true });
+  assert.equal(provisioning!.verify('namespace-initialize').ok, false, 'provisioning capability is scoped to provision-phase3');
+  // The initialization capability cannot provision phase-3.
+  const initCap = createInitializationCapability({ trustedInput: input, parentIdentity: store.parentIdentity })!;
+  assert.equal(initCap.verify('provision-phase3').ok, false, 'namespace-initialize capability must not carry provision-phase3');
+  // Forged trusted input fails the issuer.
+  assert.equal(createProvisioningCapability({ trustedInput: { ...input }, storeInstance: store }), undefined);
+  provisioning!.dispose();
+  rmSync(store.parentIdentity.canonicalPath, { recursive: true, force: true });
+});
+
+test('capabilities: read/verify creators bind the recorded generation and never mint one', () => {
+  const store = makeStoreInstance();
+  const input = makeInput();
+  // The real flow initializes the store first (recording the generation);
+  // reads bind it. A configuration replacement then invalidates the read
+  // capability exactly like the initialization family (CAP-008/010).
+  createInitializationCapability({ trustedInput: input, parentIdentity: store.parentIdentity })!;
+  const read = createReadCapability({ trustedInput: input, storeInstance: store })!;
+  assert.deepEqual(read.verify('read-record'), { ok: true });
+  const inputB = makeInput(genuineConfig('sha-256:' + 'b'.repeat(64)));
+  createInitializationCapability({ trustedInput: inputB, parentIdentity: store.parentIdentity })!;
+  assert.equal(read.verify('read-record').ok, false);
+  assert.equal(read.verify('read-record').reason, 'stale-generation');
+  rmSync(store.parentIdentity.canonicalPath, { recursive: true, force: true });
+});
+
+test('capabilities: write capability type-level check', () => {
+  const capability: WriteCapability | undefined = undefined;
+  assert.equal(capability, undefined);
 });

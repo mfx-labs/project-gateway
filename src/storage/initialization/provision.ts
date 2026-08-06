@@ -1,15 +1,20 @@
 /**
- * WP-8-C fixed-directory provisioning owner (ADR-028 decision E; W8C-D04).
+ * WP-8-C/WP-8-D fixed-directory provisioning and phase-3 classifier owner
+ * (ADR-028 decision E; ADR-029 D-7/M-1/M-2).
  *
- * This module alone owns creation of the four fixed target classes:
- * `<parent>/config-v1/`, `<parent>/store-v1/`, each namespace's metadata
- * directory, and each namespace's temporary directory. It is callable only
- * from the initialization
- * orchestrator and requires the still-live genuine one-shot initialization
- * capability on every mutation boundary. Target paths must equal one fixed
- * derivation; no arbitrary path operand exists. No recursive creation, no
- * parent creation, no `chown`, no repair, no deletion of namespace
- * directories.
+ * Initialization creates exactly the bootstrap entries (`metadata`, `tmp`)
+ * per namespace (ADR-028; initialization-time phase-3 provisioning is
+ * rejected). The phase-3 classifier policy revision (ADR-029 D-7) accepts
+ * the five-entry phase-3 set `metadata`, `tmp`, `records`, `audit`, `locks`
+ * and classifies phase-2 stores as upgradeable/provisional, never foreign.
+ * Phase-3 top-level provisioning (`records`, `audit`, `locks`) is lazy,
+ * capability-gated on the initialization-family `provision-phase3`
+ * operation, and runs before writer-lock acquisition.
+ *
+ * Every mutation boundary requires the still-live genuine capability.
+ * Target paths must equal one fixed derivation; no arbitrary path operand
+ * exists. No recursive creation, no parent creation, no `chown`, no repair,
+ * no deletion, no adoption of existing objects.
  *
  * Enumeration (`readdirSync`, human-authorized narrow clarification) is used
  * only to verify the fixed expected entry set and detect unknown entries,
@@ -20,14 +25,26 @@
  */
 import { mkdirSync, openSync, closeSync, fchmodSync, fstatSync, fsyncSync, readdirSync } from 'node:fs';
 import { constants } from 'node:fs';
-import type { InitializationCapability } from '../capabilities/authenticity.js';
+import type { InitializationCapability, InitializationOperation } from '../capabilities/authenticity.js';
 import { verifyDirectoryStat } from '../root/identity.js';
 import type { NamespaceIdentity, NamespaceKind, NamespaceState, RootIdentity } from '../types.js';
 
 const { O_RDONLY, O_DIRECTORY, O_NOFOLLOW } = constants;
 
-/** Fixed expected entries under each namespace root (LAY-001/5.2 subset). */
-const NAMESPACE_FIXED_ENTRIES = ['metadata', 'tmp'] as const;
+/** Entries created by WP-8-C initialization (metadata bootstrap scope). */
+const NAMESPACE_PROVISIONED_ENTRIES = ['metadata', 'tmp'] as const;
+
+/**
+ * Phase-3 classifier fixed entry set (ADR-029 D-7/M-2): the accepted
+ * namespace entry set under the classifier-policy revision. `index` and
+ * `quarantine` are contract-reserved (5.2) but deferred to phase 4; their
+ * presence is an unknown entry and fails closed. This constant is committed
+ * implementation code — never request-selectable, never metadata-selected.
+ */
+export const NAMESPACE_CLASSIFIER_ENTRIES = ['metadata', 'tmp', 'records', 'audit', 'locks'] as const;
+
+/** Phase-3 members beyond the phase-2 set. */
+const PHASE3_REQUIRED_EXTRA = ['records', 'audit', 'locks'] as const;
 
 export interface ProvisionResult {
   readonly ok: boolean;
@@ -86,9 +103,12 @@ function openAndSnapshot(path: string): { fd: number; snapshot: DescriptorSnapsh
  * Ensure one fixed directory exists with the exact policy, descriptor-verified
  * after creation (SRX-014). `EEXIST` is accepted only when the existing
  * directory passes the exact descriptor checks; anything else fails closed.
+ * The required capability operation is an explicit parameter so the
+ * initialization family can gate `namespace-initialize` and
+ * `provision-phase3` boundaries distinctly (ADR-029 D-7/M-1).
  */
-function ensureFixedDirectory(capability: InitializationCapability, path: string, serviceUid: number): ProvisionResult {
-  const check = capability.verify('namespace-initialize');
+function ensureFixedDirectory(capability: InitializationCapability, path: string, serviceUid: number, operation: InitializationOperation): ProvisionResult {
+  const check = capability.verify(operation);
   if (!check.ok) {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'initialization capability is not usable at a provisioning boundary' };
   }
@@ -140,14 +160,80 @@ export function provisionNamespaceRoots(
   const kinds: readonly NamespaceKind[] = ['configuration', 'store-records'];
   for (const kind of kinds) {
     const root = namespaceRootPath(parent.canonicalPath, kind);
-    const rootResult = ensureFixedDirectory(capability, root, serviceUid);
+    const rootResult = ensureFixedDirectory(capability, root, serviceUid, 'namespace-initialize');
     if (!rootResult.ok) return rootResult;
-    for (const entry of NAMESPACE_FIXED_ENTRIES) {
-      const sub = ensureFixedDirectory(capability, `${root}/${entry}`, serviceUid);
+    for (const entry of NAMESPACE_PROVISIONED_ENTRIES) {
+      const sub = ensureFixedDirectory(capability, `${root}/${entry}`, serviceUid, 'namespace-initialize');
       if (!sub.ok) return sub;
     }
   }
   return { ok: true };
+}
+
+/**
+ * Phase-3 top-level provisioning (ADR-029 D-7): create only the exact
+ * missing top-level phase-3 directories (`records`, `audit`, `locks`) under
+ * BOTH namespaces, gated on the initialization-family `provision-phase3`
+ * operation. Runs before writer-lock acquisition (the lock directory must
+ * pre-exist the lock file). Idempotent: an existing exact directory passes
+ * descriptor verification and continues; wrong-type/UID/mode objects fail
+ * closed; no repair, chown, deletion, or adoption. A crash between
+ * creations leaves a partial allowed set that remains PROVISIONAL under the
+ * classifier and is completed deterministically by the next attempt.
+ */
+export function provisionPhase3TopLevel(
+  capability: InitializationCapability,
+  parent: RootIdentity,
+  serviceUid: number,
+): ProvisionResult {
+  const kinds: readonly NamespaceKind[] = ['configuration', 'store-records'];
+  for (const kind of kinds) {
+    const root = namespaceRootPath(parent.canonicalPath, kind);
+    for (const entry of PHASE3_REQUIRED_EXTRA) {
+      const sub = ensureFixedDirectory(capability, `${root}/${entry}`, serviceUid, 'provision-phase3');
+      if (!sub.ok) return sub;
+    }
+  }
+  return { ok: true };
+}
+
+/**
+ * Descriptor-bound no-follow verification of one present fixed entry
+ * (state-D clause, ADR-029 D-7/M-2; MINOR-2): every present fixed entry
+ * (`metadata`, `tmp`, `records`, `audit`, `locks`) must be a directory
+ * owned by the configured trusted service UID with exact mode `0700`.
+ * Symlinks are never followed (no-follow open; `ELOOP` fails closed); a
+ * regular file or special object fails `ENOTDIR`-style (wrong type); wrong
+ * UID/mode fails the exact-mode policy. An entry that was listed by
+ * `readdir` but disappears before this open (ENOENT) is a failed-closed
+ * disappearance; unverifiable conditions map to identity drift.
+ */
+export function verifyFixedEntryObject(path: string, serviceUid: number): { readonly ok: boolean; readonly code?: string; readonly message?: string } {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    const stat = fstatSync(fd);
+    const verified = verifyDirectoryStat(stat, serviceUid);
+    if (!verified.ok) {
+      // Wrong type, wrong UID, or wrong mode at a fixed entry path → state D.
+      // Internal classifier marker only; never an ERR-STO-* code (no new
+      // error code; the aggregate state maps to the closed vocabulary).
+      return { ok: false, code: 'foreign-entry', message: 'fixed entry is not an exact store directory' };
+    }
+    return { ok: true };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      return { ok: false, code: 'foreign-entry', message: 'fixed entry disappeared during classification' };
+    }
+    if (code === 'ELOOP' || code === 'ENOTDIR' || code === 'EACCES' || code === 'EPERM' || code === 'ENAMETOOLONG' || code === 'EINVAL') {
+      // Symlink, wrong type, or inaccessible entry → state D.
+      return { ok: false, code: 'foreign-entry', message: 'fixed entry is not a no-follow accessible directory' };
+    }
+    return { ok: false, code: 'drifted-entry', message: 'fixed entry could not be verified' };
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
 }
 
 /**
@@ -218,17 +304,50 @@ export function classifyNamespace(
     if (outcome === 'foreign') return foreignState();
     return driftedState();
   }
-  const unknown = names.filter((n) => !(NAMESPACE_FIXED_ENTRIES as readonly string[]).includes(n));
-  const expected = names.filter((n) => (NAMESPACE_FIXED_ENTRIES as readonly string[]).includes(n));
+  const unknown = names.filter((n) => !(NAMESPACE_CLASSIFIER_ENTRIES as readonly string[]).includes(n));
+  const expected = names.filter((n) => (NAMESPACE_CLASSIFIER_ENTRIES as readonly string[]).includes(n));
   if (unknown.length > 0) {
+    // State D: unknown or deferred entries (incl. `index`, `quarantine`) fail
+    // closed; a partial phase-3 set never reaches this branch.
     return { kind, state: 'FOREIGN', entries: names, unknownEntries: true, identity };
   }
-  const expectedDirs = (NAMESPACE_FIXED_ENTRIES as readonly string[]).filter((n) => !expected.includes(n));
+  // State-D clause (MINOR-2): every PRESENT fixed entry must be an exact
+  // store directory — no-follow open, directory type, configured UID, exact
+  // mode `0700`. A wrong-type object (regular file, symlink, special file),
+  // wrong UID, wrong mode, or a disappeared entry fails closed; unverifiable
+  // conditions map to identity drift. No repair, chown, chmod, deletion, or
+  // adoption ever occurs.
+  for (const entry of expected) {
+    const verified = verifyFixedEntryObject(`${root}/${entry}`, serviceUid);
+    if (!verified.ok) {
+      if (verified.code === 'drifted-entry') {
+        return { kind, state: 'IDENTITY_DRIFTED', entries: names, unknownEntries: false, identity };
+      }
+      return { kind, state: 'FOREIGN', entries: names, unknownEntries: false, identity };
+    }
+  }
+  const expectedDirs = (NAMESPACE_CLASSIFIER_ENTRIES as readonly string[]).filter((n) => !expected.includes(n));
   if (expectedDirs.length > 0) {
-    // Missing fixed entries: provisional (no durable metadata yet) or foreign.
+    // Phase-3 classifier policy (ADR-029 D-7/M-2): a namespace missing only
+    // phase-3 members (records/audit/locks), with no unknown entries, is
+    // upgradeable/provisional — never FOREIGN — independent of the
+    // metadata-verification flag (states B/C; state A carries the upgrade
+    // marker for the exact phase-2 set with verified metadata).
+    const missingOnlyPhase3 = expectedDirs.every((n) => (PHASE3_REQUIRED_EXTRA as readonly string[]).includes(n));
+    if (missingOnlyPhase3) {
+      const phase2Exact = expected.length === 2 && expected.includes('metadata') && expected.includes('tmp');
+      if (phase2Exact && hasVerifiedMetadata) {
+        return { kind, state: 'PROVISIONAL', entries: names, unknownEntries: false, identity, phase3UpgradeRequired: true };
+      }
+      return { kind, state: 'PROVISIONAL', entries: names, unknownEntries: false, identity };
+    }
+    // Missing bootstrap entries (metadata/tmp): committed semantics. With
+    // verified metadata this cannot normally arise (metadata verification
+    // requires the metadata directory) and stays fail-closed.
     return { kind, state: hasVerifiedMetadata ? 'FOREIGN' : 'PROVISIONAL', entries: names, unknownEntries: false, identity };
   }
   if (hasVerifiedMetadata) {
+    // State E: exact verified phase-3 set.
     return { kind, state: 'INITIALIZED', entries: names, unknownEntries: false, identity };
   }
   return { kind, state: 'PROVISIONAL', entries: names, unknownEntries: false, identity };

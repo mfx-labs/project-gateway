@@ -112,3 +112,92 @@ test('trusted-input: genuine input is immutable and verifiable', () => {
   assert.equal(isGenuineTrustedStorageBootstrapInput(JSON.parse(JSON.stringify(input))), false);
   assert.equal(isGenuineTrustedStorageBootstrapInput(structuredClone(input)), false);
 });
+
+// ─── WP-8-D: write-action provenance and trusted write request (D-2/D-5) ──
+
+import {
+  createStorageWriteActionProvenance,
+  createTrustedWriteRequest,
+  isGenuineStorageWriteActionProvenance,
+  isGenuineTrustedWriteRequest,
+} from '../../../src/storage/trusted-input/bootstrap-input.js';
+
+const WRITE_LOCATOR = '/trusted/parent';
+const WRITE_ACTION = 'write-action-99';
+
+function writeProvenance(actionIdentity = WRITE_ACTION, overrides: Partial<Record<string, unknown>> = {}) {
+  return createStorageWriteActionProvenance({
+    actionIdentity,
+    locator: WRITE_LOCATOR,
+    serviceUid: UID,
+    forbiddenRoots: ['/repo-a'],
+    configurationIdentity: CONFIG_IDENTITY,
+    limitProfile: defaultLimitProfile(),
+    ...overrides,
+  } as never);
+}
+
+test('trusted-input: write-action provenance creator validates and brands', () => {
+  assert.throws(() => createStorageWriteActionProvenance({ ...writeProvenanceFields(), actionIdentity: '' } as never), TypeError);
+  assert.throws(() => createStorageWriteActionProvenance({ ...writeProvenanceFields(), locator: 'relative' } as never), TypeError);
+  assert.throws(() => createStorageWriteActionProvenance({ ...writeProvenanceFields(), configurationIdentity: 'not-a-digest' } as never), TypeError);
+  const p = writeProvenance();
+  assert.equal(isGenuineStorageWriteActionProvenance(p), true);
+  assert.equal(isGenuineStorageWriteActionProvenance(JSON.parse(JSON.stringify(p))), false);
+  assert.equal(isGenuineStorageWriteActionProvenance({ ...p }), false);
+  assert.ok(Object.isFrozen(p));
+  // Cross-domain: a bootstrap provenance is never a write provenance.
+  assert.equal(isGenuineStorageWriteActionProvenance(provenance()), false);
+});
+
+function writeProvenanceFields() {
+  return {
+    actionIdentity: WRITE_ACTION,
+    locator: WRITE_LOCATOR,
+    serviceUid: UID,
+    forbiddenRoots: ['/repo-a'],
+    configurationIdentity: CONFIG_IDENTITY,
+    limitProfile: defaultLimitProfile(),
+  };
+}
+
+test('trusted-input: trusted write request requires genuine config + genuine write provenance with exact correlation', () => {
+  const config = genuineConfig();
+  const p = writeProvenance();
+  const raw = { locator: WRITE_LOCATOR, serviceUid: UID, forbiddenRoots: ['/repo-a'], limitProfile: defaultLimitProfile() };
+  const ok = createTrustedWriteRequest(config, p, raw);
+  assert.equal(ok.ok, true);
+  assert.equal(ok.request?.actionIdentity, WRITE_ACTION);
+  assert.equal(isGenuineTrustedWriteRequest(ok.request), true);
+  // Forgery of either operand fails.
+  assert.equal(createTrustedWriteRequest({ ...config, identity: 'sha-256:' + 'b'.repeat(64) }, p, raw).ok, false);
+  assert.equal(createTrustedWriteRequest(config, { ...p }, raw).ok, false);
+  // A bootstrap action provenance is never accepted as write provenance.
+  const bootstrapProvenance = createStorageBootstrapActionProvenance({
+    actionIdentity: 'bootstrap-action',
+    locator: WRITE_LOCATOR,
+    serviceUid: UID,
+    forbiddenRoots: ['/repo-a'],
+    configurationIdentity: CONFIG_IDENTITY,
+    limitProfile: defaultLimitProfile(),
+  });
+  assert.equal(createTrustedWriteRequest(config, bootstrapProvenance, raw).ok, false, 'cross-domain provenance substitution must fail');
+  // Correlation mismatches.
+  assert.equal(createTrustedWriteRequest(config, p, { ...raw, locator: '/other' }).ok, false);
+  assert.equal(createTrustedWriteRequest(config, p, { ...raw, serviceUid: 2000 }).ok, false);
+  assert.equal(createTrustedWriteRequest(config, p, { ...raw, forbiddenRoots: [] }).ok, false);
+  assert.equal(createTrustedWriteRequest(config, p, { ...raw, limitProfile: {} }).ok, false);
+  assert.equal(createTrustedWriteRequest(genuineConfig('sha-256:' + 'c'.repeat(64)), p, raw).ok, false);
+});
+
+test('trusted-input: write request is immutable and verifiable', () => {
+  const result = createTrustedWriteRequest(genuineConfig(), writeProvenance(), { locator: WRITE_LOCATOR, serviceUid: UID, forbiddenRoots: ['/repo-a'], limitProfile: defaultLimitProfile() });
+  assert.equal(result.ok, true);
+  const request = result.request!;
+  assert.ok(Object.isFrozen(request));
+  assert.equal(isGenuineTrustedWriteRequest(request), true);
+  assert.equal(isGenuineTrustedWriteRequest(JSON.parse(JSON.stringify(request))), false);
+  assert.equal(isGenuineTrustedWriteRequest(structuredClone(request)), false);
+  // The write request and the bootstrap input are distinct domains.
+  assert.equal(isGenuineTrustedWriteRequest(createTrustedStorageBootstrapInput(genuineConfig(), provenance(), { locator: LOCATOR, serviceUid: UID, forbiddenRoots: ['/repo-a'], limitProfile: defaultLimitProfile() }).input), false);
+});

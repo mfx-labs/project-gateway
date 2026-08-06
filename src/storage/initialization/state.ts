@@ -1,5 +1,6 @@
 /**
- * WP-8-C pure aggregate state classification (ADR-028 decision F; W8C-D04).
+ * WP-8-C pure aggregate state classification (ADR-028 decision F; W8C-D04;
+ * phase-3 classifier policy per ADR-029 D-7/M-2).
  *
  * Fail-closed rules:
  * - both namespaces ABSENT → ABSENT (may initialize);
@@ -12,8 +13,14 @@
  *   only under a new genuine one-shot capability, after verification);
  * - unknown entries fail closed at the namespace classifier.
  *
+ * Phase-3 classifier policy: namespaces classified PROVISIONAL with
+ * `phase3UpgradeRequired` (exact phase-2 set, verified metadata) aggregate
+ * as PROVISIONAL exactly like other PROVISIONAL namespaces — they are
+ * upgradeable, never foreign (ADR-029 D-7 state A). The marker is carried
+ * on the namespace state and preserved in the aggregate's namespace list.
+ *
  * No repair, reconstruction, deletion, or authoritative-state cleanup is
- * ever performed by WP-8-C.
+ * ever performed by WP-8-C/WP-8-D.
  */
 import type { AggregateState, InitializationStateKind, NamespaceState } from '../types.js';
 

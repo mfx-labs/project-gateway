@@ -48,9 +48,9 @@ test('taxonomy: layout attributes (segment, suffix, namespace)', () => {
   assert.equal(config?.profile, 'configuration-snapshot');
   const evidence = RECORD_CLASS_BY_ID.get('store-evidence-record');
   assert.equal(evidence?.profile, 'store-evidence');
-  assert.equal(evidence?.wp8Production, 'maintenance');
+  assert.deepEqual(evidence?.wp8Production, ['maintenance']);
   const metadata = RECORD_CLASS_BY_ID.get('store-metadata');
-  assert.equal(metadata?.wp8Production, 'initialization');
+  assert.deepEqual(metadata?.wp8Production, ['initialization']);
 });
 
 test('taxonomy: WP-8 never becomes a lifecycle semantic producer', () => {
@@ -59,11 +59,35 @@ test('taxonomy: WP-8 never becomes a lifecycle semantic producer', () => {
   }
   const lifecycleProducers = RECORD_CLASS_PROFILES.filter((p) => p.profile === 'lifecycle-record' && p.id !== 'authoritative-audit-event');
   for (const p of lifecycleProducers) {
-    assert.equal(p.wp8Production, 'no', p.id);
+    assert.deepEqual(p.wp8Production, ['no'], p.id);
   }
-  // Audit reconstruction is the only WP-8-producible event form (CSA-013).
+  // Audit events: mechanical write-audit evidence (WP-8-D, D-6) plus the
+  // phase-4 reconstruction path (CSA-013) — the only two-member array.
   const audit = RECORD_CLASS_BY_ID.get('authoritative-audit-event');
-  assert.equal(audit?.wp8Production, 'reconstruction-only');
+  assert.deepEqual(audit?.wp8Production, ['reconstruction-only', 'write-audit']);
+});
+
+test('taxonomy: wp8Production canonical array rules (D-6/M-3)', () => {
+  for (const p of RECORD_CLASS_PROFILES) {
+    // Nonempty, no duplicates, exact declared order (arrays are never sorted).
+    assert.ok(p.wp8Production.length >= 1, `${p.id}: production array must not be empty`);
+    assert.equal(new Set(p.wp8Production).size, p.wp8Production.length, `${p.id}: production array must not contain duplicates`);
+    assert.deepEqual([...p.wp8Production].sort(), [...p.wp8Production], `${p.id}: production array must be in exact declared order`);
+  }
+  // Only the audit profile has two values; only the audit profile contains 'write-audit'.
+  const twoMember = RECORD_CLASS_PROFILES.filter((p) => p.wp8Production.length === 2);
+  assert.deepEqual(twoMember.map((p) => p.id), ['authoritative-audit-event']);
+  for (const p of RECORD_CLASS_PROFILES) {
+    if (p.id !== 'authoritative-audit-event') {
+      assert.equal(p.wp8Production.includes('write-audit'), false, `${p.id}: only the audit class may produce write-audit`);
+    }
+  }
+  const allowedOneMember = new Set(['no', 'initialization', 'maintenance', 'reconstruction-only']);
+  for (const p of RECORD_CLASS_PROFILES) {
+    if (p.id === 'authoritative-audit-event') continue;
+    assert.equal(p.wp8Production.length, 1, `${p.id}: every non-audit profile uses exactly one value`);
+    assert.ok(allowedOneMember.has(p.wp8Production[0]!), `${p.id}: unexpected production value ${p.wp8Production[0]}`);
+  }
 });
 
 test('taxonomy: StoreEvidenceRecord closed evidence-kind set (TAX-013)', () => {

@@ -37,6 +37,7 @@
     "test:wp7-git": "node --test \"dist-test/tests/wp7/git/*.test.js\"",
     "test:wp7-fff": "node --test \"dist-test/tests/wp7/fff/*.test.js\"",
     "test:wp7-security": "node --test \"dist-test/tests/wp7/security/*.test.js\"",
+    "test:storage-crash": "node --test \"dist-test/tests/process/storage-crash/*.test.js\"",
     "clean:generated": "node scripts/clean-generated.mjs"
   },
   "license": "UNLICENSED",

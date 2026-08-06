@@ -6,8 +6,9 @@ accepted final review: POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED;
 open findings at approval: zero). The human approval has been recorded in
 ADR-023 through ADR-027 (all Accepted). The approval-recording mismatch
 F-EL-A is closed. WP-6 has been implemented and closed
-(`b07fea95d0a1ed20361dec441fc500766969536f`); the current work package is
-**WP-8-A — Foundation and Contract Consolidation**; WP-7 is **closed** at
+(`b07fea95d0a1ed20361dec441fc500766969536f`); the current work package is **WP-8-D — Durable Single-Record
+Publication, Exact Reads, and Locking** (current sub-phase: focused
+decision-package correction); WP-7 is **closed** at
 `6b94d811dac8c41062ea4cbd57e56b1fe39b6419`. WP-7-A (foundation and contract
 consolidation) is **closed**; WP-7-B (runtime implementation) is **closed**
 at `7fa2b15c8bab8b373751affac08acc3e9225aba8` (WP-7 runtime implementation
@@ -83,8 +84,52 @@ EVIDENCE MICRO SPOT CHECK: ACCEPTED` with `OPEN FINDINGS: 0`**; the
 **WP-8-C implementation is ACCEPTED** and the **WP-8-C implementation
 baseline commit** (subject `feat: establish WP-8-C trusted storage
 bootstrap`) is the commit containing this update; the
-**next gate is the independent WP-8-C implementation-commit verification**; **WP-8-D and later phases are not
-authorized**; WP-8
+**WP-8-C independent implementation-commit verification is SKIPPED BY
+HUMAN DIRECTION** (governance waiver; the WP-8-C commit is treated as the
+operational baseline without independent verification); **WP-8-D
+(Durable Single-Record Publication, Exact Reads, and Locking — Component
+C / implementation Phase 3) is human-authorized as a documentation-only
+decision-resolution phase**; the **WP-8-D senior pre-implementation
+security and architecture review returned `ACCEPTED FOR DECISION
+RESOLUTION`** (three bounded MINOR findings, no blockers); the **seven
+human-approved decisions (D-2, D-3, D-5, D-6, D-7, D-8, D-12) are
+selected and bound by
+`docs/decisions/ADR-029-wp-8d-publication-locking-and-audit-policy.md`**;
+the **three MINOR findings are corrected** in the consolidation report
+and the **decision-resolution report
+(`docs/reports/wp-8d-decision-resolution-report.md`) is **complete**
+(no contract revision required for WP-8-D; implementation envelope and
+requirement allocation consolidated); the **senior decision-resolution
+and ADR review returned corrections required (M-1…M-4)**; the **focused
+decision-package correction applied M-1…M-4** and the current sub-phase
+is **focused decision-package correction**; the **WP-8-D focused
+decision-package rereview returned `WP-8-D FOCUSED DECISION-PACKAGE
+REREVIEW: ACCEPTED`** (M-1…M-4 closed; implementation readiness granted);
+**WP-8-D implementation was human-authorized and is complete** (durable
+single-record publication, single-writer lock, exact read/verify/
+enumeration, mechanical authorized-write audit, phase-3 classifier and
+provisioning, crash-injection harness; production write publication
+remains unreachable; the **implementation report
+(`docs/reports/wp-8d-implementation-report.md`) is complete** with the
+full verification evidence); the **senior implementation security and
+architecture review returned corrections required** (three MINOR findings
+MINOR-1 report counts, MINOR-2 classifier state-D fixed-entry
+verification, MINOR-3 SCP-005 relative-import coverage); the **focused
+implementation correction applied MINOR-1…MINOR-3** (report counts
+corrected; classifier state-D descriptor verification of every fixed
+entry; SCP-005 relative-import resolution and adversarial tests) and the
+**correction report (`docs/reports/wp-8d-focused-implementation-correction-report.md`)
+is complete** with the full verification evidence; the **focused
+implementation rereview returned `WP-8-D FOCUSED IMPLEMENTATION
+REREVIEW: ACCEPTED`** (MINOR-1…MINOR-3 closed; open findings zero;
+implementation acceptance readiness granted); the **WP-8-D implementation
+is HUMAN-ACCEPTED** and the **implementation acceptance and
+commit-preparation report
+(`docs/reports/wp-8d-implementation-acceptance-and-commit-preparation-report.md`)
+records the acceptance**; **WP-8-D is not yet closed because the commit
+baseline has not been created**; the **next gate is the WP-8-D HUMAN
+COMMIT AUTHORIZATION**; **WP-8-D staging and commit are
+not authorized**; WP-8
 implementation is **not closed**. WP-9 and later
 packages are **not authorized**. No push, release,
 publication, installation, or deployment has occurred. Each disposition

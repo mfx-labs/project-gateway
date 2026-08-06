@@ -17,8 +17,15 @@ import {
 /** Record-format profile accepted for a class. */
 export type EnvelopeProfile = 'lifecycle-record' | 'registry-snapshot' | 'store-metadata' | 'store-evidence' | 'configuration-snapshot';
 
-/** Whether WP-8 may produce the persisted form in this phase's model. */
-export type Wp8Production = 'no' | 'initialization' | 'maintenance' | 'reconstruction-only';
+/**
+ * Whether WP-8 may produce the persisted form (ADR-029 D-6; M-3 canonical
+ * array rules). `'write-audit'` is the mechanical authorized-write evidence
+ * production by the write substrate (WPR-010/AUD-003); `'reconstruction-only'`
+ * remains the phase-4 recovery path (CSA-013/16.3). Arrays are immutable,
+ * never empty, contain no duplicates, and use the exact declared order; no
+ * runtime sorting or normalization is permitted.
+ */
+export type Wp8Production = 'no' | 'initialization' | 'maintenance' | 'reconstruction-only' | 'write-audit';
 
 export interface RecordClassProfile {
   readonly id: RecordClassId;
@@ -32,7 +39,8 @@ export interface RecordClassProfile {
   readonly profile: EnvelopeProfile;
   readonly semanticOwner: string;
   readonly producer: string;
-  readonly wp8Production: Wp8Production;
+  /** Canonical production array (M-3): one exact member per class except the audit class. */
+  readonly wp8Production: readonly Wp8Production[];
   /** WP-8's stored form never affects lifecycle state (TAU-008/010). */
   readonly lifecycleEffect: 'none';
   /** Retained per RNT-002 in the MVP. */
@@ -44,7 +52,7 @@ const BASE: Omit<RecordClassProfile, 'id' | 'label' | 'segment' | 'producer'> = 
   suffix: '.rec',
   profile: 'lifecycle-record',
   semanticOwner: 'WP-2 / WP-12',
-  wp8Production: 'no',
+  wp8Production: ['no'],
   lifecycleEffect: 'none',
   retentionClass: 'indefinite',
 };
@@ -72,7 +80,9 @@ export const RECORD_CLASS_PROFILES: readonly RecordClassProfile[] = [
     suffix: '.aud',
     semanticOwner: 'WP-2 / WP-12',
     producer: 'trusted control plane',
-    wp8Production: 'reconstruction-only',
+    // D-6: mechanical write-audit evidence production joins the phase-4
+    // reconstruction path; the only two-member production array (M-3).
+    wp8Production: ['reconstruction-only', 'write-audit'],
   },
   {
     ...BASE,
@@ -90,7 +100,7 @@ export const RECORD_CLASS_PROFILES: readonly RecordClassProfile[] = [
     profile: 'store-metadata',
     semanticOwner: 'WP-8',
     producer: 'store initialization',
-    wp8Production: 'initialization',
+    wp8Production: ['initialization'],
   },
   {
     ...BASE,
@@ -100,7 +110,7 @@ export const RECORD_CLASS_PROFILES: readonly RecordClassProfile[] = [
     profile: 'store-evidence',
     semanticOwner: 'WP-8',
     producer: 'store maintenance',
-    wp8Production: 'maintenance',
+    wp8Production: ['maintenance'],
   },
   {
     ...BASE,
@@ -111,7 +121,7 @@ export const RECORD_CLASS_PROFILES: readonly RecordClassProfile[] = [
     profile: 'configuration-snapshot',
     semanticOwner: 'WP-8 (store class, configuration namespace)',
     producer: 'trusted control plane (semantic producer)',
-    wp8Production: 'no',
+    wp8Production: ['no'],
   },
 ];
 

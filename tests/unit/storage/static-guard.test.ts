@@ -39,13 +39,21 @@ function collectTsFiles(dir: string): string[] {
   return out;
 }
 
-/** Exact per-module `node:fs` API allowlist (ADR-028 decision E). */
+/** Exact per-module `node:fs` API allowlist (ADR-028 decision E; WP-8-D §16). */
 const FS_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   'src/storage/root/resolve.ts': ['openSync', 'closeSync', 'fstatSync', 'lstatSync', 'realpathSync', 'constants'],
   'src/storage/initialization/provision.ts': ['mkdirSync', 'openSync', 'closeSync', 'fchmodSync', 'fstatSync', 'fsyncSync', 'readdirSync', 'constants'],
   'src/storage/probe/scratch.ts': ['openSync', 'closeSync', 'fstatSync', 'fchmodSync', 'writeSync', 'unlinkSync', 'constants'],
   'src/storage/probe/probe.ts': ['openSync', 'closeSync', 'fsyncSync', 'fstatSync', 'linkSync', 'symlinkSync', 'readFileSync', 'constants'],
   'src/storage/metadata/bootstrap-persist.ts': ['openSync', 'closeSync', 'writeSync', 'readFileSync', 'readSync', 'fsyncSync', 'fchmodSync', 'fstatSync', 'constants'],
+  // WP-8-D exact fs-bearing modules (ADR-029 implementation constraints).
+  'src/storage/publication/publish-record.ts': ['openSync', 'closeSync', 'writeSync', 'fsyncSync', 'fchmodSync', 'fstatSync', 'linkSync', 'unlinkSync', 'mkdirSync', 'readFileSync', 'constants'],
+  // readFileSync(fd) is required by LOK-013 identity-bound release (lock-record
+  // nonce/store-instance verification) — exact API refinement of the proposed
+  // table, descriptor-bound only.
+  'src/storage/locks/lock.ts': ['openSync', 'closeSync', 'writeSync', 'readFileSync', 'fsyncSync', 'fstatSync', 'unlinkSync', 'constants'],
+  'src/storage/read/read-record.ts': ['openSync', 'closeSync', 'fstatSync', 'readFileSync', 'constants'],
+  'src/storage/read/enumerate.ts': ['readdirSync', 'openSync', 'closeSync', 'fstatSync', 'constants'],
 };
 
 /** Complete filesystem API name vocabulary (denied outside the allowlist). */
@@ -66,6 +74,13 @@ const CREATOR_EDGES: Readonly<Record<string, readonly string[]>> = {
   createStorageBootstrapActionProvenance: [], // future consumer: src/control-plane/storage-bootstrap-action.ts (does not exist)
   createTrustedStorageBootstrapInput: ['src/storage/initialization/initialize.ts'],
   createInitializationCapability: ['src/storage/initialization/initialize.ts'],
+  // WP-8-D edges (ADR-029 implementation constraints):
+  createStorageWriteActionProvenance: [], // future consumer: src/control-plane/storage-write-action.ts (does not exist)
+  createTrustedWriteRequest: ['src/storage/publication/index.ts'],
+  createWriteCapability: ['src/storage/publication/index.ts'],
+  createProvisioningCapability: ['src/storage/publication/index.ts'],
+  createReadCapability: ['src/storage/read/index.ts'],
+  createVerifyCapability: ['src/storage/read/index.ts'],
 };
 
 /** Future capability issuance markers — denied globally. */
@@ -100,6 +115,13 @@ const FORBIDDEN_MODULE_PATTERNS = [
   /from\s+['"](?:node:)?worker_threads['"]/,
   /from\s+['"](?:node:)?(?:net|http|https|dgram|dns|tls|http2)['"]/,
 ] as const;
+
+/**
+ * D-3 exception: `process.pid` is permitted in the exact lock module only
+ * (contract 12.3/LOK-015 lock-record field). The pattern remains denied in
+ * every other `src/storage/**` file.
+ */
+const LOCKS_PROCESS_PID_EXCEPTION = new Set(['src/storage/locks/lock.ts']);
 
 /** True when any blanket prohibited pattern matches the content (synthetic samples). */
 export function matchesAnyProhibited(content: string): boolean {
@@ -219,6 +241,11 @@ test('static guard: per-module filesystem API allowlists and exact-name imports'
       }
     } else {
       for (const pattern of OTHER_PROHIBITED_PATTERNS) {
+        // D-3: the process.pid pattern is exempted for the exact lock module
+        // only; every other prohibition (incl. Date.now, hrtime, Math.random,
+        // crypto randomness, env, cwd, timers, fs-namespace access) applies
+        // everywhere else.
+        if (pattern.source === /process\s*\.\s*pid/.source && LOCKS_PROCESS_PID_EXCEPTION.has(path)) continue;
         assert.equal(pattern.test(content), false, `${path} matches ${pattern}`);
       }
       for (const pattern of FORBIDDEN_MODULE_PATTERNS) {
@@ -433,17 +460,224 @@ test('static guard: authoritative contract is byte-identical at the accepted SHA
 test('static guard: no timers, randomness, or environment dependence in storage modules', () => {
   const files = collectTsFiles(STORAGE_SRC);
   for (const file of files) {
+    const path = rel(file);
     const content = readFileSync(file, 'utf8');
     for (const pattern of OTHER_PROHIBITED_PATTERNS) {
-      assert.equal(pattern.test(content), false, `${relative(REPO, file)} matches ${pattern}`);
+      // D-3: the process.pid pattern is exempted for the exact lock module only.
+      if (pattern.source === /process\s*\.\s*pid/.source && LOCKS_PROCESS_PID_EXCEPTION.has(path)) continue;
+      assert.equal(pattern.test(content), false, `${path} matches ${pattern}`);
     }
   }
 });
 
-test('static guard: no forbidden later-phase directories exist (W8B-C03)', () => {
-  for (const d of ['publication', 'read', 'audit', 'registry', 'recovery', 'retention', 'lock']) {
+test('static guard: no forbidden later-phase directories exist (W8B-C03; WP-8-D)', () => {
+  for (const d of ['registry', 'recovery', 'retention']) {
     assert.equal(existsSync(join(STORAGE_SRC, d)), false, `src/storage/${d} must not exist in this phase`);
   }
+  // WP-8-D authorized directories exist exactly once each.
+  for (const d of ['publication', 'locks', 'read', 'audit']) {
+    assert.equal(existsSync(join(STORAGE_SRC, d)), true, `src/storage/${d} must exist in this phase`);
+  }
+});
+
+test('static guard: locks-only entropy/process exception does not leak (D-3)', () => {
+  const files = collectTsFiles(STORAGE_SRC);
+  for (const file of files) {
+    const path = rel(file);
+    const content = readFileSync(file, 'utf8');
+    if (path === 'src/storage/locks/lock.ts') {
+      // The exact exception module may use process.pid and named randomBytes.
+      assert.equal(/\bprocess\s*\.\s*pid\b/.test(content), true, 'lock.ts must read process.pid (LOK-015)');
+      assert.equal(/randomBytes\s*\(/.test(content), true, 'lock.ts must use the named randomBytes nonce source');
+      assert.equal(/Date\s*\.\s*now\s*\(/.test(content), false, 'lock.ts must not use a direct clock');
+    } else {
+      assert.equal(/\bprocess\s*\.\s*pid\b/.test(content), false, `${path} must not reference process.pid outside the lock module`);
+      assert.equal(/randomBytes\s*\(/.test(content), false, `${path} must not use randomBytes outside the lock module`);
+    }
+    // No namespace/default/dynamic crypto imports anywhere (incl. the lock module).
+    assert.equal(/import\s*\*\s*as\s+\w+\s*from\s*['"](?:node:)?crypto['"]/.test(content), false, `${path}: namespace crypto import`);
+    assert.equal(/import\s+\w+\s+from\s*['"](?:node:)?crypto['"]/.test(content), false, `${path}: default crypto import`);
+    assert.equal(/import\s*\([^)]*crypto/.test(content), false, `${path}: dynamic crypto import`);
+  }
+  // Synthetic leakage samples: each must be rejected by the blanket scan or
+  // by the per-file D-3 module restriction.
+  const leakage: ReadonlyArray<[string, string]> = [
+    ['const pid = process.pid;', 'process.pid in a non-lock module'],
+    ['import { randomBytes } from "node:crypto"; randomBytes(16);', 'randomBytes outside the lock module'],
+    ['import * as crypto from "node:crypto";', 'namespace crypto import'],
+    ['import cryptoDefault from "node:crypto";', 'default crypto import'],
+    ['import("node:crypto")', 'dynamic crypto import'],
+  ];
+  for (const [sample, label] of leakage) {
+    const blanketHit = matchesAnyProhibited(sample);
+    const moduleRestrictionHit =
+      /randomBytes\s*\(/.test(sample) ||
+      /\bprocess\s*\.\s*pid\b/.test(sample) ||
+      /import\s*\*\s*as\s+\w+\s*from\s*['"](?:node:)?crypto['"]/.test(sample) ||
+      /import\s+\w+\s+from\s*['"](?:node:)?crypto['"]/.test(sample) ||
+      /import\s*\([^)]*crypto/.test(sample);
+    assert.ok(blanketHit || moduleRestrictionHit, label);
+  }
+  // The lock module itself must not trip the blanket scan except the exempted pattern.
+  const lockContent = readFileSync(join(STORAGE_SRC, 'locks', 'lock.ts'), 'utf8');
+  for (const pattern of OTHER_PROHIBITED_PATTERNS) {
+    if (pattern.source === /process\s*\.\s*pid/.source) continue;
+    assert.equal(pattern.test(lockContent), false, `lock.ts must not match ${pattern}`);
+  }
+});
+
+test('static guard: read tree is mutation-free and readdirSync is the enumeration owner (WP-8-D)', () => {
+  const readTree = ['src/storage/read/read-record.ts', 'src/storage/read/enumerate.ts'];
+  const mutating = /\b(writeSync|linkSync|unlinkSync|mkdirSync|fsyncSync|fchmodSync|renameSync|rmSync|rmdirSync|cpSync|chmodSync|chownSync)\b/;
+  for (const path of readTree) {
+    const content = readFileSync(join(STORAGE_SRC, path.replace('src/storage/', '')), 'utf8');
+    assert.equal(mutating.test(content), false, `${path} imports or uses a mutating filesystem API`);
+  }
+  // readdirSync is confined to the enumeration module (and provision.ts's
+  // fixed entry-set verification) in the storage tree.
+  const readdirOwners = ['src/storage/read/enumerate.ts', 'src/storage/initialization/provision.ts'];
+  const files = collectTsFiles(STORAGE_SRC);
+  for (const file of files) {
+    const path = rel(file);
+    if (/readdirSync/.test(readFileSync(file, 'utf8'))) {
+      assert.ok(readdirOwners.includes(path), `${path} uses readdirSync outside the authorized owners`);
+    }
+  }
+});
+
+/**
+ * Lexical resolution of a relative import specifier to a normalized
+ * repository-relative source path (MINOR-3). Project-standard source
+ * specifiers use `.js` suffixes in `.ts` sources, so a resolved `*.js`
+ * target maps to the `*.ts` source; a trailing `/` maps to `index.ts`.
+ * Resolution outside the repository source root is rejected (returns
+ * undefined). Pure and deterministic.
+ */
+export function resolveRelativeSpecifier(importerRelPath: string, specifier: string): string | undefined {
+  if (!specifier.startsWith('.') && !specifier.startsWith('/')) return undefined;
+  const importerDir = importerRelPath.slice(0, importerRelPath.lastIndexOf('/'));
+  const joined = specifier.startsWith('/') ? specifier.slice(1) : `${importerDir}/${specifier}`;
+  const parts: string[] = [];
+  for (const part of joined.split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') {
+      if (parts.length === 0) return undefined; // escapes the source root
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+  const normalized = parts.join('/');
+  if (!normalized.startsWith('src/')) return undefined; // outside the source root
+  if (normalized.endsWith('.js')) return normalized.slice(0, -3) + '.ts';
+  if (normalized.endsWith('/')) return `${normalized}index.ts`;
+  return normalized;
+}
+
+/**
+ * SCP-005 edge classification (MINOR-3): storage modules must never import
+ * WP-7 modules and WP-7 modules must never import storage, in either
+ * direction, in every syntax form the guard parses (named imports,
+ * export-from, aliased bindings). Relative specifiers are resolved
+ * lexically against the importer; bare/non-relative specifiers keep the
+ * committed predicate. Returns 'forbidden' | 'allowed' | 'not-applicable'.
+ */
+export function classifyWp7StorageEdge(importerRelPath: string, specifier: string): 'forbidden' | 'allowed' | 'not-applicable' {
+  const wp7Trees = ['src/reader', 'src/git', 'src/fff'];
+  const isStorage = importerRelPath.startsWith('src/storage/');
+  const isWp7 = wp7Trees.some((t) => importerRelPath.startsWith(t + '/'));
+  if (!isStorage && !isWp7) return 'not-applicable';
+  const spec = specifier.replace(/^node:/, '');
+  let target: string | undefined;
+  if (spec.startsWith('.') || spec.startsWith('/')) {
+    target = resolveRelativeSpecifier(importerRelPath, spec);
+    if (target === undefined) return 'not-applicable'; // non-resolvable / out-of-root
+  } else {
+    target = spec;
+  }
+  if (isStorage) {
+    // Resolved relative targets are repo-relative (`src/…`); bare module
+    // names keep the committed predicate with the WP-7 tree leaf names
+    // explicitly denied (SCP-005 intent: no storage→WP-7 import in any form).
+    const hitsWp7 = wp7Trees.some((t) => target.startsWith(t)) || target === 'reader' || target === 'git' || target === 'fff';
+    return hitsWp7 ? 'forbidden' : 'allowed';
+  }
+  // WP-7 importer: storage targets are forbidden; its own tree and other
+  // approved trees are allowed.
+  const hitsStorage = target.startsWith('storage') || target.includes('/storage/');
+  return hitsStorage ? 'forbidden' : 'allowed';
+}
+
+test('static guard: storage-to-WP-7 import edge is closed in both directions (SCP-005; MINOR-3)', () => {
+  const files = collectTsFiles(join(REPO, 'src'));
+  for (const file of files) {
+    const path = rel(file);
+    const content = readFileSync(file, 'utf8');
+    // Every parsed declaration (named imports AND export-from forms, plain
+    // and aliased) is classified; relative specifiers are resolved lexically
+    // and are no longer skipped.
+    for (const decl of parseImports(content)) {
+      const edge = classifyWp7StorageEdge(path, decl.specifier);
+      assert.notEqual(edge, 'forbidden', `${path}: SCP-005 forbidden import ${decl.specifier}`);
+    }
+  }
+});
+
+test('static guard: SCP-005 relative-import adversarial samples are detected (MINOR-3)', () => {
+  // Real repository-relative hypothetical forbidden edges: each sample is a
+  // genuine relative specifier as it would appear in a source file of the
+  // given importer path; the classifier must resolve it and reject it.
+  const forbidden: ReadonlyArray<[string, string, string]> = [
+    ['src/storage/types.ts', '../reader/reader.js', 'storage → reader'],
+    ['src/storage/types.ts', '../reader/index.js', 'storage → reader barrel'],
+    ['src/storage/publication/index.ts', '../../reader/fs.js', 'storage → reader fs module'],
+    ['src/storage/locks/lock.ts', '../../git/inspect.js', 'storage → Git inspection'],
+    ['src/storage/read/read-record.ts', '../../fff/discovery.js', 'storage → FFF/internal discovery'],
+    ['src/storage/audit/write-audit.ts', '../../fff/rank.js', 'storage → FFF deep relative'],
+    ['src/reader/reader.ts', '../storage/types.js', 'reader → storage'],
+    ['src/git/git.ts', '../storage/locks/lock.js', 'Git inspection → storage'],
+    ['src/fff/discovery.ts', '../storage/read/read-record.js', 'FFF → storage'],
+    ['src/reader/reader.ts', '../storage/index.js', 'reader → storage barrel'],
+    // Path-traversal normalization: a nested relative chain that collapses
+    // into a WP-7 tree after consuming importer-directory components.
+    ['src/storage/publication/index.ts', './x/../../../reader/fs.js', 'traversal normalization'],
+    // Multiline syntax and aliased bindings: the parser must surface the
+    // specifier regardless of formatting or aliasing.
+    ['src/storage/types.ts', '../reader/fs.js', 'aliased binding form'],
+  ];
+  for (const [importer, specifier, label] of forbidden) {
+    const edge = classifyWp7StorageEdge(importer, specifier);
+    assert.equal(edge, 'forbidden', `${label}: expected forbidden for ${importer} → ${specifier}`);
+  }
+  // Export-from forms (plain and aliased) are parsed declarations and must
+  // classify identically.
+  const exportFrom = classifyWp7StorageEdge('src/storage/types.ts', '../reader/fs.js');
+  assert.equal(exportFrom, 'forbidden');
+  // Allowed controls: storage → storage, storage → approved canonical/JSON/
+  // trusted-configuration modules, and WP-7 internal imports within its own
+  // approved tree.
+  const allowed: ReadonlyArray<[string, string, string]> = [
+    ['src/storage/types.ts', '../types.js', 'storage → storage'],
+    ['src/storage/format/envelope.ts', '../../canonical/jcs.js', 'storage → canonical'],
+    ['src/storage/format/envelope.ts', '../../json/scanner.js', 'storage → JSON scanner'],
+    ['src/storage/trusted-input/bootstrap-input.ts', '../../trusted/configuration-brand.js', 'storage → trusted configuration brand'],
+    ['src/reader/reader.ts', './reader.js', 'WP-7 internal import within its own tree'],
+    ['src/git/git.ts', '../reader/reader.js', 'WP-7 sibling tree import (allowed by the predicate)'],
+  ];
+  for (const [importer, specifier, label] of allowed) {
+    const edge = classifyWp7StorageEdge(importer, specifier);
+    assert.equal(edge, 'allowed', `${label}: expected allowed for ${importer} → ${specifier}`);
+  }
+  // Bare module names keep the committed predicate behavior.
+  assert.equal(classifyWp7StorageEdge('src/storage/types.ts', 'reader'), 'forbidden');
+  assert.equal(classifyWp7StorageEdge('src/reader/reader.ts', 'storage/types.js'), 'forbidden');
+  assert.equal(classifyWp7StorageEdge('src/storage/types.ts', 'node:fs'), 'allowed');
+  // Out-of-root resolution is rejected (never resolved into an arbitrary path).
+  assert.equal(resolveRelativeSpecifier('src/storage/types.ts', '../../../../outside.js'), undefined);
+  // The resolver maps project-standard .js specifiers to the .ts source and
+  // normalizes `.`/`..`/separators.
+  assert.equal(resolveRelativeSpecifier('src/storage/types.ts', './x/../types.js'), 'src/storage/types.ts');
+  assert.equal(resolveRelativeSpecifier('src/storage/types.ts', './format/taxonomy.js'), 'src/storage/format/taxonomy.ts');
 });
 
 test('static guard: synthetic prohibited samples are detected (W8B-C03)', () => {

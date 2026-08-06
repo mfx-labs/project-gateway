@@ -208,6 +208,209 @@ export interface CapabilityDescriptor {
   readonly mutationCapable: boolean;
 }
 
+// ─── WP-8-D: write/read/verify operations, publication, locking, audit ────
+// Type-level vocabulary only. No value in this module authorizes a mutation;
+// every mutation path requires a genuine capability created by a gated
+// creator in `src/storage/capabilities/authenticity.ts`.
+
+/** WP-8-D write operation set (CAP-001, CAP-004). */
+export type WriteOperation = 'record-publish';
+
+/** WP-8-D read-operation set (non-mutating; CAP-001). */
+export type ReadOperation = 'read-record' | 'enumerate-class';
+
+/** WP-8-D verify-operation set (non-mutating; CAP-001). */
+export type VerifyOperation = 'verify-record';
+
+/**
+ * Verified store instance facts used as capability bindings (ADR-029 D-5).
+ * Only the metadata verification pipeline (descriptor-bound read, canonical
+ * parse, digest and identity verification) may produce this value; it is
+ * never constructible from raw request or structural objects.
+ */
+export interface VerifiedStoreInstance {
+  readonly parentIdentity: RootIdentity;
+  /** Exactly the two verified namespace identities (configuration, store-records). */
+  readonly namespaces: readonly NamespaceIdentity[];
+  readonly configurationIdentity: string;
+  readonly serviceUid: number;
+  /** Selected limit profile (values), correlated with the verified metadata. */
+  readonly limitProfile: Readonly<Record<string, number>>;
+}
+
+/** Canonical writer lock record (contract 12.3, LOK-005/006/015). */
+export interface WriterLockRecord {
+  readonly lockVersion: '1';
+  /** Store instance: both namespace identities (dev/ino) — never PID alone. */
+  readonly storeInstance: readonly { readonly kind: NamespaceKind; readonly dev: number; readonly ino: number }[];
+  /** Random per-acquisition nonce (contract 12.3). */
+  readonly nonce: string;
+  /** Safe reference: domain digest of the trusted action identity. */
+  readonly actionIdentityDigest: string;
+  readonly pid: number;
+  readonly processStartTime: number;
+  /** Host boot identity where available; absent in WP-8-D (injectable; reserved for phase-4 recovery). */
+  readonly bootIdentity?: string;
+  readonly acquisitionTime: number;
+  /** Maximum age from the limit profile (`lockWait`); informational in WP-8-D. */
+  readonly maxAgeMs: number;
+}
+
+/** Lock outcome vocabulary (LOK-001/008/011/013). */
+export type LockOutcome =
+  | 'acquired'
+  | 'contention'
+  | 'timeout'
+  | 'cancelled'
+  | 'released'
+  | 'not-owned'
+  | 'foreign-lock';
+
+export interface LockResult {
+  readonly ok: boolean;
+  readonly outcome?: LockOutcome;
+  readonly record?: WriterLockRecord;
+  readonly code?: string;
+  readonly message?: string;
+}
+
+/** Minimal mechanical write-audit event payload (AUD-002/003/005; D-8). */
+export interface WriteAuditEventModel {
+  /** `pgw:l:<32-hex>` deterministic event identity (D-8). */
+  readonly recordId: string;
+  readonly envelope: Readonly<Record<string, unknown>>;
+  readonly canonicalUtf8: string;
+  readonly digest: string;
+  /** Ordering tuple: primary createdAt, primary record identity, event identity (DTM-003). */
+  readonly ordering: readonly [string, string, string];
+}
+
+/** Publication outcome vocabulary (WPR-006/012/019; 10.2). */
+export type PublicationOutcome =
+  | 'published'
+  | 'idempotent-duplicate'
+  | 'duplicate'
+  | 'conflict-revision'
+  | 'temp-exists-retry'
+  | 'failed';
+
+export interface PublishRecordResult {
+  readonly ok: boolean;
+  readonly outcome?: PublicationOutcome;
+  readonly recordId?: string;
+  readonly recordDigest?: string;
+  readonly auditEventId?: string;
+  readonly findings?: readonly StorageFinding[];
+}
+
+/** Exact-read result (RDS-001/002/008). */
+export interface ReadRecordResult {
+  readonly ok: boolean;
+  readonly record?: Readonly<Record<string, unknown>>;
+  readonly digest?: string;
+  readonly byteLength?: number;
+  readonly findings?: readonly StorageFinding[];
+}
+
+/** Verify-by-identity result (RDS-003): structured findings, never content. */
+export interface VerifyRecordResult {
+  readonly ok: boolean;
+  readonly findings: readonly StorageFinding[];
+}
+
+/** Enumeration continuation cursor (RDS-004, LMT-006). */
+export interface EnumerationCursor {
+  readonly shard: string;
+  readonly entry: string;
+}
+
+/** One enumerated item: a verified record identity or a bounded finding. */
+export interface EnumeratedItem {
+  readonly recordId?: string;
+  readonly finding?: StorageFinding;
+}
+
+export interface EnumerateClassResult {
+  readonly ok: boolean;
+  readonly items: readonly EnumeratedItem[];
+  readonly continuation?: EnumerationCursor;
+  readonly scannedEntries: number;
+  readonly truncated: boolean;
+  readonly findings?: readonly StorageFinding[];
+}
+
+/** Injected time/identity sources for the lock module (D-3; non-authority fields). */
+export interface LockTimeSource {
+  /** Bounded acquisition clock (ms epoch). Never derived from request payloads. */
+  readonly now: () => number;
+  /** Process start time (ms epoch), supplied by the trusted composition root. */
+  readonly processStartTime: number;
+  /** Host boot identity where available; omitted in WP-8-D (reserved for phase-4 recovery). */
+  readonly bootIdentity?: string;
+  /** Bounded wait primitive for lock contention (injected; no timers in storage source). */
+  readonly wait?: (ms: number) => void;
+  /** Caller cancellation signal checked during bounded waits (LOK-012). */
+  readonly cancelled?: () => boolean;
+}
+
+/** Injectable fs hooks for deterministic per-stage failure tests (WPR-022). */
+export interface PublicationHooks {
+  readonly fsyncFile?: (fd: number) => void;
+  readonly fsyncDirectory?: (path: string) => void;
+  readonly write?: (fd: number, buf: Uint8Array, off: number, len: number, pos: number | null) => number;
+  readonly link?: (existingPath: string, newPath: string) => void;
+  readonly unlink?: (path: string) => void;
+}
+
+/** Authorized-write request (composition boundary; D-2/D-5). */
+export interface PublishRecordRequest {
+  /** Genuine WP-6 validated trusted configuration (runtime-branded). */
+  readonly trustedConfiguration: unknown;
+  /** Genuine branded `TrustedStorageBootstrapInput` (initialization-family gate). */
+  readonly bootstrapInput: unknown;
+  /** Genuine branded `StorageWriteActionProvenance` (zero production producers). */
+  readonly writeActionProvenance: unknown;
+  /** Correlated raw fields (verified for exact equality against the provenance). */
+  readonly locator: string;
+  readonly serviceUid: number;
+  readonly forbiddenRoots: readonly string[];
+  readonly limitProfile: Readonly<Record<string, number>>;
+  /** Closed record class of the primary record. */
+  readonly recordClass: RecordClassId;
+  /** Validated envelope model of the primary record (canonicalized at admission). */
+  readonly record: Readonly<Record<string, unknown>>;
+  /** Injected time/identity sources for the lock module (D-3). */
+  readonly timeSource: LockTimeSource;
+  /** Injectable fs hooks for deterministic per-stage failure tests. */
+  readonly hooks?: PublicationHooks;
+}
+
+/** Exact-read request (non-mutating; D-5). */
+export interface ReadRecordRequest {
+  /** Genuine WP-6 validated trusted configuration (runtime-branded). */
+  readonly trustedConfiguration: unknown;
+  /** Genuine branded `TrustedStorageBootstrapInput`. */
+  readonly trustedInput: unknown;
+  readonly recordClass: RecordClassId;
+  readonly recordId: string;
+}
+
+/** Verify-by-identity request (non-mutating; D-5). */
+export interface VerifyRecordRequest {
+  readonly trustedConfiguration: unknown;
+  readonly trustedInput: unknown;
+  readonly recordClass: RecordClassId;
+  readonly recordId: string;
+}
+
+/** Bounded enumeration request (non-mutating; D-5). */
+export interface EnumerateClassRequest {
+  readonly trustedConfiguration: unknown;
+  readonly trustedInput: unknown;
+  readonly recordClass: RecordClassId;
+  readonly continuation?: EnumerationCursor;
+}
+
 // ─── WP-8-C: trusted root, initialization, and metadata domain types ──────
 // Type-level vocabulary for the trusted-root/bootstrap phase. No value in
 // this module authorizes mutation; the initialization capability is the only
@@ -250,6 +453,12 @@ export interface NamespaceState {
   readonly entries: readonly string[];
   /** True when an unknown or unexpected entry was detected (fails closed). */
   readonly unknownEntries: boolean;
+  /**
+   * True only for a phase-2-initialized namespace (exact `metadata,tmp` with
+   * verified metadata) under the phase-3 classifier policy: upgradeable, not
+   * foreign (ADR-029 D-7 state A). The namespace remains PROVISIONAL.
+   */
+  readonly phase3UpgradeRequired?: boolean;
   /** Namespace root identity when the directory exists and was verified. */
   readonly identity?: NamespaceIdentity;
 }

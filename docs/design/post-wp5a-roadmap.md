@@ -46,11 +46,30 @@ implementation rereview returned `WP-8-B FINAL MICRO IMPLEMENTATION
 REREVIEW: ACCEPTED` with `OPEN FINDINGS: 0`**; the **WP-8-B
 implementation is accepted** and the **WP-8-B baseline commit** (subject
 `feat: establish WP-8-B non-mutating foundation`) is the commit
-containing this update; **WP-8-B closure remains pending independent
-baseline-commit verification**; the **next gate is the WP-8-B baseline
-commit verification**;
-the WP-8-B **commit is not authorized**; **WP-8-C and later phases are
-not authorized**; WP-8 implementation is **not closed**; WP-9 and later
+containing this update; the **independent baseline-commit verification
+accepted the WP-8-B baseline commit** and **WP-8-B is closed** at
+`b83120475a4c66606ebb72d9346cf15f10c2f00d`. Current state: the
+**WP-8-C eligibility and authorization analysis** found WP-8-C
+**eligible after the OD-001 human decision**; the **human decision
+closed OD-001** (explicit control-plane locator only; no WP-8 host
+default; ADR-028; contract Appendix G updated); the **WP-8-C
+authorization-envelope refinement** produced the implementation-ready
+envelope; the **WP-8-C pre-implementation decision baseline is
+documented** (ADR-028; decision-consolidation report); the **senior
+decision-baseline review returned corrections required** (nine findings
+W8C-D01…W8C-D09); the **focused decision-baseline correction closed all
+nine**; the **focused decision-baseline rereview returned one remaining
+MAJOR finding (W8C-D10), one dependent finding (W8C-D11), and three
+MINOR findings (W8C-D12…W8C-D14)**; the **final micro decision-baseline
+correction closed all five**; the **final micro decision-baseline
+rereview and the final status micro spot check returned `WP-8-C FINAL
+STATUS MICRO SPOT CHECK: ACCEPTED` with `OPEN FINDINGS: 0`**; the
+**WP-8-C decision baseline is ACCEPTED** and the **WP-8-C
+decision-baseline commit** (subject `docs: establish WP-8-C decision
+baseline`) is the commit containing this update; the **next gate is
+human authorization of WP-8-C implementation**; **WP-8-C implementation is
+not authorized**; **WP-8-D and later phases are not authorized**; WP-8
+implementation is **not closed**; WP-9 and later
 packages are **not authorized**. No release,
 publication, installation, or deployment action has occurred for WP-8.
 

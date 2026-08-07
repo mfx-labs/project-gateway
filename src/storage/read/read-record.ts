@@ -39,9 +39,9 @@ import type { NamespaceIdentity, RecordClassId, ReadRecordResult, StorageFinding
 const { O_RDONLY, O_NOFOLLOW, O_DIRECTORY } = constants;
 
 /** Stable store facts shared with the initialization orchestrator (LANE/versions). */
-const STORE_LANE = 'posix-0700';
-const STORE_LAYOUT_VERSION = 'v1';
-const STORE_METADATA_FORMAT_VERSION = '1';
+export const STORE_LANE = 'posix-0700';
+export const STORE_LAYOUT_VERSION = 'v1';
+export const STORE_METADATA_FORMAT_VERSION = '1';
 
 /** Metadata file path under a namespace root (fixed derivation). */
 function metadataFilePath(namespaceRoot: string): string {
@@ -98,6 +98,74 @@ export function verifyStoreInstance(input: {
     namespaces.push(ns.identity);
   }
   // Deterministic order: configuration namespace first, then store-records.
+  namespaces.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'configuration' ? -1 : 1));
+  return {
+    ok: true,
+    storeInstance: {
+      parentIdentity: parent.identity,
+      namespaces,
+      configurationIdentity: input.configurationIdentity,
+      serviceUid: input.serviceUid,
+      limitProfile: { ...input.limitProfile },
+    },
+  };
+}
+
+/**
+ * WP-8-M configuration-tolerant verified-store revalidation (§16.7/ADR-036):
+ * identical to `verifyStoreInstance` EXCEPT that the configuration-namespace
+ * StoreMetadata is not required. The trusted parent, both namespace-root
+ * descriptors, and the store-records StoreMetadata are verified exactly as
+ * in the strict pipeline (the store identity anchor); the configuration
+ * namespace's metadata state is REPORTED by the caller's classification
+ * (scan helper), never trusted and never required. This is the ONLY
+ * revalidation path that may succeed while the configuration object is
+ * missing or conflicting — used by the recovery scan and the exact
+ * configuration-namespace recovery operation; every other operation keeps
+ * the strict fail-closed pipeline. A wrong configuration-namespace root
+ * descriptor still fails closed.
+ */
+export function verifyStoreInstanceConfigurationTolerant(input: {
+  readonly locator: string;
+  readonly serviceUid: number;
+  readonly forbiddenRoots: readonly string[];
+  readonly configurationIdentity: string;
+  readonly configurationVersion: string;
+  readonly limitProfile: Readonly<Record<string, number>>;
+}): { readonly ok: boolean; readonly storeInstance?: VerifiedStoreInstance; readonly code?: string; readonly message?: string } {
+  const parent = validateAndCaptureParent(input.locator, input.serviceUid, input.forbiddenRoots);
+  if (!parent.ok || parent.identity === undefined) {
+    return { ok: false, code: parent.code ?? 'ERR-STO-ROOT-INVALID', message: parent.message ?? 'trusted parent validation failed' };
+  }
+  const overlap = checkForbiddenRootOverlap(parent.identity, input.forbiddenRoots);
+  if (!overlap.ok) {
+    return { ok: false, code: overlap.code ?? 'ERR-STO-ROOT-INVALID', message: overlap.message ?? 'trusted parent overlaps a forbidden root' };
+  }
+  const kinds: readonly NamespaceIdentity['kind'][] = ['configuration', 'store-records'];
+  const namespaces: NamespaceIdentity[] = [];
+  for (const kind of kinds) {
+    const root = namespaceRootPath(parent.identity.canonicalPath, kind);
+    const ns = verifyNamespaceRootIdentity(root, input.serviceUid, kind);
+    if (!ns.ok || ns.identity === undefined) {
+      return { ok: false, code: ns.code ?? 'ERR-STO-ROOT-IDENTITY-CHANGED', message: ns.message ?? 'namespace root could not be revalidated' };
+    }
+    namespaces.push(ns.identity);
+    if (kind === 'configuration') continue;
+    const expectation: Omit<StoreMetadataExpectation, 'actionIdentity'> = {
+      metadataFormatVersion: STORE_METADATA_FORMAT_VERSION,
+      layoutVersion: STORE_LAYOUT_VERSION,
+      namespaceKind: kind,
+      namespaceIdentity: ns.identity,
+      parentIdentity: parent.identity,
+      lane: STORE_LANE,
+      configurationIdentity: input.configurationIdentity,
+      limitProfileIdentity: { configurationVersion: input.configurationVersion, configurationIdentity: input.configurationIdentity },
+    };
+    const meta = verifyStoreMetadataAtPath({ path: metadataFilePath(root), expected: expectation, serviceUid: input.serviceUid });
+    if (!meta.ok || meta.metadata === undefined) {
+      return { ok: false, code: meta.code ?? 'ERR-STO-INTEGRITY', message: meta.message ?? 'store metadata verification failed' };
+    }
+  }
   namespaces.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'configuration' ? -1 : 1));
   return {
     ok: true,

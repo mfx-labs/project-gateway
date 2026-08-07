@@ -359,13 +359,55 @@ plus fs-free execution/evidence modules; static-guard and global-security
 boundaries are extended (no generic deletion vocabulary; retention
 creators never re-exported). The contract gained §15.4/RNT-011…020 and
 its pinned SHA-256 was updated.
-Compaction, migration, configuration-namespace recovery, disposition of
+Compaction, migration, disposition of
 the remaining adjudication-only classes, WP-9, and WP-12 remain out of
 scope. The **implementation report
 (`docs/reports/wp-8l-retention-legal-hold-deletion-implementation-report.md`)
 is complete**; **WP-8-F, WP-8-G, WP-8-H, WP-8-I, WP-8-J, WP-8-K, and
 WP-8-L are
 not yet closed**
+— implementation review pending; WP-8 implementation is **not closed**.
+
+**WP-8-M (configuration namespace recovery; ADR-036; contract
+§16.7/CSA-016…018) is implemented**: the exact recovery operation
+`recover-configuration-namespace` with the dual-authority gate (genuine
+recovery authority AND genuine trusted configuration/bootstrap input —
+deterministic trusted-input identity digest; recovery authority alone
+cannot publish configuration; trusted input alone grants no mutation
+authority; on-disk configuration never authorizes its own repair). The
+recoverable object is the configuration-namespace `StoreMetadata`
+(`config-v1/metadata/metadata.json`); the recoverable state is the
+expected canonical configuration MISSING, republished with the exact
+no-overwrite protocol from bytes derived through the SAME
+trusted-input-to-storage transformation as normal initialization.
+Conflicts, malformed, wrong type/UID/mode, symlinks, foreign entries,
+unsupported versions, interrupted publication, and a missing metadata
+directory fail closed — never overwritten, never repaired, zero
+migration. Publication is confined to a dedicated
+`ConfigurationRecoveryMetadataPermit`; a successful recovery publishes
+deterministic `recovery-evidence` plus its `authorized-write` audit.
+Idempotency: recovered / already-completed / already-present (no
+evidence fabricated) / integrity-failure / fail-closed. The recovery
+scan observes the configuration namespace (closed state vocabulary +
+deterministic observation id) and classifies configuration-recovery
+evidence states; malformed/conflicting configuration never makes the
+unrelated recovery scan fail; the registry index is never updated or
+deleted; the recovered configuration is consumed by the normal
+configuration consumer path exactly as initialization would produce it.
+A fixed 11-stage crash inventory; stale writer locks are never
+auto-broken. The recovery scan and the recovery operation use the
+configuration-tolerant revalidation (fully verified store-records
+metadata anchor); every other operation keeps the strict fail-closed
+pipeline. The contract gained §16.7/CSA-016…018 and its pinned SHA-256
+was updated.
+Configuration `ConfigurationSnapshotRecord` production (no producer
+exists; recovery never invents configuration records),
+configuration-namespace recovery of non-metadata objects, migration,
+compaction, WP-9, and WP-12 remain out of scope. The **implementation
+report
+(`docs/reports/wp-8m-configuration-namespace-recovery-implementation-report.md`)
+is complete**; **WP-8-F, WP-8-G, WP-8-H, WP-8-I, WP-8-J, WP-8-K, WP-8-L,
+and WP-8-M are not yet closed**
 — implementation review pending; WP-8 implementation is **not closed**.
 WP-9 and later
 packages are **not authorized**. No push, release, publication,

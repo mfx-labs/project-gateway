@@ -65,7 +65,11 @@ export type LockOperation =
   // WP-8-L: retention deletion uses the normal writer lock (§15.4); it is
   // never a lock-recovery action and never breaks the lock it acquires.
   | 'retention-delete-record'
-  | 'retention-delete-audit';
+  | 'retention-delete-audit'
+  // WP-8-M: configuration-namespace recovery uses the normal writer lock
+  // (§16.7); it is never a lock-recovery action and never breaks the lock
+  // it acquires.
+  | 'recover-configuration-namespace';
 
 function isGenuineLockAuthority(value: unknown): value is LockAuthority {
   return isGenuineWriteCapability(value) || isGenuineRecoveryCapability(value) || isGenuineRetentionCapability(value);

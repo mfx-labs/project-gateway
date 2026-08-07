@@ -472,6 +472,65 @@ WP-8 implementation remains **not closed**; WP-9 and later packages
 remain **not authorized**. No release, publication, installation, or
 deployment action has occurred for WP-8.
 
+**WP-8-M (contract §16.7/CSA-016…018; ADR-036 — configuration namespace
+recovery) is implemented**: the exact recovery operation
+**`recover-configuration-namespace`** (private recovery vocabulary only;
+no generic configuration write/replace/repair operation exists) with the
+**dual-authority gate** — genuine recovery authority AND a genuine
+branded trusted configuration/bootstrap input correlated with the genuine
+WP-6 trusted configuration (deterministic trusted-input identity digest
+`PGAP-STORAGE-TRUSTED-INPUT-IDENTITY-v1`); recovery authority alone
+cannot publish configuration and trusted input alone grants no mutation
+authority, and an on-disk configuration object never authorizes its own
+repair. The recoverable object is the configuration-namespace
+`StoreMetadata` (`config-v1/metadata/metadata.json` — the only persistent
+configuration object); the recoverable state is the expected canonical
+configuration MISSING, republished with the exact no-overwrite metadata
+protocol from bytes derived through the SAME canonical
+trusted-input-to-storage transformation as normal initialization
+(recovery-gated compatibility probe + metadata facts + `buildStoreMetadata`;
+identical trusted input ⇒ identical bytes/digest; clock/PID/nonce/path/
+recovery-action never enter the bytes). Conflicting bytes, malformed,
+wrong type/UID/mode, symlinks, foreign entries, unsupported versions,
+interrupted publication (provable prefix), and a missing metadata
+DIRECTORY all fail closed — never overwritten, never repaired, zero
+migration (older-version transformation is migration-required and
+reserved). Publication is confined to a dedicated
+`ConfigurationRecoveryMetadataPermit` consumed by the metadata
+persistence owner (independent re-parse/re-verify/re-derive; EEXIST is
+byte-exact replay only). A successful recovery publishes deterministic
+`recovery-evidence` (`PGAP-STORAGE-CONFIGURATION-RECOVERY-EVIDENCE-v1`)
+plus its `authorized-write` audit; evidence never grants configuration
+authority. Idempotency: missing → recover; exact + matching evidence →
+`already-completed`; exact + no evidence → non-mutating
+`already-present` (no evidence fabricated); missing + evidence →
+integrity failure; conflict/trusted-input-change/observation change →
+fail closed. The recovery scan observes the configuration namespace
+(closed state vocabulary + deterministic observation id) and classifies
+configuration-recovery evidence states; malformed/conflicting
+configuration never makes the unrelated recovery scan fail; the registry
+index is never updated or deleted (WP-8-H staleness applies); the
+recovered configuration is consumed by the normal configuration consumer
+path exactly as initialization would produce it. A fixed 11-stage crash
+inventory covers both publication and evidence; a stale writer lock is
+never auto-broken. The recovery scan and the recovery operation use the
+configuration-tolerant revalidation (fully verified store-records
+metadata anchor; configuration metadata observed, never trusted); every
+other operation keeps the strict fail-closed pipeline. The contract
+gained §16.7/CSA-016…018 and its pinned SHA-256 was updated.
+**Not begun**:
+compaction, migration, disposition of the remaining adjudication-only
+classes, configuration `ConfigurationSnapshotRecord` production (no
+producer exists; recovery never invents configuration records),
+configuration-namespace recovery of non-metadata objects, WP-9
+generation seeding, WP-12 integration. The **implementation report
+(`docs/reports/wp-8m-configuration-namespace-recovery-implementation-report.md`)
+is complete** with the verification evidence; the **next gate is the
+WP-8-F…WP-8-M implementation review**; **WP-8-F…WP-8-L are not closed**;
+WP-8 implementation remains **not closed**; WP-9 and later packages
+remain **not authorized**. No release, publication, installation, or
+deployment action has occurred for WP-8.
+
 **Normative cross-references:** `project-gateway-scope-and-principles.md`
 (WP-0), ADR-002, ADR-003, ADR-006, ADR-020, ADR-022, ADR-023 (sequencing
 decision), ADR-024 (trusted configuration ownership), ADR-025 (capability

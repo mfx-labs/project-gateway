@@ -34,7 +34,7 @@ import { verifyObjectBytesAt } from '../publication/publish-record.js';
 import { publishRecoveryBoundRecord } from '../publication/publish-record.js';
 import { deriveRecordRelativePath } from '../layout/layout.js';
 import { isGenuineRecoveryCapability, createRecoveryPublicationPermit, type RecoveryCapability } from '../capabilities/authenticity.js';
-import type { StoreEvidenceKind, VerifiedStoreInstance } from '../types.js';
+import type { ConfigurationMetadataState, StoreEvidenceKind, VerifiedStoreInstance } from '../types.js';
 
 /** Deterministic UTC ISO-8601 formatter from an epoch-ms value (no Date). */
 export function isoFromEpochMs(ms: number): string {
@@ -69,6 +69,10 @@ export const STORAGE_QUARANTINE_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN = 'PGAP-STO
 export const STORAGE_INDEX_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN = 'PGAP-STORAGE-INDEX-DISPOSITION-EVIDENCE-v1\u0000';
 /** WP-8-J lock-recovery evidence identity domain (12.3.1/ADR-033; §9). */
 export const STORAGE_LOCK_RECOVERY_EVIDENCE_IDENTITY_DOMAIN = 'PGAP-STORAGE-LOCK-RECOVERY-EVIDENCE-v1\u0000';
+/** WP-8-M: configuration-recovery evidence identity domain (§16.7/ADR-036 §9). */
+export const STORAGE_CONFIGURATION_RECOVERY_EVIDENCE_IDENTITY_DOMAIN = 'PGAP-STORAGE-CONFIGURATION-RECOVERY-EVIDENCE-v1\u0000';
+/** WP-8-M: trusted-input identity domain (§16.7/ADR-036 §3; deterministic digest of the genuine trusted input facts). */
+export const STORAGE_TRUSTED_INPUT_IDENTITY_DOMAIN = 'PGAP-STORAGE-TRUSTED-INPUT-IDENTITY-v1\u0000';
 
 export interface QuarantineTemporaryIdInput {
   readonly storeInstance: VerifiedStoreInstance;
@@ -103,7 +107,9 @@ export type RecoveryEvidenceOperation =
   | 'audit-reconstruction'
   | 'dispose-quarantined-temporary'
   | 'dispose-conflicting-index'
-  | 'break-writer-lock';
+  | 'break-writer-lock'
+  // WP-8-M: configuration-namespace recovery evidence (ADR-036 §9).
+  | 'recover-configuration-namespace';
 
 /** Evidence outcome vocabulary (closed; the fact recorded, never a decision). */
 export type RecoveryEvidenceOutcome = 'orphan-removed' | 'already-completed' | 'lock-broken';
@@ -931,4 +937,241 @@ export function publishRecoveryEvidence(input: {
     evidencePermit.dispose();
     auditPermit?.dispose();
   }
+}
+
+// ─── WP-8-M: configuration-namespace recovery evidence (ADR-036 §9) ───────
+
+/**
+ * Deterministic trusted-input identity digest (ADR-036 §3): domain digest
+ * over the canonical facts of a genuine `TrustedStorageBootstrapInput`
+ * (configuration identity, service UID, sorted forbidden-root set,
+ * canonical limit profile, locator). The recovery request binds it; the
+ * recovery flow recomputes it from the genuine branded input; evidence
+ * carries it as public factual identity material (never input internals).
+ */
+export function computeTrustedInputIdentity(input: {
+  readonly configurationIdentity: string;
+  readonly serviceUid: number;
+  readonly forbiddenRoots: readonly string[];
+  readonly limitProfile: Readonly<Record<string, number>>;
+  readonly locator: string;
+}): string {
+  const tuple = {
+    configurationIdentity: input.configurationIdentity,
+    serviceUid: input.serviceUid,
+    forbiddenRoots: [...input.forbiddenRoots].sort(),
+    limitProfile: Object.fromEntries(Object.entries(input.limitProfile).sort((a, b) => (a[0] < b[0] ? -1 : 1))),
+    locator: input.locator,
+  };
+  return computeDomainDigest(STORAGE_TRUSTED_INPUT_IDENTITY_DOMAIN, JSON.stringify(tuple));
+}
+
+/** Configuration-recovery evidence input (identity binds the factual tuple). */
+export interface ConfigurationRecoveryEvidenceInput {
+  readonly storeInstance: VerifiedStoreInstance;
+  /** Trusted RECOVERY action identity (creation evidence; never in the identity). */
+  readonly actionIdentity: string;
+  readonly evidenceKind: 'recovery-evidence';
+  readonly recoveryOperation: 'recover-configuration-namespace';
+  /** Exact configuration identity of the recovered configuration object. */
+  readonly configurationIdentity: string;
+  /** Exact configuration version of the recovered configuration object. */
+  readonly configurationVersion: string;
+  /** Metadata format version of the recovered configuration object. */
+  readonly metadataFormatVersion: string;
+  /** Exact record-byte digest of the recovered configuration object. */
+  readonly configurationDigest: string;
+  /** Deterministic trusted-input identity digest (the dual-authority binding). */
+  readonly trustedInputIdentity: string;
+  /** Pre-recovery current-state classification (observation state). */
+  readonly preRecoveryState: ConfigurationMetadataState;
+  /** Current-state observation id (the request binding). */
+  readonly observationId: string;
+  readonly generation: string;
+  readonly surfaceGeneration: string;
+  readonly outcome: 'configuration-recovered' | 'already-completed';
+  readonly createdAt: string;
+}
+
+/** Deterministic configuration-recovery evidence identity (time/action-free; extra creation-evidence fields are ignored). */
+export function computeConfigurationRecoveryEvidenceIdentity(input: ConfigurationRecoveryEvidenceInput): string {
+  return configurationRecoveryEvidenceIdentityFacts({
+    storeInstance: input.storeInstance,
+    evidenceKind: input.evidenceKind,
+    recoveryOperation: input.recoveryOperation,
+    configurationIdentity: input.configurationIdentity,
+    configurationVersion: input.configurationVersion,
+    metadataFormatVersion: input.metadataFormatVersion,
+    configurationDigest: input.configurationDigest,
+    trustedInputIdentity: input.trustedInputIdentity,
+    outcome: input.outcome,
+  });
+}
+
+/** Deterministic configuration-recovery evidence identity over the factual tuple (pre-lock classification use). */
+export function configurationRecoveryEvidenceIdentityFacts(input: {
+  readonly storeInstance: VerifiedStoreInstance;
+  readonly evidenceKind: 'recovery-evidence';
+  readonly recoveryOperation: 'recover-configuration-namespace';
+  readonly configurationIdentity: string;
+  readonly configurationVersion: string;
+  readonly metadataFormatVersion: string;
+  readonly configurationDigest: string;
+  readonly trustedInputIdentity: string;
+  readonly outcome: 'configuration-recovered' | 'already-completed';
+}): string {
+  const tuple = {
+    storeInstance: input.storeInstance.namespaces
+      .map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino }))
+      .sort((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0)),
+    evidenceKind: input.evidenceKind,
+    recoveryOperation: input.recoveryOperation,
+    configurationIdentity: input.configurationIdentity,
+    configurationVersion: input.configurationVersion,
+    metadataFormatVersion: input.metadataFormatVersion,
+    configurationDigest: input.configurationDigest,
+    trustedInputIdentity: input.trustedInputIdentity,
+    outcome: input.outcome,
+  };
+  const digest = computeDomainDigest(STORAGE_CONFIGURATION_RECOVERY_EVIDENCE_IDENTITY_DOMAIN, JSON.stringify(tuple));
+  return `pgw:r:${digest.slice('sha-256:'.length, 'sha-256:'.length + 32)}`;
+}
+
+/** Configuration-recovery evidence payload (bounded; no paths, no nonces, no input internals). */
+export function configurationRecoveryEvidencePayload(input: ConfigurationRecoveryEvidenceInput): Readonly<Record<string, unknown>> {
+  return {
+    evidenceKind: input.evidenceKind,
+    recoveryOperation: input.recoveryOperation,
+    configurationIdentity: input.configurationIdentity,
+    configurationVersion: input.configurationVersion,
+    metadataFormatVersion: input.metadataFormatVersion,
+    configurationDigest: input.configurationDigest,
+    trustedInputIdentity: input.trustedInputIdentity,
+    preRecoveryState: input.preRecoveryState,
+    observationId: input.observationId,
+    generation: input.generation,
+    surfaceGeneration: input.surfaceGeneration,
+    outcome: input.outcome,
+    resultingState: { configurationPresent: true },
+  };
+}
+
+/** Pure deterministic configuration-recovery evidence construction (6.3; RNT/evidence model). */
+export function buildConfigurationRecoveryEvidenceRecord(input: ConfigurationRecoveryEvidenceInput): RecoveryEvidenceBuild {
+  if (!isValidDigestSyntax(input.configurationIdentity) || !isValidDigestSyntax(input.configurationDigest) || !isValidDigestSyntax(input.trustedInputIdentity)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'configuration-recovery evidence digest bindings are malformed' };
+  }
+  const recordId = computeConfigurationRecoveryEvidenceIdentity(input);
+  const payload = configurationRecoveryEvidencePayload(input);
+  const payloadDigest = computePayloadDigest(payload);
+  const envelope: Readonly<Record<string, unknown>> = {
+    recordKind: 'StoreEvidenceRecord',
+    formatVersion: '1.0',
+    recordId,
+    revision: 1,
+    createdAt: input.createdAt,
+    trustedActionId: input.actionIdentity,
+    payload,
+    payloadDigest,
+    referenceDigests: [input.configurationDigest],
+    retentionClass: 'indefinite',
+  };
+  const canonical = canonicalEnvelopeBytes(envelope);
+  const audit = buildAuthorizedWriteAuditEvent({
+    storeInstance: input.storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })),
+    primaryClass: 'store-evidence-record',
+    primaryRecordId: recordId,
+    primaryRevision: 1,
+    primaryDigest: canonical.digest,
+    eventKind: 'authorized-write',
+    trustedActionIdentity: input.actionIdentity,
+    primaryCreatedAt: input.createdAt,
+  });
+  if (!audit.ok || audit.event === undefined) {
+    return { ok: false, code: 'ERR-STO-INTERNAL-INVARIANT', message: audit.message ?? 'configuration-recovery evidence audit event could not be constructed' };
+  }
+  return {
+    ok: true,
+    record: {
+      recordId,
+      canonicalUtf8: canonical.canonicalUtf8,
+      digest: canonical.digest,
+      createdAt: input.createdAt,
+      auditCanonicalUtf8: audit.event.canonicalUtf8,
+      auditDigest: audit.event.digest,
+      auditEventId: audit.event.recordId,
+    },
+  };
+}
+
+/** Existing configuration-recovery evidence verification (idempotency classification). */
+export function verifyExistingConfigurationRecoveryEvidence(input: {
+  readonly namespaceRoot: string;
+  readonly serviceUid: number;
+  readonly byteLimit: number;
+  readonly evidenceId: string;
+  readonly configurationIdentity: string;
+  readonly configurationVersion: string;
+  readonly configurationDigest: string;
+  readonly trustedInputIdentity: string;
+}): { readonly ok: boolean; readonly matches?: boolean; readonly code?: string; readonly message?: string } {
+  const derived = deriveRecordRelativePath('store-evidence-record', input.evidenceId);
+  if (!derived.ok) {
+    return { ok: false, code: 'ERR-STO-CONTAINMENT-DENIED', message: 'configuration-recovery evidence path derivation failed' };
+  }
+  const existing = verifyObjectBytesAt({ path: `${input.namespaceRoot}/${derived.relativePath}`, serviceUid: input.serviceUid, byteLimit: input.byteLimit });
+  if (!existing.ok) {
+    if (existing.code === 'ERR-STO-NOT-FOUND') return { ok: true, matches: false };
+    return { ok: false, code: existing.code, message: existing.message };
+  }
+  const parsed = parsePersistedEnvelope(existing.canonicalUtf8 ?? '', input.byteLimit);
+  if (!parsed.ok || parsed.model === undefined) {
+    return { ok: false, code: 'ERR-STO-MALFORMED', message: 'existing configuration-recovery evidence is not a canonical envelope' };
+  }
+  const model = parsed.model as Readonly<Record<string, unknown>>;
+  if (model['recordKind'] !== 'StoreEvidenceRecord') {
+    return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'existing configuration-recovery evidence is not a StoreEvidenceRecord' };
+  }
+  const payload = model['payload'];
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return { ok: false, code: 'ERR-STO-MALFORMED', message: 'existing configuration-recovery evidence payload is malformed' };
+  }
+  const p = payload as Readonly<Record<string, unknown>>;
+  const matches =
+    p['evidenceKind'] === 'recovery-evidence' &&
+    p['recoveryOperation'] === 'recover-configuration-namespace' &&
+    p['configurationIdentity'] === input.configurationIdentity &&
+    p['configurationVersion'] === input.configurationVersion &&
+    p['configurationDigest'] === input.configurationDigest &&
+    p['trustedInputIdentity'] === input.trustedInputIdentity &&
+    (p['outcome'] === 'configuration-recovered' || p['outcome'] === 'already-completed');
+  if (!matches) {
+    return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'existing configuration-recovery evidence conflicts with the authorized request' };
+  }
+  return { ok: true, matches: true };
+}
+
+/** WP-8-M: verify every required durability point of one recovery evidence publication (ADR-036 §9). */
+export function verifyRecoveryEvidenceDurability(input: {
+  readonly namespaceRoot: string;
+  readonly serviceUid: number;
+  readonly byteLimit: number;
+  readonly record: NonNullable<RecoveryEvidenceBuild['record']>;
+}): { readonly ok: boolean; readonly code?: string; readonly message?: string } {
+  const evidenceDerived = deriveRecordRelativePath('store-evidence-record', input.record.recordId);
+  const auditDerived = deriveRecordRelativePath('authoritative-audit-event', input.record.auditEventId);
+  if (!evidenceDerived.ok || !auditDerived.ok) {
+    return { ok: false, code: 'ERR-STO-CONTAINMENT-DENIED', message: 'recovery evidence durability derivation failed' };
+  }
+  const points: ReadonlyArray<{ readonly path: string; readonly expectedDigest: string; readonly label: string }> = [
+    { path: `${input.namespaceRoot}/${evidenceDerived.relativePath}`, expectedDigest: input.record.digest, label: 'recovery evidence' },
+    { path: `${input.namespaceRoot}/${auditDerived.relativePath}`, expectedDigest: input.record.auditDigest, label: 'recovery evidence audit' },
+  ];
+  for (const point of points) {
+    const durable = verifyObjectBytesAt({ path: point.path, serviceUid: input.serviceUid, byteLimit: input.byteLimit });
+    if (!durable.ok || durable.digest !== point.expectedDigest) {
+      return { ok: false, code: 'ERR-STO-DURABILITY', message: `${point.label} durability point is not verified` };
+    }
+  }
+  return { ok: true };
 }

@@ -113,8 +113,14 @@ const CREATOR_EDGES: Readonly<Record<string, readonly string[]>> = {
   // WP-8-J edges: the recovery-mutation boundary is the sole production
   // consumer; the provenance creator has zero production consumers.
   createRecoveryActionProvenance: [], // future consumer: src/control-plane/storage-recovery-action.ts (does not exist)
-  createTrustedRecoveryRequest: ['src/storage/recovery/execute.ts'],
-  createRecoveryCapability: ['src/storage/recovery/execute.ts'],
+  createTrustedRecoveryRequest: ['src/storage/recovery/execute.ts', 'src/storage/recovery/config-recovery.ts'],
+  createRecoveryCapability: ['src/storage/recovery/execute.ts', 'src/storage/recovery/config-recovery.ts'],
+  // WP-8-M edges: the exact configuration-recovery metadata permit is
+  // minted only by the configuration-recovery composition boundary and
+  // verified/liveness-checked only by the metadata persistence owner.
+  createConfigurationRecoveryMetadataPermit: ['src/storage/recovery/config-recovery.ts'],
+  isGenuineConfigurationRecoveryMetadataPermit: ['src/storage/metadata/bootstrap-persist.ts'],
+  configurationRecoveryMetadataPermitLive: ['src/storage/metadata/bootstrap-persist.ts'],
   // WP-8-L edges: the retention-mutation boundary is the sole production
   // consumer; the retention provenance creator has zero production
   // consumers (its future consumer is
@@ -507,10 +513,76 @@ test('static guard: package exports and dependencies unchanged', () => {
   assert.deepEqual(pkg.dependencies, { ajv: '8.20.0' });
 });
 
+test('static guard: configuration-recovery vocabulary is dual-gated, overwrite-free, and confined (WP-8-M)', () => {
+  const files = collectTsFiles(STORAGE_SRC);
+  // No generic configuration writer/replacement/repair vocabulary anywhere.
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    assert.equal(
+      /'write-configuration'|'replace-configuration'|'repair-config'|'config-admin'|'restore-any-config'|'configuration-write'|\bwriteConfiguration\b|\breplaceConfiguration\b/.test(content),
+      false,
+      `${rel(file)} contains a generic configuration-writer marker`,
+    );
+  }
+  // The `recover-configuration-namespace` operation literal exists only in
+  // its owners.
+  const configRecoveryOwners = new Set([
+    'src/storage/capabilities/authenticity.ts',
+    'src/storage/probe/probe.ts',
+    'src/storage/locks/lock.ts',
+    'src/storage/publication/publish-record.ts',
+    'src/storage/initialization/provision.ts',
+    'src/storage/recovery/execute.ts',
+    'src/storage/recovery/config-recovery.ts',
+    'src/storage/recovery/evidence.ts',
+    'src/storage/recovery/scan.ts',
+    'src/storage/recovery/assess.ts',
+    'src/storage/recovery/index.ts',
+    'src/storage/types.ts',
+  ]);
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    if (content.includes(`'recover-configuration-namespace'`)) {
+      assert.ok(configRecoveryOwners.has(rel(file)), `${rel(file)} contains the recover-configuration-namespace operation literal outside its owners`);
+    }
+  }
+  // The configuration-recovery boundary is filesystem-free and never
+  // accepts raw paths, configuration JSON, callbacks, or plan actions.
+  const configRecovery = readFileSync(join(STORAGE_SRC, 'recovery', 'config-recovery.ts'), 'utf8');
+  for (const name of ['unlinkSync', 'renameSync', 'copyFileSync', 'cpSync', 'mkdirSync', 'rmSync', 'rmdirSync', 'chmodSync', 'chownSync', 'writeSync', 'readFileSync', 'openSync']) {
+    assert.equal(new RegExp(`\\b${name}\\b`).test(configRecovery), false, `config-recovery.ts must not use ${name}`);
+  }
+  assert.equal(/RecoveryPlanAction/.test(configRecovery), false, 'config-recovery.ts must not accept a plan action operand');
+  assert.equal(/readonly rawPath|readonly rawConfiguration|readonly callback|readonly descriptor/.test(configRecovery), false, 'config-recovery.ts must not accept raw path/json/callback/descriptor operands');
+  // No on-disk configuration → trusted-input creator edge: the recovery
+  // boundary derives expected bytes from the genuine request operands and
+  // never mints trusted input.
+  for (const creator of ['createTrustedStorageBootstrapInput', 'createStorageBootstrapActionProvenance', 'createStorageWriteActionProvenance', 'createRetentionActionProvenance']) {
+    assert.equal(configRecovery.includes(creator), false, `config-recovery.ts must not import ${creator}`);
+  }
+  // The metadata persistence owner consumes only the exact permit.
+  const persist = readFileSync(join(STORAGE_SRC, 'metadata', 'bootstrap-persist.ts'), 'utf8');
+  assert.equal(/persistRecoveryConfigurationMetadata/.test(persist), true, 'the recovery metadata publication entry must exist');
+  const recoveryEntry = persist.slice(persist.indexOf('export function persistRecoveryConfigurationMetadata'), persist.indexOf('export function persistRecoveryConfigurationMetadata') + 700);
+  assert.equal(/readonly permit: ConfigurationRecoveryMetadataPermit/.test(recoveryEntry), true, 'the recovery metadata entry must consume the permit only');
+  assert.equal(/readonly canonicalUtf8/.test(recoveryEntry), true, 'the recovery metadata entry binds the exact canonical bytes');
+  // No permit creator/verifier in any barrel or the package root.
+  for (const barrel of ['src/storage/index.ts', 'src/storage/recovery/index.ts', 'src/storage/metadata/index.ts', 'src/storage/capabilities/index.ts', 'src/index.ts']) {
+    const content = readFileSync(join(REPO, barrel), 'utf8');
+    assert.equal(/createConfigurationRecoveryMetadataPermit|isGenuineConfigurationRecoveryMetadataPermit|configurationRecoveryMetadataPermitLive/.test(content), false, `${barrel} must not export the configuration-recovery permit creator or verifier`);
+  }
+  // The recovery capability never reaches the generic publication
+  // substrate for configuration: the sink is the metadata owner only.
+  const substrate = readFileSync(join(STORAGE_SRC, 'publication', 'publish-record.ts'), 'utf8');
+  assert.equal(/ConfigurationRecoveryMetadataPermit/.test(substrate), false, 'the generic publication substrate must never reference the configuration-recovery permit');
+  // The config-recovery module never reaches the generic record publisher.
+  assert.equal(/publishImmutableRecord|publishRecoveryBoundRecord|ensureClassShardDirectories/.test(configRecovery), false, 'config-recovery.ts must never reach the generic publication substrate');
+});
+
 test('static guard: authoritative contract is byte-identical at the accepted SHA-256', () => {
   const contract = readFileSync(join(REPO, 'docs', 'specs', 'wp-8-local-storage-registry-contract.md'), 'utf8');
   const hash = createHash('sha256').update(contract).digest('hex');
-  assert.equal(hash, 'a516522eb2c37cfc12bd0205989854fc2d11f098853a82cd869335193aa404c3');
+  assert.equal(hash, '8b1b0756803bbc1577f0e3e58c47dd806964df5e3c34fb5a48c154ebb895dbf8');
 });
 
 test('static guard: no timers, randomness, or environment dependence in storage modules', () => {

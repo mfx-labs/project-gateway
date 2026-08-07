@@ -15,7 +15,7 @@
  * `recoveryScanEntries` contract row: "recovery fails closed").
  */
 import { createReadCapability } from '../capabilities/authenticity.js';
-import { revalidateStore } from '../read/index.js';
+import { revalidateStore, revalidateStoreConfigurationTolerant } from '../read/index.js';
 import { namespaceRootFor } from '../read/index.js';
 import { scanStoreSnapshot } from './scan.js';
 import { assessRecovery } from './assess.js';
@@ -41,7 +41,13 @@ function scanFactsOf(scan: { readonly scannedEntries: number; readonly scannedBy
  * over-limit condition fails closed.
  */
 export function runRecoveryScan(request: RecoveryScanRequest): RecoveryScanResult {
-  const store = revalidateStore({ trustedConfiguration: request.trustedConfiguration, trustedInput: request.trustedInput });
+  // WP-8-M: the recovery scan uses the configuration-tolerant revalidation
+  // so that a missing/conflicting configuration object is OBSERVED (the
+  // configuration-namespace observation) instead of making the unrelated
+  // store-records recovery scan fail (§16.7). The store-records metadata
+  // remains fully verified; only the configuration-namespace metadata is
+  // observed. Every other operation keeps the strict pipeline.
+  const store = revalidateStoreConfigurationTolerant({ trustedConfiguration: request.trustedConfiguration, trustedInput: request.trustedInput });
   if (!store.ok || store.storeInstance === undefined) {
     return failResult(store.code ?? 'ERR-STO-INTEGRITY', store.message ?? 'store revalidation failed');
   }
@@ -68,7 +74,7 @@ export function runRecoveryScan(request: RecoveryScanRequest): RecoveryScanResul
     if (scan.generation === undefined) {
       return failResult('ERR-STO-INTERNAL-INVARIANT', 'recovery scan produced no generation token');
     }
-    const assessment = assessRecovery(scan.observations, scanFactsOf(scan, scan.generation));
+    const assessment = assessRecovery(scan.observations, scanFactsOf(scan, scan.generation), scan.configurationObservation);
     const plan = buildRecoveryPlan(assessment);
     return { ok: true, assessment, plan, findings: scan.findings.length > 0 ? scan.findings : undefined };
   } finally {

@@ -14,7 +14,7 @@
  */
 import { openSync, closeSync, fsyncSync, fstatSync, linkSync, symlinkSync, readFileSync } from 'node:fs';
 import { constants } from 'node:fs';
-import type { InitializationCapability } from '../capabilities/authenticity.js';
+import type { InitializationCapability, RecoveryCapability } from '../capabilities/authenticity.js';
 import type { ProbeResultProfile } from '../types.js';
 import { newScratchOwnership } from './scratch.js';
 
@@ -68,16 +68,20 @@ interface ProbeFacts {
  * Probe one namespace `tmp/` directory's primitives. All scratch stays
  * inside it and every created object is recorded for exact-name cleanup.
  */
+/** Minimal probe authority: any mutation-capable capability verifying its exact operation. */
+type ProbeCapability = { verify(op: string): { readonly ok: boolean; readonly reason?: string } };
+
 function probeDirectory(
-  capability: InitializationCapability,
+  capability: ProbeCapability,
+  expectedOperation: string,
   tmpPath: string,
   actionIdentity: string,
   ordinalBase: number,
   sameDevice: boolean,
 ): ProbeOutcome {
-  const check = capability.verify('namespace-initialize');
+  const check = capability.verify(expectedOperation);
   if (!check.ok) {
-    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'initialization capability is not usable at a probe boundary' };
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'capability is not usable at a probe boundary' };
   }
   const scratch = newScratchOwnership(tmpPath);
   let ordinal = ordinalBase;
@@ -194,6 +198,67 @@ function probeDirectory(
  * directories. Same-device (FSL-004) is verified via descriptor identity of
  * scratch created in each namespace.
  */
+/**
+ * WP-8-M recovery-gated compatibility probe (ADR-036 §5): identical to
+ * `runCompatibilityProbe` but gated on the exact
+ * `recover-configuration-namespace` recovery operation, so the expected
+ * configuration bytes derived by configuration-namespace recovery use the
+ * SAME deterministic trusted-input-to-storage transformation (probe facts
+ * included) as normal initialization — never a second serialization format.
+ */
+export function runCompatibilityProbeRecovery(
+  capability: RecoveryCapability,
+  actionIdentity: string,
+  configTmpPath: string,
+  storeTmpPath: string,
+): ProbeOutcome {
+  const check = capability.verify('recover-configuration-namespace');
+  if (!check.ok) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery capability is not usable at a probe boundary' };
+  }
+  const configScratch = newScratchOwnership(configTmpPath);
+  const storeScratch = newScratchOwnership(storeTmpPath);
+  let configFd: number | undefined;
+  let storeFd: number | undefined;
+  let sameDevice = false;
+  try {
+    const cPath = configScratch.create(actionIdentity, 0, 'file');
+    const sPath = storeScratch.create(actionIdentity, 1, 'file');
+    if (cPath === undefined || sPath === undefined) {
+      return { ok: false, code: 'ERR-STO-FS-UNSUPPORTED', message: 'same-device probe scratch could not be created' };
+    }
+    configFd = openSync(cPath, O_RDONLY | O_NOFOLLOW);
+    storeFd = openSync(sPath, O_RDONLY | O_NOFOLLOW);
+    const cStat = fstatSync(configFd);
+    const sStat = fstatSync(storeFd);
+    if (Number(cStat.dev) !== Number(sStat.dev)) {
+      return { ok: false, code: 'ERR-STO-CROSS-DEVICE', message: 'authoritative namespaces are not on the same device' };
+    }
+    sameDevice = true;
+  } catch (err) {
+    return fail(err);
+  } finally {
+    if (configFd !== undefined) closeSync(configFd);
+    if (storeFd !== undefined) closeSync(storeFd);
+    configScratch.cleanup();
+    storeScratch.cleanup();
+  }
+  const configResult = probeDirectory(capability, 'recover-configuration-namespace', configTmpPath, actionIdentity, 2, sameDevice);
+  if (!configResult.ok) return configResult;
+  const storeResult = probeDirectory(capability, 'recover-configuration-namespace', storeTmpPath, actionIdentity, 100, sameDevice);
+  if (!storeResult.ok) return storeResult;
+  const profile: ProbeResultProfile = {
+    sameDevice,
+    hardLink: configResult.profile?.hardLink === 'supported' && storeResult.profile?.hardLink === 'supported' ? 'supported' : 'unsupported',
+    directoryFsync: configResult.profile?.directoryFsync === 'supported' && storeResult.profile?.directoryFsync === 'supported' ? 'supported' : 'unsupported',
+    regularFileFsync: configResult.profile?.regularFileFsync === 'supported' && storeResult.profile?.regularFileFsync === 'supported' ? 'supported' : 'unsupported',
+    exclusiveCreation: configResult.profile?.exclusiveCreation === 'supported' && storeResult.profile?.exclusiveCreation === 'supported' ? 'supported' : 'unsupported',
+    noFollow: configResult.profile?.noFollow === 'supported' && storeResult.profile?.noFollow === 'supported' ? 'supported' : 'unsupported',
+    caseSensitive: configResult.profile?.caseSensitive === true && storeResult.profile?.caseSensitive === true,
+  };
+  return { ok: true, profile };
+}
+
 export function runCompatibilityProbe(
   capability: InitializationCapability,
   actionIdentity: string,
@@ -231,9 +296,9 @@ export function runCompatibilityProbe(
     configScratch.cleanup();
     storeScratch.cleanup();
   }
-  const configResult = probeDirectory(capability, configTmpPath, actionIdentity, 2, sameDevice);
+  const configResult = probeDirectory(capability, 'namespace-initialize', configTmpPath, actionIdentity, 2, sameDevice);
   if (!configResult.ok) return configResult;
-  const storeResult = probeDirectory(capability, storeTmpPath, actionIdentity, 100, sameDevice);
+  const storeResult = probeDirectory(capability, 'namespace-initialize', storeTmpPath, actionIdentity, 100, sameDevice);
   if (!storeResult.ok) return storeResult;
   const profile: ProbeResultProfile = {
     sameDevice,

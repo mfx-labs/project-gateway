@@ -25,7 +25,7 @@
  */
 import { mkdirSync, openSync, closeSync, fchmodSync, fstatSync, fsyncSync, readdirSync } from 'node:fs';
 import { constants } from 'node:fs';
-import type { InitializationCapability, InitializationOperation } from '../capabilities/authenticity.js';
+import type { InitializationCapability, InitializationOperation , RecoveryCapability } from '../capabilities/authenticity.js';
 import { verifyDirectoryStat } from '../root/identity.js';
 import type { NamespaceIdentity, NamespaceKind, NamespaceState, RootIdentity } from '../types.js';
 
@@ -107,10 +107,10 @@ function openAndSnapshot(path: string): { fd: number; snapshot: DescriptorSnapsh
  * initialization family can gate `namespace-initialize` and
  * `provision-phase3` boundaries distinctly (ADR-029 D-7/M-1).
  */
-function ensureFixedDirectory(capability: InitializationCapability, path: string, serviceUid: number, operation: InitializationOperation): ProvisionResult {
+function ensureFixedDirectory(capability: { verify(op: string): { readonly ok: boolean; readonly reason?: string } }, path: string, serviceUid: number, operation: string): ProvisionResult {
   const check = capability.verify(operation);
   if (!check.ok) {
-    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'initialization capability is not usable at a provisioning boundary' };
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'capability is not usable at a provisioning boundary' };
   }
   let created = false;
   try {
@@ -192,6 +192,29 @@ export function provisionPhase3TopLevel(
     for (const entry of PHASE3_REQUIRED_EXTRA) {
       const sub = ensureFixedDirectory(capability, `${root}/${entry}`, serviceUid, 'provision-phase3');
       if (!sub.ok) return sub;
+    }
+  }
+  return { ok: true };
+}
+
+/**
+ * WP-8-M recovery-gated phase-3 top-level provisioning (ADR-036 §6):
+ * configuration-namespace recovery must serialize through the normal writer
+ * lock and publish durable evidence, and a freshly initialized store has no
+ * phase-3 entries (`records`, `audit`, `locks` in both namespaces) until the
+ * first write publication provisions them. Recovery provisions ONLY the
+ * exact fixed phase-3 entry set (no-follow, exact UID/mode `0700`, created
+ * before lock acquisition exactly like the write path provisions phase-3
+ * entries) and never any other directory — a missing configuration
+ * METADATA directory remains a bootstrap action, never a recovery creation,
+ * and `index`/`quarantine` are never created by recovery.
+ */
+export function provisionRecoveryPhase3TopLevel(capability: RecoveryCapability, parent: RootIdentity, serviceUid: number): ProvisionResult {
+  for (const kind of ['configuration', 'store-records'] as const) {
+    const root = namespaceRootPath(parent.canonicalPath, kind);
+    for (const entry of PHASE3_REQUIRED_EXTRA) {
+      const result = ensureFixedDirectory(capability, `${root}/${entry}`, serviceUid, 'recover-configuration-namespace');
+      if (!result.ok) return result;
     }
   }
   return { ok: true };

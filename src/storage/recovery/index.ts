@@ -32,6 +32,12 @@ export { currentTemporaryObservation, currentQuarantineObservation, currentIndex
 // recovery-break guard and unlink primitives are NOT re-exported (they
 // live in the lock owner only; no public lock-mutation authority exists).
 export { currentLockObservation, lockObservationId, extractLockRecoveryEvidenceFacts } from './scan.js';
+// WP-8-M: configuration-namespace observation + classification + evidence
+// facts (advisory; never authority). The mutation boundary is exported
+// through the recovery-mutation dispatch (executeRecoveryMutation); the
+// exact configuration-recovery permit is never re-exported.
+export { classifyConfigurationMetadataSurface, classifyConfigurationMetadataState, configurationMetadataObservationId, extractConfigurationRecoveryEvidenceFacts, STORAGE_CONFIGURATION_OBSERVATION_DOMAIN } from './scan.js';
+export type { ConfigurationNamespaceObservation } from '../types.js';
 // WP-8-G: the audit-reconstruction operation (16.3): pure derivation and
 // evidence construction plus the exact-record publication composition. The
 // permit creator and verifier are never re-exported.
@@ -48,6 +54,18 @@ export type { RecoveryEvidenceInput, RecoveryEvidenceBuild } from './evidence.js
 export type { DispositionEvidenceInput, DispositionEvidenceIdentityInput } from './evidence.js';
 export type { AuditReconstructionEvidenceInput, AuditReconstructionOutcome, ReconstructedAuditPublishResult } from './reconstruct.js';
 export { buildRecoveryAuditReconstructionEvent, RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND } from '../audit/write-audit.js';
+// WP-8-M: configuration-recovery evidence builders + trusted-input identity.
+export {
+  computeTrustedInputIdentity,
+  buildConfigurationRecoveryEvidenceRecord,
+  configurationRecoveryEvidenceIdentityFacts,
+  verifyExistingConfigurationRecoveryEvidence,
+  verifyRecoveryEvidenceDurability,
+  STORAGE_CONFIGURATION_RECOVERY_EVIDENCE_IDENTITY_DOMAIN,
+  STORAGE_TRUSTED_INPUT_IDENTITY_DOMAIN,
+} from './evidence.js';
+export type { ConfigurationRecoveryEvidenceInput } from './evidence.js';
+export type { ConfigurationRecoveryEvidenceFacts } from '../types.js';
 // WP-8-H: the registry-index rebuild operation (ADR-031): the exact
 // registry-index publication builder and the index surface scan helpers.
 export { publishRegistryIndex } from './index-rebuild.js';

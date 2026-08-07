@@ -1025,6 +1025,100 @@ repair-by-guessing.
   classification/digest/inode, and conflicting evidence fail closed; no
   repair-by-guessing; stale locks are never automatically broken.
 
+**16.7 Configuration namespace recovery (WP-8-M; ADR-036).** The exact
+recovery operation is `recover-configuration-namespace`, added ONLY to the
+private recovery operation vocabulary. No generic configuration
+write/replace/repair operation exists (`write-configuration`,
+`replace-configuration`, `repair-config`, `config-admin`,
+`restore-any-config`, `configuration-write` are all absent), and the
+operation performs ZERO migration.
+
+- **Dual-authority gate.** Configuration recovery executes only when BOTH
+  inputs are genuine: (A) recovery authority — genuine branded
+  recovery-action provenance, the exact operation, and a verified store
+  instance — and (B) trusted configuration/bootstrap input — a genuine
+  branded `TrustedStorageBootstrapInput` correlated with the genuine WP-6
+  trusted configuration, binding the exact configuration identity,
+  configuration version, and the deterministic trusted-input identity
+  digest (`PGAP-STORAGE-TRUSTED-INPUT-IDENTITY-v1`). The recovery
+  capability can never invent or modify trusted configuration facts; the
+  trusted input alone grants no filesystem mutation authority; only the
+  composition of both gates enables the exact recovery action. An on-disk
+  configuration object never authorizes its own repair: the expected
+  canonical bytes are derived purely from the genuine trusted input via
+  the SAME canonical trusted-input-to-storage transformation used by
+  normal initialization (probe + metadata facts + `buildStoreMetadata`),
+  never from on-disk configuration contents.
+- **Recoverable object and states.** The only persistent configuration
+  object is the configuration-namespace `StoreMetadata` at the fixed
+  destination `metadata/metadata.json`. The recoverable state is the
+  expected canonical configuration object MISSING (with the metadata
+  directory present). Exact healthy configuration is non-mutating
+  already-present (no recovery evidence fabricated). Conflicting bytes,
+  malformed objects, wrong type, wrong UID/mode, symlinks, foreign
+  entries, unsupported versions, and a missing metadata DIRECTORY fail
+  closed (external disposition / bootstrap action); interrupted
+  publication (provable strict prefix of the expected bytes) is classified
+  but never overwritten. Older-version transformation is
+  migration-required and never performed by recovery.
+- **No overwrite.** Publication uses the exact no-overwrite metadata
+  protocol; an existing final object is only byte-exact replayed
+  (idempotent) or fails closed — never truncated, replaced, renamed over,
+  chmod/chown-repaired, or unlinked. A conflicting configuration object
+  that appears between the initial observation and publication fails
+  closed and remains untouched.
+- **Confinement.** The recovery capability never reaches the generic
+  publication substrate: an exact configuration-recovery metadata permit
+  binds the genuine recovery capability, the exact operation, the exact
+  configuration identity/version/digest, the trusted-input identity
+  digest, and the exact internally derived destination; the metadata
+  persistence owner independently re-parses and re-verifies the bytes and
+  re-derives the destination. The permit cannot publish lifecycle records,
+  audit events, evidence records, registry indexes, another configuration
+  kind, or another version.
+- **Evidence.** A successful recovery publishes a deterministic
+  `StoreEvidenceRecord` (`recovery-evidence`; identity domain
+  `PGAP-STORAGE-CONFIGURATION-RECOVERY-EVIDENCE-v1`) with its mechanical
+  `authorized-write` audit, binding the store/namespace, the operation,
+  the recovery action identity, the trusted-input identity digest, the
+  configuration class/identity/version/digest, the pre-recovery
+  classification, the generation/surface tokens, and the outcome
+  (`configuration-recovered` | `already-completed`). Evidence never
+  grants configuration authority and never affects configuration
+  interpretation.
+- **Configuration-tolerant revalidation.** The recovery scan and the
+  configuration-recovery operation revalidate the store
+  configuration-tolerantly: trusted parent, both namespace-root
+  descriptors, and the fully verified store-records `StoreMetadata` (the
+  store identity anchor); the configuration-namespace metadata is
+  OBSERVED (classified), never required and never trusted. Every other
+  operation keeps the strict fail-closed pipeline.
+- **Scanner.** The recovery scan observes the configuration namespace
+  (state vocabulary: configuration-healthy, configuration-missing,
+  configuration-directory-missing, malformed-configuration,
+  conflicting-configuration, unsupported-configuration-version,
+  wrong-type-configuration, wrong-uid-mode-configuration,
+  interrupted-configuration-publication, foreign-configuration-entry,
+  migration-required) with a deterministic observation id, and classifies
+  configuration-recovery evidence states (completed, conflicting,
+  evidence-without-configuration, dangling). Malformed/conflicting
+  configuration never makes the unrelated store-records recovery scan
+  fail, and no finding grants authority. The registry index remains
+  non-authoritative and is never updated or deleted by recovery; a
+  recovered configuration may make a persistent index stale (WP-8-H
+  fallback/rebuild semantics apply).
+- **Crash model.** A fixed 11-stage inventory (before/after writer lock;
+  after current-state verification; before/after configuration
+  publication; before/after configuration durability confirmation;
+  before/after evidence publication; after evidence audit; before
+  writer-lock release) covers every crash; after every crash no unrelated
+  object changes, the configuration state is scanner-classifiable,
+  publication remains immutable/idempotent, evidence rolls forward only
+  where facts prove it (a healthy configuration without evidence is
+  already-present, never a fabricated completion), conflicting
+  configuration is never overwritten, a stale writer lock is never
+  auto-broken, and migration never begins.
+
 ### Crash-safety requirements
 
 - **CSA-001.** A crash before publication MUST leave no visible partial record; temporary files MUST be quarantined with `quarantine-evidence` or removed at recovery.
@@ -1042,6 +1136,9 @@ repair-by-guessing.
 - **CSA-013.** Recovery-generated audit reconstruction MUST follow 16.3 exactly: distinct kind, recovery action identity, gap marker, recovery-time timestamp, idempotency, and ordering.
 - **CSA-014.** Reconstruction MUST NOT occur when the original audit event exists; duplicate reconstruction is rejected; reconstruction MUST NOT create or infer lifecycle decisions.
 - **CSA-015.** A crash-reappearing temporary name MUST be classified per WPR-023 into exactly one closed category with evidence; classification is deterministic and tested.
+- **CSA-016.** Configuration-namespace recovery requires the dual-authority gate of §16.7 (genuine recovery authority AND genuine trusted configuration/bootstrap input); on-disk configuration never authorizes its own repair, recovery authority alone cannot publish configuration, and trusted input alone grants no mutation authority.
+- **CSA-017.** Configuration recovery publishes the exact expected canonical configuration with the no-overwrite protocol (byte-exact replay only; conflicts, malformed objects, wrong type/UID/mode, symlinks, foreign entries, and unsupported versions fail closed and are never overwritten or repaired), and a successful recovery publishes deterministic `recovery-evidence` plus its `authorized-write` audit before success.
+- **CSA-018.** Configuration recovery performs zero migration; the recovery scan observes the configuration namespace and classifies configuration-recovery evidence states deterministically; malformed/conflicting configuration never makes unrelated recovery scanning fail; the registry index is never updated or deleted by recovery.
 
 ## 17. Path Containment and Filesystem Safety
 

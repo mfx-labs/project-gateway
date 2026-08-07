@@ -451,6 +451,12 @@ export const RECOVERY_OPERATION_SET = [
   // the trusted recovery action explicitly adjudicates the exact current
   // lock instance.
   'break-writer-lock',
+  // WP-8-M: the exact configuration-namespace recovery operation (§16.7/
+  // ADR-036). It is added ONLY to the private recovery operation
+  // vocabulary; no generic configuration write/replace/repair operation
+  // exists. Execution requires BOTH the genuine recovery capability AND a
+  // genuine branded trusted configuration/bootstrap input.
+  'recover-configuration-namespace',
 ] as const;
 export type RecoveryOperation = (typeof RECOVERY_OPERATION_SET)[number];
 
@@ -1004,6 +1010,111 @@ export function isGenuineRetentionPublicationPermit(value: unknown): value is Re
 export function retentionPublicationPermitLive(permit: RetentionPublicationPermit): boolean {
   if (!retentionPublicationPermitBrand.has(permit)) return false;
   return !retentionPublicationPermitDisposed.has(permit);
+}
+
+// ─── WP-8-M: exact configuration-recovery metadata permit (§16.7/ADR-036) ──
+// Sink-level authority confinement for configuration-namespace recovery:
+// the recovery capability NEVER reaches the generic publication substrate
+// and the metadata persistence owner never accepts a raw capability. The
+// permit binds the genuine recovery capability, the exact
+// `recover-configuration-namespace` operation, the exact configuration
+// identity and version, the exact canonical configuration digest, the
+// deterministic trusted-input identity digest, and the exact internally
+// derived destination designation (`metadata/metadata.json`). The sink
+// independently re-parses and re-verifies the bytes and re-derives the
+// destination; the permit cannot publish lifecycle records, audit events,
+// evidence records, registry indexes, another configuration kind, or
+// another version.
+
+/** Exact-record binding of one authorized configuration-recovery metadata publication. */
+export interface ConfigurationRecoveryMetadataPermitBinding {
+  /** Genuine recovery capability (carries the store/namespace identity; never a path). */
+  readonly capability: RecoveryCapability;
+  /** Exact recovery operation of the authorized mutation. */
+  readonly operation: 'recover-configuration-namespace';
+  /** Exact configuration identity the recovered metadata must bind. */
+  readonly configurationIdentity: string;
+  /** Exact configuration version the recovered metadata must bind. */
+  readonly configurationVersion: string;
+  /** Exact canonical configuration digest (metadata record-byte digest). */
+  readonly configurationDigest: string;
+  /** Deterministic trusted-input identity digest (PGAP-STORAGE-TRUSTED-INPUT-IDENTITY-v1). */
+  readonly trustedInputIdentity: string;
+  /** Exact internally derived destination designation (relative; never a raw path). */
+  readonly destinationDesignation: 'metadata/metadata.json';
+}
+
+/** Opaque in-process exact configuration-recovery metadata permit (never serializable). */
+export interface ConfigurationRecoveryMetadataPermit {
+  /** Informational frozen binding; carries no brand state. */
+  readonly binding: ConfigurationRecoveryMetadataPermitBinding;
+  dispose(): void;
+}
+
+const configurationRecoveryMetadataPermitBrand = new WeakSet<ConfigurationRecoveryMetadataPermit>();
+const configurationRecoveryMetadataPermitDisposed = new WeakSet<ConfigurationRecoveryMetadataPermit>();
+
+function freezeConfigurationRecoveryMetadataBinding(binding: ConfigurationRecoveryMetadataPermitBinding): ConfigurationRecoveryMetadataPermitBinding {
+  return Object.freeze(binding);
+}
+
+/**
+ * Gated exact configuration-recovery metadata permit creator (WP-8-M).
+ * Imported only by `src/storage/recovery/config-recovery.ts`
+ * (static-guard enforced); never exported from any barrel or the package
+ * root. Requires a genuine branded `RecoveryCapability` that verifies the
+ * exact operation, and the exact internally derived destination
+ * designation; the binding is validated (digest syntax, configuration
+ * version, destination) before the permit is branded.
+ */
+export function createConfigurationRecoveryMetadataPermit(input: {
+  readonly capability: unknown;
+  readonly operation: 'recover-configuration-namespace';
+  readonly configurationIdentity: string;
+  readonly configurationVersion: string;
+  readonly configurationDigest: string;
+  readonly trustedInputIdentity: string;
+  readonly destinationDesignation: 'metadata/metadata.json';
+}): ConfigurationRecoveryMetadataPermit | undefined {
+  if (!isGenuineRecoveryCapability(input.capability)) return undefined;
+  const capability = input.capability as RecoveryCapability;
+  // Least authority at mint time: the capability must verify the exact
+  // bound operation.
+  if (!capability.verify(input.operation).ok) return undefined;
+  if (input.operation !== 'recover-configuration-namespace') return undefined;
+  if (!isValidDigestSyntax(input.configurationIdentity)) return undefined;
+  if (!isValidDigestSyntax(input.configurationDigest)) return undefined;
+  if (!isValidDigestSyntax(input.trustedInputIdentity)) return undefined;
+  if (typeof input.configurationVersion !== 'string' || input.configurationVersion.length === 0) return undefined;
+  if (input.destinationDesignation !== 'metadata/metadata.json') return undefined;
+  const binding = freezeConfigurationRecoveryMetadataBinding({
+    capability,
+    operation: input.operation,
+    configurationIdentity: input.configurationIdentity,
+    configurationVersion: input.configurationVersion,
+    configurationDigest: input.configurationDigest,
+    trustedInputIdentity: input.trustedInputIdentity,
+    destinationDesignation: input.destinationDesignation,
+  });
+  const permit: ConfigurationRecoveryMetadataPermit = {
+    binding,
+    dispose() {
+      if (configurationRecoveryMetadataPermitBrand.has(this as ConfigurationRecoveryMetadataPermit)) configurationRecoveryMetadataPermitDisposed.add(this as ConfigurationRecoveryMetadataPermit);
+    },
+  };
+  configurationRecoveryMetadataPermitBrand.add(permit);
+  return permit;
+}
+
+/** True only for a permit minted by this module in this process. */
+export function isGenuineConfigurationRecoveryMetadataPermit(value: unknown): value is ConfigurationRecoveryMetadataPermit {
+  return value !== null && typeof value === 'object' && configurationRecoveryMetadataPermitBrand.has(value as ConfigurationRecoveryMetadataPermit);
+}
+
+/** Live-state check for a genuine permit (disposed permits are unusable). */
+export function configurationRecoveryMetadataPermitLive(permit: ConfigurationRecoveryMetadataPermit): boolean {
+  if (!configurationRecoveryMetadataPermitBrand.has(permit)) return false;
+  return !configurationRecoveryMetadataPermitDisposed.has(permit);
 }
 
 /**

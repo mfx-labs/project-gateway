@@ -37,6 +37,7 @@
  */
 import type {
   AuditEventView,
+  ConfigurationNamespaceObservation,
   DispositionFinding,
   DispositionStateFinding,
   IncompletePublicationFinding,
@@ -50,6 +51,7 @@ import type {
   QuarantineScanObservation,
   ReconstructionCandidateFinding,
   ReconstructionStateFinding,
+  ConfigurationRecoveryEvidenceStateFinding,
   RecordClassId,
   RecordScanObservation,
   RetentionEvidenceStateFinding,
@@ -69,6 +71,8 @@ import { LOCK_RECORD_MAX_BYTES, LOCK_VERSION } from '../locks/lock.js';
 import { auditAssociation, finalizeSnapshotClassifications, verifiedAuditEventViews, verifiedRecordViews } from '../registry/derive.js';
 
 const NO_STATE = { retryable: false, recoveryRequired: false, primaryStateChanged: 'no' as const, durabilityPointReached: 'no' as const, auditChanged: 'no' as const, verifyBeforeRetry: false };
+
+
 
 function finding(code: string, message: string, phase: StorageFinding['phase'] = 'request-validation'): StorageFinding {
   return { code, message, phase, state: NO_STATE };
@@ -180,7 +184,11 @@ function objectFinding(obs: ScanObservation): ObjectFinding {
  * observation only). Deterministic: identical snapshots yield identical
  * assessments; the result is advisory data and never executable.
  */
-export function assessRecovery(observations: readonly ScanObservation[], source: ScanFacts): RecoveryAssessment {
+export function assessRecovery(
+  observations: readonly ScanObservation[],
+  source: ScanFacts,
+  configurationObservation?: ConfigurationNamespaceObservation,
+): RecoveryAssessment {
   const finalized = finalizeSnapshotClassifications(observations);
   const obs = finalized.observations;
   const association = auditAssociation(obs);
@@ -202,6 +210,7 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   const lockRecoveryStates: LockRecoveryStateFinding[] = [];
   const retentionEvidenceStates: RetentionEvidenceStateFinding[] = [];
   const retentionSurvivors: RetentionSurvivorFinding[] = [...association.retentionSurvivors];
+  const configurationRecoveryEvidenceStates: ConfigurationRecoveryEvidenceStateFinding[] = [];
   const quarantineObjects: QuarantineScanObservation[] = [];
   const danglingQuarantineEvidence: { readonly evidenceObservationId: string; readonly quarantineId: string; readonly sourceEntry?: string }[] = [];
   const findings: StorageFinding[] = [...finalized.findings, ...association.findings];
@@ -758,6 +767,59 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   }
   retentionEvidenceStates.sort((a, b) => (a.targetRecordId < b.targetRecordId ? -1 : a.targetRecordId > b.targetRecordId ? 1 : a.state < b.state ? -1 : 1));
   retentionSurvivors.sort((a, b) => (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0));
+
+  // WP-8-M: deterministic configuration-recovery evidence state
+  // classification (§16.7/ADR-036 §10). Derived purely from durable facts:
+  // every scanned configuration-recovery evidence record is checked against
+  // the CURRENT configuration metadata observation (recovery-mode scan). A
+  // malformed/incomplete payload is dangling; evidence with the exact
+  // configuration object MISSING is evidence-without-configuration
+  // (integrity failure); evidence with a conflicting configuration object
+  // present is conflicting; otherwise the configuration recovery is
+  // completed. Evidence never grants configuration authority.
+  for (const item of obs) {
+    if (item.kind !== 'record' || item.recordClass !== 'store-evidence-record' || item.configurationRecoveryEvidenceFacts === undefined) continue;
+    const d = item.configurationRecoveryEvidenceFacts;
+    const configurationIdentity = d.configurationIdentity ?? '';
+    if (d.malformed || configurationIdentity === '' || (d.outcome !== 'configuration-recovered' && d.outcome !== 'already-completed')) {
+      configurationRecoveryEvidenceStates.push({
+        evidenceObservationId: item.id,
+        state: 'dangling-configuration-recovery-evidence',
+        configurationIdentity,
+        reason: 'configuration-recovery evidence payload is incomplete or outside the closed vocabulary',
+      });
+      findings.push(finding('ERR-STO-MALFORMED', 'malformed or dangling configuration-recovery evidence record'));
+      continue;
+    }
+    const configurationState = configurationObservation?.state;
+    if (configurationState === 'configuration-missing' || configurationState === 'configuration-directory-missing') {
+      configurationRecoveryEvidenceStates.push({
+        evidenceObservationId: item.id,
+        state: 'evidence-without-configuration',
+        configurationIdentity,
+        reason: 'configuration-recovery evidence is durable while the expected configuration object is missing; integrity failure',
+      });
+      findings.push(finding('ERR-STO-INTEGRITY', 'configuration-recovery evidence references a missing configuration object; integrity failure'));
+      continue;
+    }
+    if (configurationState !== undefined && configurationState !== 'configuration-healthy') {
+      configurationRecoveryEvidenceStates.push({
+        evidenceObservationId: item.id,
+        state: 'conflicting-configuration-recovery-evidence',
+        configurationIdentity,
+        reason: 'configuration-recovery evidence is durable while a conflicting configuration object is present',
+      });
+      findings.push(finding('ERR-STO-INTEGRITY', 'configuration-recovery evidence references a conflicting configuration object'));
+      continue;
+    }
+    configurationRecoveryEvidenceStates.push({
+      evidenceObservationId: item.id,
+      state: 'completed-configuration-recovery',
+      configurationIdentity,
+      reason: 'matching configuration-recovery evidence is durable and the exact configuration object is present',
+    });
+  }
+  configurationRecoveryEvidenceStates.sort((a, b) => (a.evidenceObservationId < b.evidenceObservationId ? -1 : a.evidenceObservationId > b.evidenceObservationId ? 1 : 0));
   findings.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
 
   return {
@@ -780,6 +842,8 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
     lockRecoveryStates,
     retentionEvidenceStates,
     retentionSurvivors,
+    ...(configurationObservation !== undefined ? { configurationObservation } : {}),
+    configurationRecoveryEvidenceStates,
     findings,
   };
 }

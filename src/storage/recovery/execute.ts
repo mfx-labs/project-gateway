@@ -60,6 +60,7 @@ import {
   isReconstructionTargetClass,
 } from './reconstruct.js';
 import { verifyObjectBytesAt } from '../publication/publish-record.js';
+import { executeConfigurationRecovery } from './config-recovery.js';
 import { acquireWriterLock, releaseWriterLock } from '../locks/lock.js';
 import { deriveRecordRelativePath } from '../layout/layout.js';
 import { isValidDigestSyntax } from '../format/envelope.js';
@@ -93,8 +94,13 @@ function validateAction(input: RecoveryMutationRequest): { readonly ok: boolean;
   if (typeof action !== 'object' || action === null) {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery action is malformed' };
   }
-  if (action.category !== 'orphan-removal' && action.category !== 'quarantine-temporary' && action.category !== 'audit-reconstruction' && action.category !== 'registry-index-rebuild' && action.category !== 'dispose-wpr023d-temporary' && action.category !== 'dispose-quarantined-temporary' && action.category !== 'dispose-conflicting-index' && action.category !== 'break-writer-lock') {
+  if (action.category !== 'orphan-removal' && action.category !== 'quarantine-temporary' && action.category !== 'audit-reconstruction' && action.category !== 'registry-index-rebuild' && action.category !== 'dispose-wpr023d-temporary' && action.category !== 'dispose-quarantined-temporary' && action.category !== 'dispose-conflicting-index' && action.category !== 'break-writer-lock' && action.category !== 'recover-configuration-namespace') {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery action category is outside the supported vocabulary; no generic quarantine authority exists' };
+  }
+  if (action.category === 'recover-configuration-namespace') {
+    // The dedicated configuration-recovery boundary validates the exact
+    // action fields; nothing here is generic.
+    return { ok: true };
   }
   if (action.category === 'audit-reconstruction') {
     if (action.targetRecordClass === undefined || !isReconstructionClass(action.targetRecordClass)) {
@@ -2081,6 +2087,19 @@ function resolveAbsentTarget(
  * category fails closed.
  */
 export function executeRecoveryMutation(request: RecoveryMutationRequest): RecoveryMutationResult {
+  if (
+    typeof request.action === 'object' &&
+    request.action !== null &&
+    (request.action as { readonly category?: unknown }).category === 'recover-configuration-namespace'
+  ) {
+    // WP-8-M: the exact configuration-namespace recovery operation. The
+    // dual-authority gate (genuine recovery provenance + genuine trusted
+    // configuration/bootstrap input) is enforced inside the dedicated
+    // composition boundary; recovery authority alone is insufficient and
+    // trusted input alone grants no mutation authority.
+    const hooks = request.hooks ?? {};
+    return executeConfigurationRecovery(request, request.action as RecoveryMutationRequest['action'] & { category: 'recover-configuration-namespace' }, hooks);
+  }
   const validation = validateAction(request);
   if (!validation.ok) {
     return failResult(validation.code ?? 'ERR-STO-REQ-INVALID', validation.message ?? 'recovery action validation failed');

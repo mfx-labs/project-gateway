@@ -102,7 +102,7 @@
 import { readdirSync, openSync, closeSync, fstatSync, readFileSync } from 'node:fs';
 import { constants } from 'node:fs';
 import { jcsSerialize } from '../../canonical/jcs.js';
-import { computeDomainDigest, isValidDigestSyntax, parsePersistedEnvelope, STORAGE_RECORD_BYTES_DIGEST_DOMAIN } from '../format/envelope.js';
+import { computeDomainDigest, isValidDigestSyntax, parsePersistedEnvelope, STORAGE_PAYLOAD_DIGEST_DOMAIN, STORAGE_RECORD_BYTES_DIGEST_DOMAIN } from '../format/envelope.js';
 import { parseRawJson } from '../../json/scanner.js';
 import { verifyObjectBytesAt } from '../publication/publish-record.js';
 import { computeQuarantineEvidenceIdentity } from './evidence.js';
@@ -136,6 +136,8 @@ import type {
   StoreScanResult,
   TemporaryScanObservation,
   VerifiedStoreInstance,
+  ConfigurationMetadataState,
+  ConfigurationNamespaceObservation,
 } from '../types.js';
 
 const { O_RDONLY, O_DIRECTORY, O_NOFOLLOW, O_NONBLOCK } = constants;
@@ -337,6 +339,319 @@ export function extractRetentionEvidenceFacts(raw: string): {
 }
 
 /**
+ * WP-8-M configuration-recovery evidence payload facts (§16.7/ADR-036):
+ * extracted from one canonical store-evidence-record whose payload declares
+ * the `recover-configuration-namespace` recovery operation. `configuration`
+ * is true for every configuration-recovery evidence claim; `malformed` is
+ * true when the claimed facts are incomplete or the outcome is outside the
+ * closed vocabulary; otherwise `facts` carries the bound facts. Pure.
+ */
+export function extractConfigurationRecoveryEvidenceFacts(raw: string): {
+  readonly configuration?: boolean;
+  readonly malformed?: boolean;
+  readonly facts?: {
+    readonly configurationIdentity: string;
+    readonly configurationVersion: string;
+    readonly configurationDigest: string;
+    readonly trustedInputIdentity?: string;
+    readonly outcome: string;
+  };
+} {
+  try {
+    const model = parseRawJson(raw, 1024 * 1024).model;
+    if (typeof model !== 'object' || model === null || Array.isArray(model)) return {};
+    const payload = (model as Readonly<Record<string, unknown>>)['payload'];
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return {};
+    const p = payload as Readonly<Record<string, unknown>>;
+    if (p['evidenceKind'] !== 'recovery-evidence') return {};
+    if (p['recoveryOperation'] !== 'recover-configuration-namespace') return {};
+    const configurationIdentity = p['configurationIdentity'];
+    const configurationVersion = p['configurationVersion'];
+    const configurationDigest = p['configurationDigest'];
+    const outcome = p['outcome'];
+    const trustedInputIdentity = p['trustedInputIdentity'];
+    if (
+      typeof configurationIdentity !== 'string' ||
+      typeof configurationVersion !== 'string' ||
+      typeof configurationDigest !== 'string' ||
+      (outcome !== 'configuration-recovered' && outcome !== 'already-completed')
+    ) {
+      return { configuration: true, malformed: true };
+    }
+    return {
+      configuration: true,
+      facts: {
+        configurationIdentity,
+        configurationVersion,
+        configurationDigest,
+        ...(typeof trustedInputIdentity === 'string' ? { trustedInputIdentity } : {}),
+        outcome,
+      },
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Deterministic configuration-namespace observation id (WP-8-M): domain
+ * digest over (store instance, kind, current state classification, entry
+ * designation). Binds the exact current state; a state change changes the
+ * id and fails the recovery request's binding. Pure.
+ */
+export function configurationMetadataObservationId(input: {
+  readonly storeInstance: VerifiedStoreInstance;
+  readonly state: ConfigurationMetadataState;
+  readonly entry: 'metadata.json';
+}): string {
+  const tuple = jcsSerialize({
+    storeInstance: input.storeInstance.namespaces
+      .map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino }))
+      .sort((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0)),
+    kind: 'configuration-metadata',
+    state: input.state,
+    entry: input.entry,
+  });
+  const digest = computeDomainDigest(STORAGE_CONFIGURATION_OBSERVATION_DOMAIN, tuple);
+  return `obs-${digest.slice('sha-256:'.length, 'sha-256:'.length + 16)}`;
+}
+
+/**
+ * WP-8-M scan-level configuration metadata surface classification (§16.7;
+ * advisory — never authority). Structural + self-consistency only: the
+ * scan cannot derive the trusted-input-exact expected bytes, so
+ * `configuration-healthy` means self-consistent AND declared configuration
+ * identity matches the verified store instance. The recovery flow performs
+ * the byte-exact trusted-input comparison separately (an observation id
+ * mismatch then fails the request closed).
+ */
+export function classifyConfigurationMetadataSurface(input: {
+  readonly configRoot: string;
+  readonly serviceUid: number;
+  readonly byteLimit: number;
+  readonly configurationIdentity: string;
+  readonly storeInstance: VerifiedStoreInstance;
+}): { readonly ok: boolean; readonly observation?: ConfigurationNamespaceObservation; readonly code?: string; readonly message?: string } {
+  const metadataDir = `${input.configRoot}/metadata`;
+  // Metadata-directory state.
+  const dirBracket = readdirVerified(metadataDir, input.serviceUid, undefined, { surface: 'configuration-metadata' as never, recordClass: 'store-metadata' });
+  if (!dirBracket.ok || dirBracket.bracket === undefined) {
+    const code = dirBracket.code;
+    if (code === 'ERR-STO-NOT-FOUND' || code === 'ENOENT' || code === 'ERR-STO-FTYPE-UNSUPPORTED' && dirBracket.message?.includes('expected a directory')) {
+      // The metadata directory itself is absent (or not a directory): the
+      // configuration namespace is not in a recovery-recoverable state.
+      const state: ConfigurationMetadataState = 'configuration-directory-missing';
+      return {
+        ok: true,
+        observation: {
+          id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }),
+          state,
+          reason: 'configuration metadata directory is absent or not an exact store directory; bootstrap action required',
+        },
+      };
+    }
+    return { ok: false, code: code ?? 'ERR-STO-IO-FAILURE', message: dirBracket.message ?? 'configuration metadata directory could not be enumerated' };
+  }
+  const names = [...dirBracket.bracket.names];
+  const foreignEntries = names.filter((n) => n !== 'metadata.json');
+  if (foreignEntries.length > 0) {
+    const state: ConfigurationMetadataState = 'foreign-configuration-entry';
+    return {
+      ok: true,
+      observation: {
+        id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }),
+        state,
+        foreignEntries: [...foreignEntries].sort(),
+        reason: 'foreign entries exist in the configuration metadata directory; external disposition required',
+      },
+    };
+  }
+  if (!names.includes('metadata.json')) {
+    const state: ConfigurationMetadataState = 'configuration-missing';
+    return {
+      ok: true,
+      observation: {
+        id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }),
+        state,
+        reason: 'expected canonical configuration metadata is absent',
+      },
+    };
+  }
+  // The metadata file is present: descriptor-bound classification.
+  const path = `${metadataDir}/metadata.json`;
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, O_RDONLY | O_NOFOLLOW);
+    const pre = fstatSync(fd);
+    if (!pre.isFile()) {
+      const state: ConfigurationMetadataState = 'wrong-type-configuration';
+      return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'configuration metadata location is not a regular file' } };
+    }
+    if (pre.uid !== input.serviceUid || (pre.mode & 0o777) !== 0o600) {
+      const state: ConfigurationMetadataState = 'wrong-uid-mode-configuration';
+      return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'configuration metadata violates the store permission policy; never repaired' } };
+    }
+    if (pre.size > input.byteLimit) {
+      const state: ConfigurationMetadataState = 'malformed-configuration';
+      return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'configuration metadata exceeds the bounded byte limit' } };
+    }
+    const bytes = readFileSync(fd);
+    const post = fstatSync(fd);
+    const revalidated = comparePrePostStat(pre, post);
+    if (!revalidated.ok || post.size !== bytes.length) {
+      return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'configuration metadata changed during descriptor-based read' };
+    }
+    const raw = bytes.toString('utf8');
+    let model: unknown;
+    try {
+      model = parseRawJson(raw, input.byteLimit).model;
+    } catch {
+      const state: ConfigurationMetadataState = 'malformed-configuration';
+      return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'configuration metadata is not canonical JSON or contains duplicate members' } };
+    }
+    if (typeof model !== 'object' || model === null || Array.isArray(model) || jcsSerialize(model) !== raw) {
+      const state: ConfigurationMetadataState = 'malformed-configuration';
+      return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'configuration metadata bytes are not canonical' } };
+    }
+    const modelObj = model as Readonly<Record<string, unknown>>;
+    if (modelObj['recordKind'] !== 'store-metadata') {
+      const state: ConfigurationMetadataState = 'malformed-configuration';
+      return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'configuration metadata record kind is not the store-metadata kind' } };
+    }
+    const declaredVersion = typeof modelObj['formatVersion'] === 'string' ? modelObj['formatVersion'] : '';
+    if (declaredVersion !== '1.0') {
+      const state: ConfigurationMetadataState = 'unsupported-configuration-version';
+      return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, declaredMetadataVersion: declaredVersion, reason: 'configuration metadata version is outside the supported set; migration boundary' } };
+    }
+    const payload = modelObj['payload'];
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+      const state: ConfigurationMetadataState = 'malformed-configuration';
+      return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'configuration metadata payload is malformed' } };
+    }
+    const p = payload as Readonly<Record<string, unknown>>;
+    const declaredPayloadDigest = modelObj['payloadDigest'];
+    const canonicalPayload = jcsSerialize(p);
+    const recomputedPayloadDigest = computeDomainDigest(STORAGE_PAYLOAD_DIGEST_DOMAIN, canonicalPayload);
+    if (typeof declaredPayloadDigest !== 'string' || recomputedPayloadDigest !== declaredPayloadDigest) {
+      const state: ConfigurationMetadataState = 'malformed-configuration';
+      return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'configuration metadata payload digest mismatch' } };
+    }
+    const declaredConfigurationIdentity = p['configurationIdentity'];
+    const recordDigest = computeDomainDigest(STORAGE_RECORD_BYTES_DIGEST_DOMAIN, jcsSerialize(modelObj));
+    if (typeof declaredConfigurationIdentity !== 'string' || declaredConfigurationIdentity !== input.configurationIdentity) {
+      const state: ConfigurationMetadataState = 'conflicting-configuration';
+      return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, declaredConfigurationIdentity: typeof declaredConfigurationIdentity === 'string' ? declaredConfigurationIdentity : undefined, metadataDigest: recordDigest, reason: 'configuration metadata binds a different configuration identity than the verified store' } };
+    }
+    const state: ConfigurationMetadataState = 'configuration-healthy';
+    return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, declaredConfigurationIdentity, declaredMetadataVersion: declaredVersion, metadataDigest: recordDigest, reason: 'configuration metadata is self-consistent and binds the verified store configuration identity' } };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      const state: ConfigurationMetadataState = 'configuration-missing';
+      return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'expected canonical configuration metadata is absent' } };
+    }
+    if (code === 'ELOOP' || code === 'EISDIR' || code === 'ENOTDIR') {
+      const state: ConfigurationMetadataState = 'wrong-type-configuration';
+      return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'configuration metadata location is not a no-follow regular file' } };
+    }
+    if (code === 'EACCES' || code === 'EPERM') {
+      const state: ConfigurationMetadataState = 'wrong-uid-mode-configuration';
+      return { ok: true, observation: { id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'configuration metadata is not accessible under the store permission policy' } };
+    }
+    return { ok: false, code: 'ERR-STO-IO-FAILURE', message: 'configuration metadata classification failed' };
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/**
+ * WP-8-M recovery-flow byte-exact configuration metadata classification
+ * (§16.7): the expected canonical bytes are derived from the genuine trusted
+ * input; the current object is classified against them. `configuration-healthy`
+ * requires byte-exact equality with the expected canonical configuration;
+ * `interrupted-configuration-publication` is a provable strict prefix.
+ * Never overwrites; never repairs.
+ */
+export function classifyConfigurationMetadataState(input: {
+  readonly configRoot: string;
+  readonly serviceUid: number;
+  readonly byteLimit: number;
+  readonly expectedCanonicalUtf8: string;
+  readonly expectedDigest: string;
+  readonly configurationIdentity: string;
+  readonly storeInstance: VerifiedStoreInstance;
+}): { readonly ok: boolean; readonly observation?: ConfigurationNamespaceObservation; readonly code?: string; readonly message?: string } {
+  const surface = classifyConfigurationMetadataSurface({
+    configRoot: input.configRoot,
+    serviceUid: input.serviceUid,
+    byteLimit: input.byteLimit,
+    configurationIdentity: input.configurationIdentity,
+    storeInstance: input.storeInstance,
+  });
+  if (!surface.ok || surface.observation === undefined) {
+    return { ok: false, code: surface.code ?? 'ERR-STO-IO-FAILURE', message: surface.message ?? 'configuration metadata surface classification failed' };
+  }
+  const base = surface.observation;
+  // Byte-exact refinement over the surface classification: only a present,
+  // self-consistent, identity-matching object can be the expected one.
+  if (base.state === 'configuration-healthy' || base.state === 'conflicting-configuration') {
+    const metadataDir = `${input.configRoot}/metadata`;
+    const path = `${metadataDir}/metadata.json`;
+    const read = readConfigurationMetadataBytes({ path, serviceUid: input.serviceUid, byteLimit: input.byteLimit });
+    if (!read.ok || read.bytes === undefined) {
+      return { ok: false, code: read.code ?? 'ERR-STO-IO-FAILURE', message: read.message ?? 'configuration metadata could not be read for the exact comparison' };
+    }
+    const presentBytes = read.bytes;
+    if (presentBytes === input.expectedCanonicalUtf8) {
+      const state: ConfigurationMetadataState = 'configuration-healthy';
+      return { ok: true, observation: { ...base, id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'exact expected canonical configuration metadata is present' } };
+    }
+    if (input.expectedCanonicalUtf8.startsWith(presentBytes) && presentBytes.length < input.expectedCanonicalUtf8.length) {
+      const state: ConfigurationMetadataState = 'interrupted-configuration-publication';
+      return { ok: true, observation: { ...base, id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'present bytes are a provable prefix of the expected canonical configuration; never overwritten (external disposition)' } };
+    }
+    const state: ConfigurationMetadataState = 'conflicting-configuration';
+    return { ok: true, observation: { ...base, id: configurationMetadataObservationId({ storeInstance: input.storeInstance, state, entry: 'metadata.json' }), state, reason: 'present configuration metadata bytes differ from the expected canonical configuration; never overwritten (external disposition)' } };
+  }
+  // Recompute the observation id for the surface state (the store instance
+  // placeholder is identical — the id binds the state and entry only).
+  return { ok: true, observation: base };
+}
+
+/** Descriptor-bound read of the configuration metadata bytes (WP-8-M classification). */
+function readConfigurationMetadataBytes(input: {
+  readonly path: string;
+  readonly serviceUid: number;
+  readonly byteLimit: number;
+}): { readonly ok: boolean; readonly bytes?: string; readonly code?: string; readonly message?: string } {
+  let fd: number | undefined;
+  try {
+    fd = openSync(input.path, O_RDONLY | O_NOFOLLOW);
+    const pre = fstatSync(fd);
+    if (!pre.isFile() || pre.uid !== input.serviceUid || (pre.mode & 0o777) !== 0o600) {
+      return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'configuration metadata object is not the exact store file' };
+    }
+    if (pre.size > input.byteLimit) {
+      return { ok: false, code: 'ERR-STO-LIMIT-EXCEEDED', message: 'configuration metadata exceeds the bounded byte limit' };
+    }
+    const bytes = readFileSync(fd);
+    const post = fstatSync(fd);
+    const revalidated = comparePrePostStat(pre, post);
+    if (!revalidated.ok || post.size !== bytes.length) {
+      return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'configuration metadata changed during descriptor-based read' };
+    }
+    return { ok: true, bytes: bytes.toString('utf8') };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { ok: false, code: 'ERR-STO-NOT-FOUND', message: 'configuration metadata is absent' };
+    }
+    return { ok: false, code: 'ERR-STO-IO-FAILURE', message: 'configuration metadata read failed' };
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/**
  * WP-8-I disposition-evidence payload facts (ADR-032; §10): extracted from
  * one canonical store-evidence-record whose payload declares an executable
  * disposition recovery operation (`dispose-quarantined-temporary` |
@@ -444,6 +759,8 @@ export function extractLockRecoveryEvidenceFacts(raw: string): {
 export const SCAN_GENERATION_DOMAIN = 'PGAP-STORAGE-SCAN-GENERATION-v1\u0000';
 /** Domain-separated cross-page surface-generation token domain (F3-G). */
 export const SCAN_SURFACE_GENERATION_DOMAIN = 'PGAP-STORAGE-SCAN-SURFACE-v1\u0000';
+/** WP-8-M: configuration-namespace observation identity domain (§16.7/ADR-036). */
+export const STORAGE_CONFIGURATION_OBSERVATION_DOMAIN = 'PGAP-STORAGE-CONFIGURATION-OBSERVATION-v1\u0000';
 /**
  * Class-order/surface model version bound into both generation tokens (F2,
  * F3-G): a future change to the deterministic class order or surface model
@@ -1658,6 +1975,16 @@ function scanRecordEntry(input: {
             observation: {
               ...observation,
               retentionEvidenceFacts: rtFacts.facts === undefined ? { malformed: true } : { malformed: false, ...rtFacts.facts },
+            },
+          };
+        }
+        // WP-8-M: configuration-recovery evidence facts (§16.7/ADR-036).
+        const cfFacts = extractConfigurationRecoveryEvidenceFacts(bytes.toString('utf8'));
+        if (cfFacts.configuration === true) {
+          return {
+            observation: {
+              ...observation,
+              configurationRecoveryEvidenceFacts: cfFacts.facts === undefined ? { malformed: true } : { malformed: false, ...cfFacts.facts },
             },
           };
         }
@@ -2888,5 +3215,36 @@ export function scanStoreSnapshot(input: StoreScanInput): StoreScanResult {
     return failResult('ERR-STO-INTERNAL-INVARIANT', 'continuation failed self-validation');
   }
   findings.sort(compareFindings);
-  return { ok: true, observations, findings, scannedEntries, scannedBytes, truncated, generation, surfaceGeneration, ...(continuation !== undefined ? { continuation } : {}) };
+  // WP-8-M: configuration-namespace observation (recovery mode only; §16.7).
+  // Advisory — never authority; a malformed/conflicting configuration object
+  // never makes the unrelated store-records scan fail (the observation is
+  // reported, the scan continues).
+  let configurationObservation: ConfigurationNamespaceObservation | undefined;
+  if (recoveryMode) {
+    const configRoot = `${input.capability.binding.storeInstance.parentIdentity.canonicalPath}/config-v1`;
+    const classified = classifyConfigurationMetadataSurface({
+      configRoot,
+      serviceUid,
+      byteLimit: recordBytes,
+      configurationIdentity: input.capability.binding.storeInstance.configurationIdentity,
+      storeInstance: input.capability.binding.storeInstance,
+    });
+    if (classified.ok && classified.observation !== undefined) {
+      configurationObservation = classified.observation;
+    } else {
+      findings.push(finding(classified.code ?? 'ERR-STO-IO-FAILURE', classified.message ?? 'configuration namespace observation failed'));
+    }
+  }
+  return {
+    ok: true,
+    observations,
+    findings,
+    scannedEntries,
+    scannedBytes,
+    truncated,
+    generation,
+    surfaceGeneration,
+    ...(configurationObservation !== undefined ? { configurationObservation } : {}),
+    ...(continuation !== undefined ? { continuation } : {}),
+  };
 }

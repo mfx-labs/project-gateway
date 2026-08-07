@@ -779,6 +779,16 @@ export interface RecordScanObservation extends ScanObservationBase {
     /** True when the payload claims break-writer-lock but the facts are incomplete/invalid. */
     readonly malformed: boolean;
   };
+  /** WP-8-M: configuration-recovery evidence payload facts (§16.7/ADR-036). */
+  readonly configurationRecoveryEvidenceFacts?: {
+    readonly configurationIdentity?: string;
+    readonly configurationVersion?: string;
+    readonly configurationDigest?: string;
+    readonly trustedInputIdentity?: string;
+    readonly outcome?: string;
+    /** True when the payload claims recover-configuration-namespace but the facts are incomplete/invalid. */
+    readonly malformed: boolean;
+  };
   /** WP-8-L: retention deletion evidence payload facts (§15.4/ADR-035). */
   readonly retentionEvidenceFacts?: {
     readonly retentionOperation?: 'retention-delete-record' | 'retention-delete-audit';
@@ -1217,7 +1227,19 @@ export interface RecoveryAssessment {
   readonly retentionEvidenceStates: readonly RetentionEvidenceStateFinding[];
   /** WP-8-L: audit events intentionally retained after a retention deletion (§15.4; never disposition candidates). */
   readonly retentionSurvivors: readonly RetentionSurvivorFinding[];
+  /** WP-8-M: deterministic configuration-namespace observation (recovery mode; §16.7/ADR-036). */
+  readonly configurationObservation?: ConfigurationNamespaceObservation;
+  /** WP-8-M: deterministic configuration-recovery evidence states (§16.7). */
+  readonly configurationRecoveryEvidenceStates: readonly ConfigurationRecoveryEvidenceStateFinding[];
   readonly findings: readonly StorageFinding[];
+}
+
+/** WP-8-M: one deterministic configuration-recovery evidence state (§16.7). */
+export interface ConfigurationRecoveryEvidenceStateFinding {
+  readonly evidenceObservationId: string;
+  readonly state: ConfigurationRecoveryEvidenceState;
+  readonly configurationIdentity: string;
+  readonly reason: string;
 }
 
 export type RecoveryActionCategory =
@@ -1335,6 +1357,8 @@ export interface StoreScanResult {
   readonly continuation?: ScanCursor;
   /** Deterministic generation digest of this scan (present on success). */
   readonly generation?: string;
+  /** WP-8-M: configuration-namespace observation (recovery mode only; §16.7; advisory). */
+  readonly configurationObservation?: ConfigurationNamespaceObservation;
   /** Deterministic cross-page surface-structure token (present on success; F3-G). */
   readonly surfaceGeneration?: string;
 }
@@ -1380,6 +1404,15 @@ export type RecoveryMutationStage =
   | 'after-generation-recheck'
   | 'before-index-publication'
   | 'after-index-publication'
+  // WP-8-M configuration-namespace recovery stages (fixed inventory; §16.7).
+  | 'before-writer-lock'
+  | 'after-writer-lock'
+  | 'after-current-state-verification'
+  | 'before-configuration-publication'
+  | 'after-configuration-publication'
+  | 'before-configuration-durability-confirmation'
+  | 'after-configuration-durability'
+  | 'before-writer-lock-release'
   | 'before-directory-durability'
   | 'after-directory-durability'
   // WP-8-I external-disposition adjudication stages (fixed inventory; §11).
@@ -1435,7 +1468,12 @@ export interface RecoveryMutationAction {
     | 'dispose-wpr023d-temporary'
     | 'dispose-quarantined-temporary'
     | 'dispose-conflicting-index'
-    | 'break-writer-lock';
+    | 'break-writer-lock'
+    // WP-8-M: the exact configuration-namespace recovery operation (§16.7/
+    // ADR-036). No generic configuration write/replace/repair operation
+    // exists; recovery requires BOTH genuine recovery authority AND a
+    // genuine trusted configuration/bootstrap input.
+    | 'recover-configuration-namespace';
   /** Orphan-removal/quarantine-temporary only: deterministic entry designation (temporary name; never a path). */
   readonly targetEntry?: string;
   /** Orphan-removal only: verified durable publication sharing the temporary's inode (WPR-023 (a)). */
@@ -1488,6 +1526,16 @@ export interface RecoveryMutationAction {
   readonly expectedLockInstanceId?: string;
   /** Break-writer-lock only: deterministic lock observation identity (`writer.lock`; recomputed and compared). */
   readonly expectedLockObservationId?: string;
+  /** Recover-configuration-namespace only: expected configuration identity (sha-256 digest syntax). */
+  readonly expectedConfigurationIdentity?: string;
+  /** Recover-configuration-namespace only: expected configuration version (the trusted configuration's version). */
+  readonly expectedConfigurationVersion?: string;
+  /** Recover-configuration-namespace only: deterministic trusted-input identity digest (PGAP-STORAGE-TRUSTED-INPUT-IDENTITY-v1). */
+  readonly expectedTrustedInputIdentity?: string;
+  /** Recover-configuration-namespace only: expected record-byte digest of the canonical configuration metadata derived from trusted input. */
+  readonly expectedConfigurationDigest?: string;
+  /** Recover-configuration-namespace only: deterministic configuration-namespace observation id of the current state (recomputed and compared). */
+  readonly expectedConfigurationObservationId?: string;
 }
 
 /** Authorized recovery-mutation request (WP-8-F composition boundary). */
@@ -1514,7 +1562,7 @@ export interface RecoveryMutationRequest {
 export interface RecoveryMutationResult {
   readonly ok: boolean;
   /** `removed` (orphan removed), `quarantined` (temporary quarantined), `reconstructed` (audit reconstructed), `rebuilt` (index published), `disposed` (eligible disposition target unlinked with evidence), `disposition-required` (externally authorized disposition adjudicated; no mutation performed), `lock-broken` (adjudicated writer lock removed with evidence), `already-completed`: no work needed. */
-  readonly outcome?: 'removed' | 'quarantined' | 'reconstructed' | 'rebuilt' | 'disposed' | 'disposition-required' | 'lock-broken' | 'already-completed';
+  readonly outcome?: 'removed' | 'quarantined' | 'reconstructed' | 'rebuilt' | 'disposed' | 'disposition-required' | 'lock-broken' | 'already-completed' | 'configuration-recovered' | 'already-present';
   /** Deterministic evidence record identity when evidence is durable. */
   readonly evidenceId?: string;
   /** WP-8-H: deterministic registry-index identity when an index is published/current. */
@@ -1627,4 +1675,69 @@ export interface RetentionMutationResult {
   /** Deterministic deletion-completion evidence identity when durable. */
   readonly completionEvidenceId?: string;
   readonly findings?: readonly StorageFinding[];
+}
+
+// ─── WP-8-M: configuration namespace recovery (contract §16.7, CSA-016…018; ADR-036) ───
+
+/** Closed current-state classification of the configuration-namespace metadata object (§16.7). */
+export type ConfigurationMetadataState =
+  /** Exact expected canonical configuration metadata is present (healthy; no mutation needed). */
+  | 'configuration-healthy'
+  /** The expected canonical configuration metadata file is absent (the recoverable state). */
+  | 'configuration-missing'
+  /** The metadata directory itself is absent (bootstrap action required; not recovery-recoverable). */
+  | 'configuration-directory-missing'
+  /** Present but not canonical / wrong record kind / duplicate keys (fail closed; external disposition). */
+  | 'malformed-configuration'
+  /** Present, canonical, supported version, but bytes differ from the expected canonical configuration (fail closed; external disposition). */
+  | 'conflicting-configuration'
+  /** Present, canonical, but a recognized configuration version outside the supported set (fail closed; migration boundary). */
+  | 'unsupported-configuration-version'
+  /** Present but not a regular file (symlink, directory, special) (fail closed; external disposition). */
+  | 'wrong-type-configuration'
+  /** Present regular file with wrong UID or mode (never repaired; external disposition). */
+  | 'wrong-uid-mode-configuration'
+  /** Present bytes are a provable strict prefix of the expected canonical configuration (interrupted publication; external disposition — never overwritten). */
+  | 'interrupted-configuration-publication'
+  /** Foreign entries in the configuration metadata directory (fail closed; external disposition). */
+  | 'foreign-configuration-entry'
+  /** Older supported configuration version requiring transformation (migration-required; zero migration in this slice). */
+  | 'migration-required';
+
+/** Configuration-recovery evidence state classification (ADR-036 §10; scanner). */
+export type ConfigurationRecoveryEvidenceState =
+  /** Matching durable configuration-recovery evidence; configuration state consistent with the evidence outcome. */
+  | 'completed-configuration-recovery'
+  /** Configuration-recovery evidence durable but the configuration object is missing (integrity failure). */
+  | 'evidence-without-configuration'
+  /** Configuration-recovery evidence durable while a conflicting configuration object is present. */
+  | 'conflicting-configuration-recovery-evidence'
+  /** Configuration-recovery evidence payload is incomplete or outside the closed vocabulary. */
+  | 'dangling-configuration-recovery-evidence';
+
+/** WP-8-M: deterministic configuration-namespace scan observation (advisory; never authority). */
+export interface ConfigurationNamespaceObservation {
+  /** Deterministic observation id (PGAP-STORAGE-CONFIGURATION-OBSERVATION-v1; binds store, state, entry). */
+  readonly id: string;
+  readonly state: ConfigurationMetadataState;
+  /** Declared configuration identity from a self-consistent stored metadata object (fact, never authority). */
+  readonly declaredConfigurationIdentity?: string;
+  /** Declared metadata format version (fact). */
+  readonly declaredMetadataVersion?: string;
+  /** Record-byte digest of a self-consistent stored metadata object (fact). */
+  readonly metadataDigest?: string;
+  /** Foreign entry designations in the metadata directory (layout components). */
+  readonly foreignEntries?: readonly string[];
+  readonly reason: string;
+}
+
+/** WP-8-M: configuration-recovery evidence payload facts (scan; records/evidence/ observations). */
+export interface ConfigurationRecoveryEvidenceFacts {
+  readonly configurationIdentity?: string;
+  readonly configurationVersion?: string;
+  readonly configurationDigest?: string;
+  readonly trustedInputIdentity?: string;
+  readonly outcome?: string;
+  /** True when the payload claims recover-configuration-namespace but the facts are incomplete/invalid. */
+  readonly malformed: boolean;
 }

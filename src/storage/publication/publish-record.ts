@@ -714,7 +714,9 @@ export function publishRecoveryBoundRecord(input: {
               ? 12
               : binding.operation === 'break-writer-lock'
                 ? 14
-                : 2;
+                : binding.operation === 'recover-configuration-namespace'
+                  ? 20
+                  : 2;
   const ordinal = binding.role === 'recovery-authorized-write-audit' ? ordinalBase + 1 : ordinalBase;
   const tmpPath = `${tmpDirPath}/${publicationTempName(capability.binding.actionIdentity, ordinal)}`;
   // 7. Provision only the exact bound class/shard or index family/shard

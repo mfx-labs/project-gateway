@@ -17,7 +17,7 @@
  */
 import { createReadCapability, createVerifyCapability } from '../capabilities/authenticity.js';
 import { isGenuineTrustedStorageBootstrapInput, type TrustedStorageBootstrapInput } from '../trusted-input/bootstrap-input.js';
-import { verifyStoreInstance } from './read-record.js';
+import { verifyStoreInstance, verifyStoreInstanceConfigurationTolerant } from './read-record.js';
 import { enumerateClassByIdentity } from './enumerate.js';
 import { readRecordByIdentity, verifyRecordByIdentity } from './read-record.js';
 import { inspectAuditHistoryByIdentity } from './history.js';
@@ -69,6 +69,40 @@ export function revalidateStore(request: { readonly trustedConfiguration: unknow
 /** Verified store-records namespace root (fixed derivation; CSR-002). */
 export function namespaceRootFor(storeInstance: VerifiedStoreInstance): string {
   return `${storeInstance.parentIdentity.canonicalPath}/store-v1`;
+}
+
+/** Verified configuration namespace root (fixed derivation; CSR-002). */
+export function configurationNamespaceRootFor(storeInstance: VerifiedStoreInstance): string {
+  return `${storeInstance.parentIdentity.canonicalPath}/config-v1`;
+}
+
+/**
+ * WP-8-M configuration-tolerant store revalidation (ADR-036 §6): identical
+ * to `revalidateStore` except the configuration-namespace StoreMetadata is
+ * observed, not required (see `verifyStoreInstanceConfigurationTolerant`).
+ * Used only by the recovery scan and the configuration-namespace recovery
+ * operation; every other consumer keeps the strict fail-closed pipeline.
+ */
+export function revalidateStoreConfigurationTolerant(request: { readonly trustedConfiguration: unknown; readonly trustedInput: unknown }): { readonly ok: boolean; readonly storeInstance?: VerifiedStoreInstance; readonly code?: string; readonly message?: string } {
+  if (!isGenuineTrustedStorageBootstrapInput(request.trustedInput)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'trusted input is not genuine' };
+  }
+  const facts = configFacts(request.trustedConfiguration);
+  if (facts === undefined) {
+    return { ok: false, code: 'ERR-STO-CONFIG-UNAVAILABLE', message: 'trusted configuration facts are unavailable' };
+  }
+  const input = request.trustedInput as TrustedStorageBootstrapInput;
+  if (input.configurationIdentity !== facts.configurationIdentity) {
+    return { ok: false, code: 'ERR-STO-CONFIG-UNAVAILABLE', message: 'trusted input does not correlate with the trusted configuration' };
+  }
+  return verifyStoreInstanceConfigurationTolerant({
+    locator: input.locator,
+    serviceUid: input.serviceUid,
+    forbiddenRoots: input.forbiddenRoots,
+    configurationIdentity: facts.configurationIdentity,
+    configurationVersion: facts.configurationVersion,
+    limitProfile: input.limitProfile,
+  });
 }
 
 /** Exact read by identity (RDS-001/002/008/009/011/012). */

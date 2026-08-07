@@ -1,9 +1,9 @@
 /**
- * WP-8-F authorized recovery-mutation composition boundary (contract 16.2,
- * WPR-023 (a), CSA-001/010, CAP-008/009, LOK; contract 21.1 recovery
- * capability). FILESYSTEM-FREE: all filesystem work is delegated to the
- * exact fs-bearing owners (`recovery/reverify.ts`, `recovery/cleanup.ts`,
- * `locks/lock.ts`, `publication/publish-record.ts`).
+ * WP-8-F/WP-8-G authorized recovery-mutation composition boundary (contract
+ * 16.2, WPR-023 (a), CSA-001/010/013/014, CAP-008/009, LOK; contract 21.1
+ * recovery capability). FILESYSTEM-FREE: all filesystem work is delegated
+ * to the exact fs-bearing owners (`recovery/reverify.ts`,
+ * `recovery/cleanup.ts`, `locks/lock.ts`, `publication/publish-record.ts`).
  *
  * Authority: the sole production consumer of the recovery-capability,
  * trusted-recovery-request, and recovery-action-provenance creators
@@ -18,11 +18,12 @@
  * provenance → store revalidation → recovery capability → assessment-
  * generation and surface-generation recomputation and comparison → single-
  * writer lock acquisition (never broken or replaced) → descriptor-bound
- * target/twin re-verification → exact temporary-name unlink with `tmp/`
- * directory fsync → durable recovery evidence (StoreEvidenceRecord
- * `recovery-evidence` + its authorized-write audit event) → capability and
- * root revalidation → identity-bound lock release. Any mismatch fails
- * closed before any mutation.
+ * target/twin re-verification → exact mutation (temporary-name unlink with
+ * `tmp/` directory fsync; quarantine hard-link plus unlink; reconstructed
+ * `recovery-audit-reconstruction` event publication) → durable recovery
+ * evidence (StoreEvidenceRecord `recovery-evidence` + its authorized-write
+ * audit event) → capability and root revalidation → identity-bound lock
+ * release. Any mismatch fails closed before any mutation.
  *
  * Interrupted-removal roll-forward: when the temporary name is already gone
  * but the durable twin is intact and unchanged, the mutation completes the
@@ -40,11 +41,19 @@ import { createRecoveryCapability, type RecoveryCapability } from '../capabiliti
 import { createTrustedRecoveryRequest } from '../trusted-input/bootstrap-input.js';
 import { verifyStoreInstance } from '../read/read-record.js';
 import { revalidateParentIdentity } from '../root/resolve.js';
-import { computeScanGeneration, temporaryObservationId, recomputeSurfaceGeneration, isPublicationTemporaryName } from './scan.js';
-import { reverifyOrphanTwin, reverifyQuarantineSource, reverifyTwinOnly } from './reverify.js';
+import { computeScanGeneration, recordObservationId, auditEventsForRecord, reconstructionEvidenceForTarget, temporaryObservationId, recomputeSurfaceGeneration, isPublicationTemporaryName } from './scan.js';
+import { reverifyOrphanTwin, reverifyQuarantineSource, reverifyTwinOnly, reverifyReconstructionTarget } from './reverify.js';
 import { removeOrphanTemporary } from './cleanup.js';
 import { executeQuarantineTemporary } from './quarantine.js';
 import { buildQuarantineEvidenceRecord, buildRecoveryEvidenceRecord, computeQuarantineEvidenceIdentity, computeQuarantineTemporaryId, publishRecoveryEvidence, verifyExistingRecoveryEvidence, isoFromEpochMs } from './evidence.js';
+import { buildRecoveryAuditReconstructionEvent, AUTHORIZED_WRITE_EVENT_KIND, RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND } from '../audit/write-audit.js';
+import {
+  buildAuditReconstructionEvidenceRecord,
+  publishReconstructedAudit,
+  publishAuditReconstructionEvidence,
+  isReconstructionTargetClass,
+} from './reconstruct.js';
+import { verifyObjectBytesAt } from '../publication/publish-record.js';
 import { acquireWriterLock, releaseWriterLock } from '../locks/lock.js';
 import { deriveRecordRelativePath } from '../layout/layout.js';
 import { isValidDigestSyntax } from '../format/envelope.js';
@@ -67,14 +76,46 @@ function isTwinClass(recordClass: RecordClassId): boolean {
   return profile !== undefined && profile.namespace === 'store-records' && profile.id !== 'store-metadata';
 }
 
+/** Target-class acceptance for audit reconstruction (WP-8-G §2; 16.3). */
+function isReconstructionClass(recordClass: RecordClassId): boolean {
+  return isReconstructionTargetClass(recordClass);
+}
+
 /** Validate the narrow structured action (never a plan action; never a path). */
 function validateAction(input: RecoveryMutationRequest): { readonly ok: boolean; readonly code?: string; readonly message?: string } {
   const action = input.action;
   if (typeof action !== 'object' || action === null) {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery action is malformed' };
   }
-  if (action.category !== 'orphan-removal' && action.category !== 'quarantine-temporary') {
+  if (action.category !== 'orphan-removal' && action.category !== 'quarantine-temporary' && action.category !== 'audit-reconstruction') {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery action category is outside the supported vocabulary; no generic quarantine authority exists' };
+  }
+  if (action.category === 'audit-reconstruction') {
+    if (action.targetRecordClass === undefined || !isReconstructionClass(action.targetRecordClass)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'target record class is outside the reconstructable store-records vocabulary' };
+    }
+    if (typeof action.targetRecordId !== 'string' || !/^pgw:r:[0-9a-f]{32}$/.test(action.targetRecordId)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'target record identity is not a canonical typed identifier' };
+    }
+    if (typeof action.targetRecordDigest !== 'string' || !isValidDigestSyntax(action.targetRecordDigest)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'target record digest is malformed' };
+    }
+    if (typeof action.expectedOriginalActionIdentity !== 'string' || action.expectedOriginalActionIdentity.length === 0) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected original trusted action identity is malformed' };
+    }
+    if (!Array.isArray(action.expectedObservationIds) || action.expectedObservationIds.length !== 1 || typeof action.expectedObservationIds[0] !== 'string') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected observation evidence identifiers are malformed' };
+    }
+    if (typeof action.expectedMissingAuditFindingId !== 'string' || action.expectedMissingAuditFindingId.length === 0) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected missing-audit finding identifier is malformed' };
+    }
+    if (typeof action.expectedGeneration !== 'string' || !isValidDigestSyntax(action.expectedGeneration)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected scan generation is malformed' };
+    }
+    if (typeof action.expectedSurfaceGeneration !== 'string' || !isValidDigestSyntax(action.expectedSurfaceGeneration)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected surface generation is malformed' };
+    }
+    return { ok: true };
   }
   if (action.category === 'quarantine-temporary') {
     if (typeof action.targetEntry !== 'string' || !isPublicationTemporaryName(action.targetEntry)) {
@@ -122,12 +163,14 @@ function executeQuarantineMutation(
   hooks: NonNullable<RecoveryMutationRequest['hooks']>,
 ): RecoveryMutationResult {
   const expectedClassification = action.expectedClassification as 'incomplete-unpublished' | 'malformed-temporary' | undefined;
+  const targetEntryName = action.targetEntry as string | undefined;
   const expectedSourceDigest = action.expectedSourceDigest as string | undefined;
-  if (expectedClassification === undefined || expectedSourceDigest === undefined) {
-    return failResult('ERR-STO-REQ-INVALID', 'quarantine request is missing the expected classification or source digest');
+  if (expectedClassification === undefined || expectedSourceDigest === undefined || targetEntryName === undefined) {
+    return failResult('ERR-STO-REQ-INVALID', 'quarantine request is missing the expected classification, source digest, or target entry');
   }
   const classification = expectedClassification as 'incomplete-unpublished' | 'malformed-temporary';
   const sourceDigest = expectedSourceDigest as string;
+
   const inputResult = createTrustedRecoveryRequest(
     request.trustedConfiguration,
     request.recoveryActionProvenance,
@@ -231,7 +274,7 @@ function executeQuarantineMutation(
       namespaceRoot: storeRoot,
       serviceUid: request.serviceUid,
       temporaryBytes,
-      targetEntry: action.targetEntry,
+      targetEntry: targetEntryName,
       expectedClassification: classification,
       expectedSourceDigest: sourceDigest,
       expectedSurfaceGeneration: action.expectedSurfaceGeneration,
@@ -240,7 +283,7 @@ function executeQuarantineMutation(
 
     const quarantineId = computeQuarantineTemporaryId({
       storeInstance,
-      sourceEntry: action.targetEntry,
+      sourceEntry: targetEntryName,
       classification,
       sourceDigest,
     });
@@ -257,7 +300,7 @@ function executeQuarantineMutation(
         evidenceKind: 'recovery-evidence',
         recoveryOperation: 'quarantine-temporary',
         quarantineId,
-        sourceEntry: action.targetEntry,
+        sourceEntry: targetEntryName,
         sourceClassification: classification,
         sourceDigest,
         observationIds: action.expectedObservationIds,
@@ -280,7 +323,7 @@ function executeQuarantineMutation(
         capability,
         namespaceRoot: storeRoot,
         serviceUid: request.serviceUid,
-        targetEntry: action.targetEntry,
+        targetEntry: targetEntryName,
         quarantineId,
         evidenceId,
         expectedSourceDigest: sourceDigest,
@@ -337,7 +380,7 @@ function executeQuarantineMutation(
       capability,
       namespaceRoot: storeRoot,
       serviceUid: request.serviceUid,
-      targetEntry: action.targetEntry,
+      targetEntry: targetEntryName,
       quarantineId,
       evidenceId,
       expectedSourceDigest: sourceDigest,
@@ -411,8 +454,411 @@ function executeQuarantineMutation(
 }
 
 /**
- * Execute one authorized recovery mutation. Only `orphan-removal` is
- * executable in this slice; every other category fails closed.
+ * Audit-reconstruction mutation flow (16.3; AUD-011/012; CSA-013/014;
+ * WP-8-G §4/§7/§9). Authority, revalidation, and locking mirror the
+ * quarantine flow; the target is re-verified descriptor-bound at its
+ * derived canonical location; the current audit state is re-enumerated
+ * (never a prior view) and classified; the exact reconstructed
+ * `recovery-audit-reconstruction` event is derived mechanically and
+ * published under a dedicated exact-record permit; the reconstruction
+ * evidence and its authorized-write audit are published; every required
+ * durability point is re-verified before success.
+ *
+ * Deterministic states: audit absent → normal reconstruction; exact
+ * reconstructed audit durable + evidence absent → evidence roll-forward;
+ * exact reconstructed audit + matching evidence → already-completed;
+ * original authorized-write audit present (gap filled by the write path
+ * itself) → already-completed without evidence; conflicting audit,
+ * contesting duplicates, malformed audit association, unreadable audit
+ * surface, changed/replaced/missing target → fail closed; matching
+ * evidence without the reconstructed audit → fail closed (integrity
+ * failure; never republish from evidence alone).
+ */
+function executeAuditReconstructionMutation(
+  request: RecoveryMutationRequest,
+  action: RecoveryMutationRequest['action'] & { category: 'audit-reconstruction' },
+  hooks: NonNullable<RecoveryMutationRequest['hooks']>,
+): RecoveryMutationResult {
+  const targetRecordClass = action.targetRecordClass as RecordClassId;
+  const targetRecordId = action.targetRecordId as string;
+  const targetRecordDigest = action.targetRecordDigest as string;
+  const expectedOriginalActionIdentity = action.expectedOriginalActionIdentity as string;
+  const expectedMissingAuditFindingId = action.expectedMissingAuditFindingId as string;
+  if (
+    !isReconstructionClass(targetRecordClass) ||
+    typeof targetRecordId !== 'string' ||
+    typeof targetRecordDigest !== 'string' ||
+    typeof expectedOriginalActionIdentity !== 'string' ||
+    typeof expectedMissingAuditFindingId !== 'string'
+  ) {
+    return failResult('ERR-STO-REQ-INVALID', 'audit-reconstruction request is missing a required target binding');
+  }
+  const inputResult = createTrustedRecoveryRequest(
+    request.trustedConfiguration,
+    request.recoveryActionProvenance,
+    { locator: request.locator, serviceUid: request.serviceUid, forbiddenRoots: request.forbiddenRoots, limitProfile: request.limitProfile },
+  );
+  if (!inputResult.ok || inputResult.request === undefined) {
+    const code = inputResult.reason === 'not-genuine-configuration' || inputResult.reason === 'not-genuine-action-provenance' || inputResult.reason === 'configuration-identity-mismatch'
+      ? 'ERR-STO-CONFIG-UNAVAILABLE'
+      : 'ERR-STO-REQ-INVALID';
+    return failResult(code, inputResult.message ?? 'trusted recovery request could not be established');
+  }
+  const store = verifyStoreInstance({
+    locator: request.locator,
+    serviceUid: request.serviceUid,
+    forbiddenRoots: request.forbiddenRoots,
+    configurationIdentity: (request.trustedConfiguration as { readonly identity: string }).identity,
+    configurationVersion: (request.trustedConfiguration as { readonly configurationVersion: string }).configurationVersion,
+    limitProfile: request.limitProfile,
+  });
+  if (!store.ok || store.storeInstance === undefined) {
+    return failResult(store.code ?? 'ERR-STO-INTEGRITY', store.message ?? 'store revalidation failed');
+  }
+  const storeInstance = store.storeInstance;
+  const recoveryCapability = createRecoveryCapability({ trustedRecoveryRequest: inputResult.request, storeInstance });
+  if (recoveryCapability === undefined) {
+    return failResult('ERR-STO-REQ-INVALID', 'recovery capability could not be issued');
+  }
+  let capability: RecoveryCapability | undefined = recoveryCapability;
+  try {
+    const profile = storeInstance.limitProfile;
+    const recomputedGeneration = computeScanGeneration({
+      storeInstance,
+      mode: 'recovery',
+      entryLimit: profile['recoveryScanEntries'] ?? 1024 * 1024,
+      byteLimit: profile['totalScanBytes'] ?? 4 * 1024 * 1024 * 1024,
+      failClosed: true,
+    });
+    if (recomputedGeneration !== action.expectedGeneration) {
+      return failResult('ERR-STO-REQ-INVALID', 'assessment scan generation does not match the current store and limits');
+    }
+    const storeRoot = `${storeInstance.parentIdentity.canonicalPath}/store-v1`;
+    const surface = recomputeSurfaceGeneration({ namespaceRoot: storeRoot, serviceUid: request.serviceUid, mode: 'recovery' });
+    if (!surface.ok || surface.generation === undefined) {
+      return failResult(surface.code ?? 'ERR-STO-IO-FAILURE', surface.message ?? 'surface structure could not be re-read');
+    }
+    if (surface.generation !== action.expectedSurfaceGeneration) {
+      return failResult('ERR-STO-ROOT-IDENTITY-CHANGED', 'store structure changed since the recovery assessment');
+    }
+    const surfaceGeneration = surface.generation as string;
+    const bound = capability.assertExpected({
+      storeInstance,
+      configurationIdentity: storeInstance.configurationIdentity,
+      serviceUid: request.serviceUid,
+      limitProfile: storeInstance.limitProfile,
+    });
+    if (!bound.ok) {
+      return failResult('ERR-STO-REQ-INVALID', 'recovery capability binding mismatch');
+    }
+    hooks.stage?.('before-lock-acquisition');
+    const locksDir = `${storeRoot}/locks`;
+    const lockPath = `${locksDir}/writer.lock`;
+    const lockWaitMs = profile['lockWait'] ?? 5000;
+    const acquired = acquireWriterLock({
+      capability,
+      operation: 'audit-reconstruction',
+      lockPath,
+      locksDirPath: locksDir,
+      storeInstance: storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })),
+      actionIdentity: inputResult.request.actionIdentity,
+      lockWaitMs,
+      timeSource: request.timeSource,
+      hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+    });
+    if (!acquired.ok || acquired.record === undefined) {
+      return failResult(acquired.code ?? 'ERR-STO-LOCK-UNAVAILABLE', acquired.message ?? 'writer lock could not be acquired');
+    }
+    const lockRecord = acquired.record;
+    hooks.stage?.('after-lock-acquisition');
+    const release = (): RecoveryMutationResult => {
+      hooks.stage?.('before-lock-release');
+      const released = releaseWriterLock({
+        capability,
+        operation: 'audit-reconstruction',
+        lockPath,
+        locksDirPath: locksDir,
+        expected: { nonce: lockRecord.nonce, storeInstance: storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })) },
+        timeSource: request.timeSource,
+        hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+      });
+      if (!released.ok) {
+        return failResult('ERR-STO-RECOVERY-FAILED', 'lock release failed; the lock remains for recovery');
+      }
+      return { ok: true };
+    };
+    // Every fail-closed path after lock acquisition releases the identity-
+    // bound lock (never broken or replaced); only a simulated crash leaves
+    // the held lock as the deterministic fail-closed state.
+    const failClosed = (code: string, message: string): RecoveryMutationResult => {
+      const released = release();
+      if (!released.ok) return released;
+      return failResult(code, message);
+    };
+    const recordBytes = profile['recordBytes'] ?? 1024 * 1024;
+    const recoveryTime = isoFromEpochMs(request.timeSource.now());
+
+    // Descriptor-bound target re-verification (WP-8-G §4.8–10): exact
+    // UID/mode/type/link-count, exact identity/digest/class, exact
+    // original trusted action identity from the durable envelope.
+    const verified = reverifyReconstructionTarget({
+      capability,
+      namespaceRoot: storeRoot,
+      serviceUid: request.serviceUid,
+      recordBytes,
+      targetRecordClass,
+      targetRecordId,
+      targetRecordDigest,
+      expectedOriginalActionIdentity,
+      expectedSurfaceGeneration: action.expectedSurfaceGeneration,
+    });
+    hooks.stage?.('after-target-verification');
+    if (!verified.ok || verified.target === undefined) {
+      return failClosed(verified.code ?? 'ERR-STO-INTEGRITY', verified.message ?? 'target record re-verification failed');
+    }
+
+    // Current audit-state enumeration and classification (WP-8-G §4.11/4.12).
+    const auditState = auditEventsForRecord({
+      namespaceRoot: storeRoot,
+      serviceUid: request.serviceUid,
+      byteLimit: recordBytes,
+      targetRecordId,
+    });
+    if (!auditState.ok || auditState.events === undefined) {
+      return failClosed(auditState.code ?? 'ERR-STO-INTEGRITY', auditState.message ?? 'current audit state could not be verified');
+    }
+    const events = auditState.events;
+    const exactReconstruction = events.filter(
+      (e) => e.eventKind === RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND && e.primaryDigest === targetRecordDigest && e.gapMarker,
+    );
+    const malformedReconstruction = events.filter(
+      (e) => e.eventKind === RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND && e.primaryDigest === targetRecordDigest && !e.gapMarker,
+    );
+    const conflicting = events.filter((e) => e.primaryDigest !== targetRecordDigest);
+    const exactOriginal = events.filter((e) => e.eventKind === AUTHORIZED_WRITE_EVENT_KIND && e.primaryDigest === targetRecordDigest);
+    const otherKinds = events.filter(
+      (e) => e.primaryDigest === targetRecordDigest && e.eventKind !== AUTHORIZED_WRITE_EVENT_KIND && e.eventKind !== RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND,
+    );
+    if (malformedReconstruction.length > 0 || conflicting.length > 0 || otherKinds.length > 0) {
+      return failClosed('ERR-STO-INTEGRITY', 'conflicting audit exists for the target; fail closed');
+    }
+    if (exactReconstruction.length > 1 || exactOriginal.length > 1) {
+      return failClosed('ERR-STO-INTEGRITY', 'multiple contesting audits exist for the target; external disposition required');
+    }
+    hooks.stage?.('after-audit-absence-verification');
+
+    // The derived reconstruction audit (identity time-independent; the
+    // recovery-time bytes are creation evidence).
+    const auditBuilt = buildRecoveryAuditReconstructionEvent({
+      storeInstance: storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })),
+      primaryClass: targetRecordClass,
+      primaryRecordId: targetRecordId,
+      primaryRevision: verified.target.revision,
+      primaryDigest: targetRecordDigest,
+      recoveryActionIdentity: inputResult.request.actionIdentity,
+      recoveryTime,
+    });
+    if (!auditBuilt.ok || auditBuilt.event === undefined) {
+      return failClosed(auditBuilt.code ?? 'ERR-STO-INTERNAL-INVARIANT', auditBuilt.message ?? 'reconstructed audit could not be derived');
+    }
+
+    // Evidence construction/verification shared by the roll-forward and
+    // normal paths (binds the audit identity that is actually durable).
+    const buildEvidence = (reconstructionAuditId: string, reconstructionAuditDigest: string): RecoveryMutationResult => {
+      const built = buildAuditReconstructionEvidenceRecord({
+        storeInstance,
+        actionIdentity: inputResult.request!.actionIdentity,
+        evidenceKind: 'recovery-evidence',
+        recoveryOperation: 'audit-reconstruction',
+        targetRecordClass,
+        targetRecordId,
+        targetRecordDigest,
+        originalActionIdentity: verified.target!.originalActionIdentity,
+        reconstructionAuditId,
+        reconstructionAuditDigest,
+        missingAuditObservationId: expectedMissingAuditFindingId,
+        generation: recomputedGeneration,
+        surfaceGeneration,
+        outcome: 'reconstructed',
+        createdAt: isoFromEpochMs(request.timeSource.now()),
+      });
+      if (!built.ok || built.record === undefined) {
+        return failResult(built.code ?? 'ERR-STO-INTERNAL-INVARIANT', built.message ?? 'reconstruction evidence could not be constructed');
+      }
+      const evidenceDerived = deriveRecordRelativePath('store-evidence-record', built.record.recordId);
+      const evidenceAuditDerived = deriveRecordRelativePath('authoritative-audit-event', built.record.auditEventId);
+      const reconstructionAuditDerived = deriveRecordRelativePath('authoritative-audit-event', reconstructionAuditId);
+      if (!evidenceDerived.ok || !evidenceAuditDerived.ok || !reconstructionAuditDerived.ok) {
+        return failResult('ERR-STO-CONTAINMENT-DENIED', 'reconstruction evidence path derivation failed');
+      }
+      // The derived evidence identity must be ABSENT before publication: an
+      // existing object at the exact evidence path (even one whose payload
+      // references another target) is a conflicting evidence state.
+      const evidencePath = `${storeRoot}/${evidenceDerived.relativePath}`;
+      const existingAtPath = verifyObjectBytesAt({ path: evidencePath, serviceUid: request.serviceUid, byteLimit: recordBytes });
+      if (existingAtPath.ok) {
+        return failResult('ERR-STO-INTEGRITY', 'conflicting evidence exists at the derived evidence identity; fail closed');
+      }
+      if (existingAtPath.code !== 'ERR-STO-NOT-FOUND') {
+        return failResult(existingAtPath.code ?? 'ERR-STO-INTEGRITY', existingAtPath.message ?? 'evidence path could not be verified');
+      }
+      hooks.stage?.('before-evidence-publication');
+      const evidencePublished = publishAuditReconstructionEvidence({
+        capability,
+        storeInstance,
+        namespaceRoot: storeRoot,
+        serviceUid: request.serviceUid,
+        byteLimit: recordBytes,
+        record: built.record,
+        hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+      });
+      if (!evidencePublished.ok) {
+        return failResult(evidencePublished.code ?? 'ERR-STO-RECOVERY-FAILED', evidencePublished.message ?? 'reconstruction evidence is not durable');
+      }
+      hooks.stage?.('after-evidence-publication');
+      hooks.stage?.('after-evidence-audit-publication');
+      // Verify every required durability point (WP-8-G §7.14): the
+      // reconstructed audit (the id/digest that is actually durable),
+      // the evidence, and the evidence's authorized-write audit.
+      const points: ReadonlyArray<{ readonly path: string; readonly expectedDigest: string; readonly label: string }> = [
+        { path: `${storeRoot}/${reconstructionAuditDerived.relativePath}`, expectedDigest: reconstructionAuditDigest, label: 'reconstructed audit' },
+        { path: `${storeRoot}/${evidenceDerived.relativePath}`, expectedDigest: built.record!.digest, label: 'reconstruction evidence' },
+        { path: `${storeRoot}/${evidenceAuditDerived.relativePath}`, expectedDigest: built.record!.auditDigest, label: 'evidence audit' },
+      ];
+      for (const point of points) {
+        const durable = verifyObjectBytesAt({ path: point.path, serviceUid: request.serviceUid, byteLimit: recordBytes });
+        if (!durable.ok || durable.digest !== point.expectedDigest) {
+          return failResult('ERR-STO-DURABILITY', `${point.label} durability point is not verified`);
+        }
+      }
+      return { ok: true, evidenceId: built.record.recordId };
+    };
+
+    // Current reconstruction-evidence state (WP-8-G §9): any durable
+    // reconstruction evidence for the target is verified against the
+    // CURRENT surface, never a prior view.
+    const evidenceState = reconstructionEvidenceForTarget({
+      namespaceRoot: storeRoot,
+      serviceUid: request.serviceUid,
+      byteLimit: recordBytes,
+      targetRecordId,
+    });
+    if (!evidenceState.ok || evidenceState.evidence === undefined) {
+      return failResult(evidenceState.code ?? 'ERR-STO-INTEGRITY', evidenceState.message ?? 'current reconstruction evidence state could not be verified');
+    }
+    const targetEvidence = evidenceState.evidence;
+    const evidenceMatches = (e: (typeof targetEvidence)[number], auditId: string): boolean =>
+      e.reconstructionAuditId === auditId && e.targetRecordDigest === targetRecordDigest && (e.outcome === 'reconstructed' || e.outcome === 'already-completed');
+
+    // Flow A: the exact reconstructed audit is already durable — roll the
+    // recovery evidence forward or return already-completed.
+    if (exactReconstruction.length === 1) {
+      const durableAudit = exactReconstruction[0]!;
+      const matchingEvidence = targetEvidence.filter((e) => evidenceMatches(e, durableAudit.eventId));
+      const conflictingEvidence = targetEvidence.filter((e) => !evidenceMatches(e, durableAudit.eventId));
+      if (conflictingEvidence.length > 0) {
+        return failClosed('ERR-STO-INTEGRITY', 'conflicting reconstruction evidence exists for the target; fail closed');
+      }
+      if (matchingEvidence.length > 1) {
+        return failClosed('ERR-STO-INTEGRITY', 'duplicate reconstruction evidence exists for the target; fail closed');
+      }
+      if (matchingEvidence.length === 1) {
+        const released = release();
+        if (!released.ok) return released;
+        return { ok: true, outcome: 'already-completed', evidenceId: matchingEvidence[0]!.evidenceId };
+      }
+      const rolled = buildEvidence(durableAudit.eventId, durableAudit.digest);
+      if (!rolled.ok) {
+        const released = release();
+        if (!released.ok) return released;
+        return rolled;
+      }
+      const released = release();
+      if (!released.ok) return released;
+      return { ok: true, outcome: 'reconstructed', evidenceId: rolled.evidenceId };
+    }
+
+    // No exact reconstructed audit is durable. Any durable reconstruction
+    // evidence for the target is an integrity failure (evidence without
+    // its reconstructed audit) or a conflict: never republish from
+    // evidence alone (WP-8-G §9).
+    if (targetEvidence.length > 0) {
+      return failClosed('ERR-STO-INTEGRITY', 'reconstruction evidence exists without its reconstructed audit; integrity failure, no republish');
+    }
+
+    // Flow B: the original authorized-write audit now exists (the write
+    // path itself filled the gap; CSA-014). Nothing was reconstructed and
+    // no evidence may be invented; deterministic already-completed.
+    if (exactOriginal.length === 1) {
+      const released = release();
+      if (!released.ok) return released;
+      return { ok: true, outcome: 'already-completed' };
+    }
+
+    // Flow C: normal reconstruction — publish the derived audit, confirm
+    // its durability, publish the evidence and its audit, verify all
+    // durability points, revalidate, release.
+    hooks.stage?.('before-reconstructed-audit-publication');
+    const auditPublished = publishReconstructedAudit({
+      capability,
+      namespaceRoot: storeRoot,
+      serviceUid: request.serviceUid,
+      byteLimit: recordBytes,
+      targetRecordClass,
+      targetRecordId,
+      targetRecordDigest,
+      audit: auditBuilt.event,
+      hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+    });
+    if (!auditPublished.ok) {
+      return failClosed(auditPublished.code ?? 'ERR-STO-RECOVERY-FAILED', auditPublished.message ?? 'reconstructed audit publication failed');
+    }
+    hooks.stage?.('after-reconstructed-audit-publication');
+    hooks.stage?.('before-reconstructed-audit-durability-confirmation');
+    const auditDerived = deriveRecordRelativePath('authoritative-audit-event', auditBuilt.event.recordId);
+    if (!auditDerived.ok) {
+      return failResult('ERR-STO-CONTAINMENT-DENIED', 'reconstructed audit path derivation failed');
+    }
+    const auditDurable = verifyObjectBytesAt({ path: `${storeRoot}/${auditDerived.relativePath}`, serviceUid: request.serviceUid, byteLimit: recordBytes });
+    if (!auditDurable.ok || auditDurable.digest !== auditBuilt.event.digest) {
+      return failClosed('ERR-STO-DURABILITY', 'reconstructed audit durability point is not verified');
+    }
+    hooks.stage?.('after-reconstructed-audit-durability-confirmation');
+    const evidenceStep = buildEvidence(auditBuilt.event.recordId, auditBuilt.event.digest);
+    if (!evidenceStep.ok) {
+      const released = release();
+      if (!released.ok) return released;
+      return evidenceStep;
+    }
+    const beforeSuccess = capability.assertExpected({
+      storeInstance,
+      configurationIdentity: storeInstance.configurationIdentity,
+      serviceUid: request.serviceUid,
+      limitProfile: storeInstance.limitProfile,
+    });
+    if (!beforeSuccess.ok) {
+      const released = release();
+      if (!released.ok) return released;
+      return failResult('ERR-STO-DURABILITY', 'capability invalidated before acknowledgement; reconstruction is durable');
+    }
+    const rootRevalidated = revalidateParentIdentity(storeInstance.parentIdentity, request.serviceUid);
+    if (!rootRevalidated.ok) {
+      const released = release();
+      if (!released.ok) return released;
+      return failResult(rootRevalidated.code ?? 'ERR-STO-ROOT-IDENTITY-CHANGED', rootRevalidated.message ?? 'trusted parent identity changed');
+    }
+    const released = release();
+    if (!released.ok) return released;
+    return { ok: true, outcome: 'reconstructed', evidenceId: evidenceStep.evidenceId };
+  } finally {
+    capability?.dispose();
+  }
+}
+
+/**
+ * Execute one authorized recovery mutation. `orphan-removal`,
+ * `quarantine-temporary`, and `audit-reconstruction` are executable in
+ * this slice; every other category fails closed.
  */
 export function executeRecoveryMutation(request: RecoveryMutationRequest): RecoveryMutationResult {
   const validation = validateAction(request);
@@ -420,9 +866,25 @@ export function executeRecoveryMutation(request: RecoveryMutationRequest): Recov
     return failResult(validation.code ?? 'ERR-STO-REQ-INVALID', validation.message ?? 'recovery action validation failed');
   }
   const hooks = request.hooks ?? {};
+  if (request.action.category === 'audit-reconstruction') {
+    // The expected observation evidence and the expected missing-audit
+    // finding must match the deterministic record observation identity of
+    // the WP-8-E scan at the target's derived canonical location.
+    const targetRecordClass = request.action.targetRecordClass as RecordClassId;
+    const targetRecordId = request.action.targetRecordId as string;
+    const derived = deriveRecordRelativePath(targetRecordClass, targetRecordId);
+    if (!derived.ok || derived.shard === undefined || derived.filename === undefined) {
+      return failResult('ERR-STO-CONTAINMENT-DENIED', 'target record path derivation failed');
+    }
+    const recomputedObservationId = recordObservationId(targetRecordClass, derived.shard, derived.filename);
+    if (request.action.expectedObservationIds[0] !== recomputedObservationId || request.action.expectedMissingAuditFindingId !== recomputedObservationId) {
+      return failResult('ERR-STO-REQ-INVALID', 'expected observation or missing-audit finding does not match the scanned target record');
+    }
+    return executeAuditReconstructionMutation(request, request.action as RecoveryMutationRequest['action'] & { category: 'audit-reconstruction' }, hooks);
+  }
   // The expected observation evidence must match the deterministic
   // temporary-object observation identity of the WP-8-E scan.
-  const recomputedObservationId = temporaryObservationId(request.action.targetEntry);
+  const recomputedObservationId = temporaryObservationId(request.action.targetEntry!);
   if (request.action.expectedObservationIds[0] !== recomputedObservationId) {
     return failResult('ERR-STO-REQ-INVALID', 'expected observation evidence does not match the scanned temporary object');
   }

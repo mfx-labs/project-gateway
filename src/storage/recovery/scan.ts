@@ -102,13 +102,13 @@
 import { readdirSync, openSync, closeSync, fstatSync, readFileSync } from 'node:fs';
 import { constants } from 'node:fs';
 import { jcsSerialize } from '../../canonical/jcs.js';
-import { computeDomainDigest, isValidDigestSyntax, STORAGE_RECORD_BYTES_DIGEST_DOMAIN } from '../format/envelope.js';
+import { computeDomainDigest, isValidDigestSyntax, parsePersistedEnvelope, STORAGE_RECORD_BYTES_DIGEST_DOMAIN } from '../format/envelope.js';
 import { parseRawJson } from '../../json/scanner.js';
 import { verifyObjectBytesAt } from '../publication/publish-record.js';
 import { computeQuarantineEvidenceIdentity } from './evidence.js';
 import { deriveRecordRelativePath } from '../layout/layout.js';
 import { RECORD_CLASS_BY_ID, RECORD_CLASS_PROFILES } from '../format/taxonomy.js';
-import { comparePrePostStat } from '../root/identity.js';
+import { comparePrePostStat, verifyRegularFileStat } from '../root/identity.js';
 import { verifyNamespaceRootIdentity } from '../read/read-record.js';
 import { classifyCandidate, extractEnvelopeFacts, type CandidateFacts } from '../registry/classify.js';
 import { parseLockRecordFacts } from './assess.js';
@@ -150,6 +150,17 @@ export function temporaryObservationId(entry: string): string {
   return observationId('temporary-object', undefined, undefined, entry);
 }
 
+/**
+ * Deterministic record observation id (WP-8-G evidence binding): the exact
+ * observation identity the WP-8-E recovery scan assigns to the durable
+ * record at its derived canonical location. Recomputed at the mutation
+ * boundary from the closed class vocabulary and the canonical identity;
+ * never taken from plan data.
+ */
+export function recordObservationId(recordClass: RecordClassId, shard: string, entry: string): string {
+  return observationId('record', recordClass, shard, entry);
+}
+
 /** Deterministic quarantine-object observation id (WP-8-F). */
 export function quarantineObservationId(shard: string, entry: string): string {
   return observationId('quarantine-object', shard, undefined, entry);
@@ -175,6 +186,52 @@ export function extractQuarantineEvidenceFacts(raw: string): { readonly quaranti
     if (typeof sourceDigest !== 'string' || !isValidDigestSyntax(sourceDigest)) return {};
     if (typeof sourceEntry !== 'string' || sourceEntry.length === 0) return {};
     return { quarantineId, sourceDigest, sourceEntry };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * WP-8-G reconstruction-evidence payload facts (16.3; §11): extracted from
+ * one canonical store-evidence-record whose payload declares the
+ * `audit-reconstruction` recovery operation. `reconstruction` is true for
+ * every audit-reconstruction evidence claim; `malformed` is true when the
+ * claimed facts are incomplete or the outcome is outside the closed
+ * vocabulary; otherwise `facts` carries the bound facts. Pure.
+ */
+export function extractReconstructionEvidenceFacts(raw: string): {
+  readonly reconstruction?: boolean;
+  readonly malformed?: boolean;
+  readonly facts?: {
+    readonly targetRecordId: string;
+    readonly targetRecordClass: string;
+    readonly targetRecordDigest: string;
+    readonly reconstructionAuditId: string;
+    readonly outcome: string;
+  };
+} {
+  try {
+    const model = parseRawJson(raw, 1024 * 1024).model;
+    if (typeof model !== 'object' || model === null || Array.isArray(model)) return {};
+    const payload = (model as Readonly<Record<string, unknown>>)['payload'];
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return {};
+    const p = payload as Readonly<Record<string, unknown>>;
+    if (p['recoveryOperation'] !== 'audit-reconstruction') return {};
+    const targetRecordId = p['targetRecordId'];
+    const targetRecordClass = p['targetRecordClass'];
+    const targetRecordDigest = p['targetRecordDigest'];
+    const reconstructionAuditId = p['reconstructionAuditId'];
+    const outcome = p['outcome'];
+    if (
+      typeof targetRecordId !== 'string' ||
+      typeof targetRecordClass !== 'string' ||
+      typeof targetRecordDigest !== 'string' ||
+      typeof reconstructionAuditId !== 'string' ||
+      (outcome !== 'reconstructed' && outcome !== 'already-completed')
+    ) {
+      return { reconstruction: true, malformed: true };
+    }
+    return { reconstruction: true, facts: { targetRecordId, targetRecordClass, targetRecordDigest, reconstructionAuditId, outcome } };
   } catch {
     return {};
   }
@@ -326,6 +383,280 @@ export function recomputeSurfaceGeneration(input: {
     return { ok: false, code: structureRead.code ?? 'ERR-STO-IO-FAILURE', message: structureRead.message ?? 'surface structure could not be re-read' };
   }
   return { ok: true, generation: computeSurfaceGeneration(structureRead.structure) };
+}
+
+/** One verified audit-event fact set for the mutation boundary (never a path). */
+export interface AuditEventFactsForTarget {
+  /** Audit event identity (envelope `recordId`). */
+  readonly eventId: string;
+  /** Payload event kind (absent when the association payload is malformed). */
+  readonly eventKind?: string;
+  /** Payload record identity (absent when the association payload is malformed). */
+  readonly primaryRecordId?: string;
+  /** Payload record digest (absent when the association payload is malformed). */
+  readonly primaryDigest?: string;
+  /** True when the payload carries the exact reconstruction gap marker (`gapMarker.missingEventKind === authorized-write`). */
+  readonly gapMarker: boolean;
+  /** Canonical bytes of the durable event (byte-exact comparison). */
+  readonly canonicalUtf8: string;
+  /** Record-bytes digest of the durable event. */
+  readonly digest: string;
+}
+
+/**
+ * WP-8-G current audit-state enumeration (16.3; CSA-005/013/014): reads the
+ * ENTIRE `audit/audit-event/` surface descriptor-bound and returns the
+ * verified audit events whose payload references the target record
+ * identity. Used by the audit-reconstruction boundary to verify, against
+ * the CURRENT state (never a prior view), that the exact audit is absent,
+ * no conflicting audit exists, and no contesting audits exist. The audit
+ * surface must be fully readable: a foreign shard/entry, a non-canonical
+ * event, a wrong UID/mode, an identity that does not match the derived
+ * location, or a changed-during-read object fails closed — the audit state
+ * cannot be proven, so no reconstruction may proceed.
+ */
+export function auditEventsForRecord(input: {
+  readonly namespaceRoot: string;
+  readonly serviceUid: number;
+  readonly byteLimit: number;
+  readonly targetRecordId: string;
+}): { readonly ok: boolean; readonly events?: readonly AuditEventFactsForTarget[]; readonly code?: string; readonly message?: string } {
+  const auditDir = `${input.namespaceRoot}/audit`;
+  const auditBracket = readdirVerified(auditDir, input.serviceUid, undefined, { surface: 'audit' });
+  if (!auditBracket.ok || auditBracket.bracket === undefined) {
+    return { ok: false, code: auditBracket.code ?? 'ERR-STO-IO-FAILURE', message: auditBracket.message ?? 'audit parent could not be verified' };
+  }
+  if (auditBracket.bracket.absent) return { ok: true, events: [] };
+  if (!auditBracket.bracket.names.includes('audit-event')) return { ok: true, events: [] };
+  const classDir = `${auditDir}/audit-event`;
+  const classBracket = readdirVerified(classDir, input.serviceUid, undefined, { surface: 'audit', recordClass: 'authoritative-audit-event' });
+  if (!classBracket.ok || classBracket.bracket === undefined) {
+    return { ok: false, code: classBracket.code ?? 'ERR-STO-IO-FAILURE', message: classBracket.message ?? 'audit-event class directory could not be verified' };
+  }
+  if (classBracket.bracket.absent) return { ok: true, events: [] };
+  const events: AuditEventFactsForTarget[] = [];
+  for (const shardName of classBracket.bracket.names) {
+    if (!SHARD_RE.test(shardName)) {
+      return { ok: false, code: 'ERR-STO-MALFORMED', message: 'foreign shard in the audit-event surface; audit state cannot be proven' };
+    }
+    const shardDir = `${classDir}/${shardName}`;
+    const shardBracket = readdirVerified(shardDir, input.serviceUid, undefined, { surface: 'audit', recordClass: 'authoritative-audit-event', shard: shardName });
+    if (!shardBracket.ok || shardBracket.bracket === undefined) {
+      return { ok: false, code: shardBracket.code ?? 'ERR-STO-ROOT-IDENTITY-CHANGED', message: shardBracket.message ?? 'audit shard directory could not be verified' };
+    }
+    if (shardBracket.bracket.absent) {
+      return { ok: false, code: 'ERR-STO-ROOT-IDENTITY-CHANGED', message: 'audit shard directory disappeared during verification' };
+    }
+    for (const entryName of shardBracket.bracket.names) {
+      const component = entryName.slice(0, 32);
+      if (!COMPONENT_RE.test(component) || entryName.length !== 36 || !entryName.endsWith('.aud')) {
+        return { ok: false, code: 'ERR-STO-MALFORMED', message: 'foreign entry in the audit-event surface; audit state cannot be proven' };
+      }
+      let fd: number | undefined;
+      try {
+        fd = openSync(`${shardDir}/${entryName}`, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+        const pre = fstatSync(fd);
+        const verified = verifyRegularFileStat(pre, input.serviceUid);
+        if (!verified.ok) return { ok: false, code: verified.code, message: verified.message };
+        if (pre.size > input.byteLimit) {
+          return { ok: false, code: 'ERR-STO-LIMIT-EXCEEDED', message: 'audit event exceeds the bounded byte limit' };
+        }
+        const bytes = readFileSync(fd);
+        const post = fstatSync(fd);
+        const revalidated = comparePrePostStat(pre, post);
+        if (!revalidated.ok || post.size !== bytes.length) {
+          return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'audit event changed during descriptor-based read' };
+        }
+        const raw = bytes.toString('utf8');
+        const parsed = parsePersistedEnvelope(raw, input.byteLimit);
+        if (!parsed.ok || parsed.model === undefined || parsed.bytes === undefined) {
+          return { ok: false, code: 'ERR-STO-MALFORMED', message: 'audit event is not a canonical record envelope' };
+        }
+        if (jcsSerialize(parsed.model) !== raw) {
+          return { ok: false, code: 'ERR-STO-MALFORMED', message: 'audit event bytes are not canonical JSON' };
+        }
+        const model = parsed.model as Readonly<Record<string, unknown>>;
+        const recordId = typeof model['recordId'] === 'string' ? model['recordId'] : undefined;
+        if (recordId === undefined || !recordId.endsWith(component)) {
+          return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'audit event identity does not match its derived location' };
+        }
+        const payload = model['payload'];
+        if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+          return { ok: false, code: 'ERR-STO-MALFORMED', message: 'audit event payload is malformed' };
+        }
+        const p = payload as Readonly<Record<string, unknown>>;
+        const eventKind = p['eventKind'];
+        const primaryRecordId = p['recordId'];
+        const primaryDigest = p['recordDigest'];
+        if (typeof eventKind !== 'string' || typeof primaryRecordId !== 'string' || typeof primaryDigest !== 'string') {
+          // An audit event whose association payload is malformed cannot be
+          // verified as an audit of any record; it is a conflicting/dangling
+          // audit fact and the audit state cannot be proven for the target.
+          return { ok: false, code: 'ERR-STO-MALFORMED', message: 'audit event association payload is malformed' };
+        }
+        if (primaryRecordId !== input.targetRecordId) continue;
+        const gap = p['gapMarker'];
+        const gapMarker = typeof gap === 'object' && gap !== null && !Array.isArray(gap) && (gap as Readonly<Record<string, unknown>>)['missingEventKind'] === 'authorized-write';
+        events.push({
+          eventId: recordId,
+          eventKind,
+          primaryRecordId,
+          primaryDigest,
+          gapMarker,
+          canonicalUtf8: parsed.bytes.canonicalUtf8,
+          digest: parsed.bytes.digest,
+        });
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT') {
+          return { ok: false, code: 'ERR-STO-ROOT-IDENTITY-CHANGED', message: 'audit event disappeared during verification' };
+        }
+        return { ok: false, code: 'ERR-STO-IO-FAILURE', message: 'audit event could not be read descriptor-bound' };
+      } finally {
+        if (fd !== undefined) closeSync(fd);
+      }
+    }
+  }
+  events.sort((a, b) => (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0));
+  return { ok: true, events };
+}
+
+/** One verified reconstruction-evidence fact set for the mutation boundary (never a path). */
+export interface ReconstructionEvidenceFactsForTarget {
+  /** Evidence record identity (envelope `recordId`). */
+  readonly evidenceId: string;
+  readonly targetRecordId: string;
+  readonly targetRecordClass: string;
+  readonly targetRecordDigest: string;
+  readonly reconstructionAuditId: string;
+  readonly outcome: string;
+  /** Canonical bytes of the durable evidence record. */
+  readonly canonicalUtf8: string;
+  /** Record-bytes digest of the durable evidence record. */
+  readonly digest: string;
+}
+
+/**
+ * WP-8-G current reconstruction-evidence enumeration (16.3; §9): reads the
+ * `records/evidence/` surface descriptor-bound and returns the verified
+ * `StoreEvidenceRecord` objects whose payload claims the
+ * `audit-reconstruction` operation for the target record identity. The
+ * audit-reconstruction boundary uses this to fail closed on
+ * evidence-without-audit states (never republish from evidence alone),
+ * conflicting evidence bindings, and duplicate evidence — always against
+ * the CURRENT state, never a prior view. The evidence surface must be
+ * fully readable: foreign entries, non-canonical records, malformed
+ * audit-reconstruction claims, and changed-during-read objects fail
+ * closed (the evidence state cannot be proven).
+ */
+export function reconstructionEvidenceForTarget(input: {
+  readonly namespaceRoot: string;
+  readonly serviceUid: number;
+  readonly byteLimit: number;
+  readonly targetRecordId: string;
+}): { readonly ok: boolean; readonly evidence?: readonly ReconstructionEvidenceFactsForTarget[]; readonly code?: string; readonly message?: string } {
+  const recordsDir = `${input.namespaceRoot}/records`;
+  const recordsBracket = readdirVerified(recordsDir, input.serviceUid, undefined, { surface: 'records' });
+  if (!recordsBracket.ok || recordsBracket.bracket === undefined) {
+    return { ok: false, code: recordsBracket.code ?? 'ERR-STO-IO-FAILURE', message: recordsBracket.message ?? 'records parent could not be verified' };
+  }
+  if (recordsBracket.bracket.absent || !recordsBracket.bracket.names.includes('evidence')) return { ok: true, evidence: [] };
+  const classDir = `${recordsDir}/evidence`;
+  const classBracket = readdirVerified(classDir, input.serviceUid, undefined, { surface: 'records', recordClass: 'store-evidence-record' });
+  if (!classBracket.ok || classBracket.bracket === undefined) {
+    return { ok: false, code: classBracket.code ?? 'ERR-STO-IO-FAILURE', message: classBracket.message ?? 'evidence class directory could not be verified' };
+  }
+  if (classBracket.bracket.absent) return { ok: true, evidence: [] };
+  const evidence: ReconstructionEvidenceFactsForTarget[] = [];
+  for (const shardName of classBracket.bracket.names) {
+    if (!SHARD_RE.test(shardName)) {
+      return { ok: false, code: 'ERR-STO-MALFORMED', message: 'foreign shard in the evidence surface; evidence state cannot be proven' };
+    }
+    const shardDir = `${classDir}/${shardName}`;
+    const shardBracket = readdirVerified(shardDir, input.serviceUid, undefined, { surface: 'records', recordClass: 'store-evidence-record', shard: shardName });
+    if (!shardBracket.ok || shardBracket.bracket === undefined) {
+      return { ok: false, code: shardBracket.code ?? 'ERR-STO-ROOT-IDENTITY-CHANGED', message: shardBracket.message ?? 'evidence shard directory could not be verified' };
+    }
+    if (shardBracket.bracket.absent) {
+      return { ok: false, code: 'ERR-STO-ROOT-IDENTITY-CHANGED', message: 'evidence shard directory disappeared during verification' };
+    }
+    for (const entryName of shardBracket.bracket.names) {
+      const component = entryName.slice(0, 32);
+      if (!COMPONENT_RE.test(component) || entryName.length !== 36 || !entryName.endsWith('.rec')) {
+        return { ok: false, code: 'ERR-STO-MALFORMED', message: 'foreign entry in the evidence surface; evidence state cannot be proven' };
+      }
+      let fd: number | undefined;
+      try {
+        fd = openSync(`${shardDir}/${entryName}`, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+        const pre = fstatSync(fd);
+        const verified = verifyRegularFileStat(pre, input.serviceUid);
+        if (!verified.ok) return { ok: false, code: verified.code, message: verified.message };
+        if (pre.size > input.byteLimit) {
+          return { ok: false, code: 'ERR-STO-LIMIT-EXCEEDED', message: 'evidence record exceeds the bounded byte limit' };
+        }
+        const bytes = readFileSync(fd);
+        const post = fstatSync(fd);
+        const revalidated = comparePrePostStat(pre, post);
+        if (!revalidated.ok || post.size !== bytes.length) {
+          return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'evidence record changed during descriptor-based read' };
+        }
+        const raw = bytes.toString('utf8');
+        const parsed = parsePersistedEnvelope(raw, input.byteLimit);
+        if (!parsed.ok || parsed.model === undefined || parsed.bytes === undefined) {
+          return { ok: false, code: 'ERR-STO-MALFORMED', message: 'evidence record is not a canonical record envelope' };
+        }
+        if (jcsSerialize(parsed.model) !== raw) {
+          return { ok: false, code: 'ERR-STO-MALFORMED', message: 'evidence record bytes are not canonical JSON' };
+        }
+        const model = parsed.model as Readonly<Record<string, unknown>>;
+        const recordId = typeof model['recordId'] === 'string' ? model['recordId'] : undefined;
+        if (recordId === undefined || !recordId.endsWith(component)) {
+          return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'evidence record identity does not match its derived location' };
+        }
+        const payload = model['payload'];
+        if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+          return { ok: false, code: 'ERR-STO-MALFORMED', message: 'evidence record payload is malformed' };
+        }
+        const p = payload as Readonly<Record<string, unknown>>;
+        if (p['recoveryOperation'] !== 'audit-reconstruction') continue;
+        const targetRecordId = p['targetRecordId'];
+        const targetRecordClass = p['targetRecordClass'];
+        const targetRecordDigest = p['targetRecordDigest'];
+        const reconstructionAuditId = p['reconstructionAuditId'];
+        const outcome = p['outcome'];
+        if (
+          typeof targetRecordId !== 'string' ||
+          typeof targetRecordClass !== 'string' ||
+          typeof targetRecordDigest !== 'string' ||
+          typeof reconstructionAuditId !== 'string' ||
+          (outcome !== 'reconstructed' && outcome !== 'already-completed')
+        ) {
+          return { ok: false, code: 'ERR-STO-MALFORMED', message: 'audit-reconstruction evidence claim is malformed; evidence state cannot be proven' };
+        }
+        if (targetRecordId !== input.targetRecordId) continue;
+        evidence.push({
+          evidenceId: recordId,
+          targetRecordId,
+          targetRecordClass,
+          targetRecordDigest,
+          reconstructionAuditId,
+          outcome,
+          canonicalUtf8: parsed.bytes.canonicalUtf8,
+          digest: parsed.bytes.digest,
+        });
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT') {
+          return { ok: false, code: 'ERR-STO-ROOT-IDENTITY-CHANGED', message: 'evidence record disappeared during verification' };
+        }
+        return { ok: false, code: 'ERR-STO-IO-FAILURE', message: 'evidence record could not be read descriptor-bound' };
+      } finally {
+        if (fd !== undefined) closeSync(fd);
+      }
+    }
+  }
+  evidence.sort((a, b) => (a.evidenceId < b.evidenceId ? -1 : a.evidenceId > b.evidenceId ? 1 : 0));
+  return { ok: true, evidence };
 }
 
 /** Deterministic scan class order: the 15 `.rec` classes (taxonomy order), then the audit class. */
@@ -672,6 +1003,16 @@ function scanRecordEntry(input: {
         const qFacts = extractQuarantineEvidenceFacts(bytes.toString('utf8'));
         if (qFacts.quarantineId !== undefined && qFacts.sourceDigest !== undefined && qFacts.sourceEntry !== undefined) {
           return { observation: { ...observation, quarantineEvidenceFacts: { quarantineId: qFacts.quarantineId, sourceDigest: qFacts.sourceDigest, sourceEntry: qFacts.sourceEntry } } };
+        }
+        // WP-8-G: audit-reconstruction evidence facts (16.3; §11).
+        const rFacts = extractReconstructionEvidenceFacts(bytes.toString('utf8'));
+        if (rFacts.reconstruction === true) {
+          return {
+            observation: {
+              ...observation,
+              reconstructionEvidenceFacts: rFacts.facts === undefined ? { malformed: true } : { malformed: false, ...rFacts.facts },
+            },
+          };
         }
       }
       return { observation };

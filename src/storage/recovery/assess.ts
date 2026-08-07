@@ -46,6 +46,8 @@ import type {
   OrphanTemporaryFinding,
   QuarantineScanObservation,
   ReconstructionCandidateFinding,
+  ReconstructionStateFinding,
+  RecordClassId,
   RecordScanObservation,
   RecoveryAssessment,
   ScanFacts,
@@ -54,6 +56,7 @@ import type {
   TemporaryScanObservation,
   VerifiedRecordView,
 } from '../types.js';
+import { RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND } from '../audit/write-audit.js';
 import { jcsSerialize } from '../../canonical/jcs.js';
 import { parseRawJson } from '../../json/scanner.js';
 import { isValidDigestSyntax } from '../format/envelope.js';
@@ -187,6 +190,7 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   const quarantineEligible: ObjectFinding[] = [];
   const requiresDisposition: DispositionFinding[] = [];
   const reconstructionCandidates: ReconstructionCandidateFinding[] = [];
+  const reconstructionStates: ReconstructionStateFinding[] = [];
   const quarantineObjects: QuarantineScanObservation[] = [];
   const danglingQuarantineEvidence: { readonly evidenceObservationId: string; readonly quarantineId: string; readonly sourceEntry?: string }[] = [];
   const findings: StorageFinding[] = [...finalized.findings, ...association.findings];
@@ -289,6 +293,145 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
     findings.push(finding('ERR-STO-INTEGRITY', 'quarantine evidence references a missing quarantine object'));
   }
 
+  // WP-8-G: deterministic audit-reconstruction state classification (16.3;
+  // §11). State precedence per target: conflicting-audit > duplicate-audit >
+  // dangling-evidence > evidence-without-audit > complete > malformed-evidence
+  // > audit-without-evidence. `missing-audit-eligible` targets remain in
+  // `reconstructionCandidates` (they have no reconstruction-kind event and
+  // no reconstruction evidence).
+  const RECONSTRUCTION_STATE_PRECEDENCE: Readonly<Record<ReconstructionStateFinding['state'], number>> = {
+    'conflicting-audit': 6,
+    'duplicate-audit': 5,
+    'dangling-evidence': 4,
+    'evidence-without-audit': 3,
+    complete: 2,
+    'malformed-evidence': 1,
+    'audit-without-evidence': 0,
+  };
+  const reconstructionByTarget = new Map<string, ReconstructionStateFinding>();
+  const setReconstructionState = (key: string, state: ReconstructionStateFinding): void => {
+    const current = reconstructionByTarget.get(key);
+    if (current === undefined || RECONSTRUCTION_STATE_PRECEDENCE[state.state] > RECONSTRUCTION_STATE_PRECEDENCE[current.state]) {
+      reconstructionByTarget.set(key, state);
+    }
+  };
+  const targetOf = (recordId: string): VerifiedRecordView | undefined => verifiedDurableRecords.find((v) => v.recordId === recordId);
+  // Evidence-driven states: every scanned reconstruction-evidence record.
+  for (const item of obs) {
+    if (item.kind !== 'record' || item.recordClass !== 'store-evidence-record' || item.reconstructionEvidenceFacts === undefined) continue;
+    const r = item.reconstructionEvidenceFacts;
+    const targetId = r.targetRecordId;
+    const targetClass = r.targetRecordClass;
+    const targetDigest = r.targetRecordDigest;
+    const auditId = r.reconstructionAuditId;
+    const outcome = r.outcome;
+    if (r.malformed || targetId === undefined || targetClass === undefined || targetDigest === undefined || auditId === undefined || (outcome !== 'reconstructed' && outcome !== 'already-completed')) {
+      setReconstructionState(targetId ?? item.envelope?.recordId ?? '', {
+        recordId: targetId ?? '',
+        recordClass: (targetClass as RecordClassId) ?? item.recordClass,
+        recordDigest: targetDigest ?? '',
+        state: 'malformed-evidence',
+        auditEventIds: [],
+        evidenceObservationId: item.id,
+        reason: 'reconstruction evidence payload is incomplete or outside the closed outcome vocabulary',
+      });
+      findings.push(finding('ERR-STO-MALFORMED', 'malformed audit-reconstruction evidence record'));
+      continue;
+    }
+    const target = targetOf(targetId);
+    if (target === undefined || target.recordDigest !== targetDigest) {
+      setReconstructionState(targetId, {
+        recordId: targetId,
+        recordClass: targetClass as RecordClassId,
+        recordDigest: targetDigest,
+        state: 'dangling-evidence',
+        auditEventIds: [],
+        evidenceObservationId: item.id,
+        reason: 'reconstruction evidence references a target that is not verified present with the bound digest',
+      });
+      findings.push(finding('ERR-STO-INTEGRITY', 'reconstruction evidence references a missing or unverified target'));
+      continue;
+    }
+    const recEvents = (association.auditByPrimary[targetId] ?? []).filter((e) => e.eventKind === RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND);
+    if (recEvents.length === 0) {
+      setReconstructionState(targetId, {
+        recordId: targetId,
+        recordClass: targetClass as RecordClassId,
+        recordDigest: targetDigest,
+        state: 'evidence-without-audit',
+        auditEventIds: [],
+        evidenceObservationId: item.id,
+        reason: 'reconstruction evidence is durable but the reconstructed audit is missing; integrity failure (never republish from evidence alone)',
+      });
+      findings.push(finding('ERR-STO-INTEGRITY', 'reconstruction evidence present without its reconstructed audit'));
+      continue;
+    }
+    if (recEvents.length > 1) {
+      setReconstructionState(targetId, {
+        recordId: targetId,
+        recordClass: targetClass as RecordClassId,
+        recordDigest: targetDigest,
+        state: 'duplicate-audit',
+        auditEventIds: recEvents.map((e) => e.eventId),
+        evidenceObservationId: item.id,
+        reason: 'multiple contesting reconstruction audits exist for the target',
+      });
+      continue;
+    }
+    setReconstructionState(targetId, {
+      recordId: targetId,
+      recordClass: targetClass as RecordClassId,
+      recordDigest: targetDigest,
+      state: 'complete',
+      auditEventIds: [recEvents[0]!.eventId],
+      evidenceObservationId: item.id,
+      reason: 'exact reconstructed audit and matching recovery evidence are durable',
+    });
+  }
+  // Audit-driven states: targets with reconstruction-kind audits but no
+  // reconstruction evidence (the roll-forward state).
+  for (const [recordId, events] of Object.entries(association.auditByPrimary)) {
+    const recEvents = events.filter((e) => e.eventKind === RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND);
+    if (recEvents.length === 0) continue;
+    const target = targetOf(recordId);
+    if (target === undefined) continue;
+    if (recEvents.length > 1) {
+      setReconstructionState(recordId, {
+        recordId,
+        recordClass: target.recordClass,
+        recordDigest: target.recordDigest,
+        state: 'duplicate-audit',
+        auditEventIds: recEvents.map((e) => e.eventId),
+        reason: 'multiple contesting reconstruction audits exist for the target',
+      });
+      continue;
+    }
+    setReconstructionState(recordId, {
+      recordId,
+      recordClass: target.recordClass,
+      recordDigest: target.recordDigest,
+      state: 'audit-without-evidence',
+      auditEventIds: [recEvents[0]!.eventId],
+      reason: 'exact reconstructed audit is durable but its recovery evidence is missing; the mutation rolls the evidence forward',
+    });
+  }
+  // Conflicting reconstruction audits: reconstruction-kind events that
+  // reference a wrong digest or an absent target (dangling; TAU-009).
+  for (const dangling of association.danglingAudit) {
+    if (dangling.eventKind !== RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND) continue;
+    const key = dangling.primaryRecordId ?? dangling.eventId;
+    setReconstructionState(key, {
+      recordId: dangling.primaryRecordId ?? '',
+      recordClass: 'approval-record',
+      recordDigest: dangling.primaryDigest ?? '',
+      state: 'conflicting-audit',
+      auditEventIds: [dangling.eventId],
+      reason: 'reconstruction-kind audit references a wrong digest or an absent target; conflicting/dangling audit',
+    });
+    findings.push(finding('ERR-STO-INTEGRITY', 'reconstruction-kind audit references no verified primary record'));
+  }
+  for (const state of reconstructionByTarget.values()) reconstructionStates.push(state);
+
   for (const conflict of finalized.duplicateConflicts) {
     requiresDisposition.push({
       observationId: conflict.observationIds[0] ?? '',
@@ -327,6 +470,7 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   quarantineEligible.sort((a, b) => (a.observationId < b.observationId ? -1 : 1));
   requiresDisposition.sort((a, b) => (a.observationId < b.observationId ? -1 : 1));
   reconstructionCandidates.sort((a, b) => (a.recordId < b.recordId ? -1 : 1));
+  reconstructionStates.sort((a, b) => (a.recordId < b.recordId ? -1 : a.recordId > b.recordId ? 1 : a.state < b.state ? -1 : 1));
   findings.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
 
   return {
@@ -342,6 +486,7 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
     reconstructionCandidates,
     quarantineObjects,
     danglingQuarantineEvidence,
+    reconstructionStates,
     findings,
   };
 }

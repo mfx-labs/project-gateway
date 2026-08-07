@@ -20,6 +20,20 @@ export { executeRecoveryMutation } from './execute.js';
 export type { RecoveryMutationRequest, RecoveryMutationResult } from '../types.js';
 export { buildQuarantineEvidenceRecord, buildRecoveryEvidenceRecord, computeQuarantineEvidenceIdentity, computeQuarantineTemporaryId, computeRecoveryEvidenceIdentity, isoFromEpochMs, quarantineDestinationDesignation, recoveryEvidencePayload } from './evidence.js';
 export { executeQuarantineTemporary } from './quarantine.js';
-export { reverifyQuarantineSource, verifyQuarantineObjectDigest } from './reverify.js';
-export { isPublicationTemporaryName, temporaryObservationId } from './scan.js';
+export { reverifyQuarantineSource, verifyQuarantineObjectDigest, reverifyReconstructionTarget } from './reverify.js';
+export { isPublicationTemporaryName, temporaryObservationId, recordObservationId, auditEventsForRecord, reconstructionEvidenceForTarget, extractReconstructionEvidenceFacts } from './scan.js';
+// WP-8-G: the audit-reconstruction operation (16.3): pure derivation and
+// evidence construction plus the exact-record publication composition. The
+// permit creator and verifier are never re-exported.
+export {
+  buildAuditReconstructionEvidenceRecord,
+  computeAuditReconstructionEvidenceIdentity,
+  auditReconstructionEvidencePayload,
+  publishReconstructedAudit,
+  publishAuditReconstructionEvidence,
+  isReconstructionTargetClass,
+  STORAGE_AUDIT_RECONSTRUCTION_EVIDENCE_IDENTITY_DOMAIN,
+} from './reconstruct.js';
 export type { RecoveryEvidenceInput, RecoveryEvidenceBuild } from './evidence.js';
+export type { AuditReconstructionEvidenceInput, AuditReconstructionOutcome, ReconstructedAuditPublishResult } from './reconstruct.js';
+export { buildRecoveryAuditReconstructionEvent, RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND } from '../audit/write-audit.js';

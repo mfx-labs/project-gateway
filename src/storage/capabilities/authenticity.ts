@@ -27,6 +27,7 @@
  * for write, read, verify, recovery, retention, or migration.
  */
 import { isGenuineTrustedStorageBootstrapInput, isGenuineTrustedWriteRequest, isGenuineTrustedRecoveryRequest, type TrustedRecoveryRequest, type TrustedStorageBootstrapInput, type TrustedWriteRequest } from '../trusted-input/bootstrap-input.js';
+import { RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND, type AuditEventKind } from '../audit/write-audit.js';
 import { isValidDigestSyntax } from '../format/envelope.js';
 import { deriveRecordRelativePath } from '../layout/layout.js';
 import type { RootIdentity, VerifiedStoreInstance } from '../types.js';
@@ -433,7 +434,7 @@ export function isGenuineVerifyCapability(value: unknown): value is VerifyCapabi
 // the set only when implemented. The capability NEVER derives from a
 // RecoveryPlan, assessment, cursor, observation, path, or caller boolean.
 
-export const RECOVERY_OPERATION_SET = ['orphan-removal', 'quarantine-temporary'] as const;
+export const RECOVERY_OPERATION_SET = ['orphan-removal', 'quarantine-temporary', 'audit-reconstruction'] as const;
 export type RecoveryOperation = (typeof RECOVERY_OPERATION_SET)[number];
 
 /** Recovery-capability binding (mutation-capable; CAP-001/API-003). */
@@ -481,16 +482,29 @@ function freezeRecoveryBinding(binding: RecoveryCapabilityBinding): RecoveryCapa
  * identity derives only from the verified recovery-action provenance bound
  * into the request. Mutation-capable: like the write creator, it may
  * establish the per-process generation registry entry for the store.
+ *
+ * WP-8-G least-authority test seam: `operationSet` is optional and defaults
+ * to the full implemented vocabulary; when supplied it must be a non-empty
+ * closed subset of `RECOVERY_OPERATION_SET`. Production issuance (execute.ts)
+ * never passes it; tests use it to prove that an authority whose exact
+ * operation set excludes `audit-reconstruction` can never reconstruct
+ * (every boundary verifies the exact operation; WP-8-G §1).
  */
 export function createRecoveryCapability(input: {
   readonly trustedRecoveryRequest: unknown;
   readonly storeInstance: VerifiedStoreInstance;
+  readonly operationSet?: readonly RecoveryOperation[];
 }): RecoveryCapability | undefined {
   if (!isGenuineTrustedRecoveryRequest(input.trustedRecoveryRequest)) return undefined;
   const request = input.trustedRecoveryRequest as TrustedRecoveryRequest;
   if (request.configurationIdentity !== input.storeInstance.configurationIdentity) return undefined;
   if (request.serviceUid !== input.storeInstance.serviceUid) return undefined;
   if (!sameProfile(request.limitProfile, input.storeInstance.limitProfile)) return undefined;
+  const operations = input.operationSet ?? RECOVERY_OPERATION_SET;
+  if (!Array.isArray(operations) || operations.length === 0) return undefined;
+  for (const op of operations) {
+    if (!RECOVERY_OPERATION_SET.includes(op)) return undefined;
+  }
   const key = storeKey(input.storeInstance.parentIdentity);
   const generation = generationForStore(key, request.configurationIdentity, true);
   if (generation === undefined) return undefined;
@@ -500,7 +514,7 @@ export function createRecoveryCapability(input: {
     serviceUid: request.serviceUid,
     limitProfile: { ...request.limitProfile },
     actionIdentity: request.actionIdentity,
-    operationSet: [...RECOVERY_OPERATION_SET],
+    operationSet: [...operations],
     generation,
   });
   const state: CapabilityState = { live: true };
@@ -556,8 +570,11 @@ export function isGenuineRecoveryCapability(value: unknown): value is RecoveryCa
 // verifier only by `src/storage/publication/publish-record.ts` (static-guard
 // enforced).
 
-export type RecoveryPublicationRole = 'recovery-evidence' | 'recovery-authorized-write-audit';
+export type RecoveryPublicationRole = 'recovery-evidence' | 'recovery-authorized-write-audit' | 'reconstructed-recovery-audit';
 export type RecoveryPublicationRecordClass = 'store-evidence-record' | 'authoritative-audit-event';
+
+/** Closed audit event kinds bindable by an audit-role recovery permit (vocabulary owned by the audit builder). */
+export type RecoveryPermitAuditEventKind = AuditEventKind;
 
 /** Exact-record binding of one authorized recovery record publication. */
 export interface RecoveryPublicationPermitBinding {
@@ -577,15 +594,15 @@ export interface RecoveryPublicationPermitBinding {
   readonly canonicalBytesDigest: string;
   /** Exact internally derived destination designation (relative; never a raw path). */
   readonly destinationDesignation: string;
-  /** Audit-role binding (present only for `recovery-authorized-write-audit`). */
+  /** Audit-role binding (present only for `recovery-authorized-write-audit` and `reconstructed-recovery-audit`). */
   readonly audit?: {
-    /** Exact evidence record identity referenced by the audit event. */
-    readonly evidenceRecordId: string;
-    /** Exact evidence record digest referenced by the audit event. */
-    readonly evidenceRecordDigest: string;
-    /** The only implemented audit event kind. */
-    readonly eventKind: 'authorized-write';
-    /** Exact trusted recovery action identity carried by the audit event. */
+    /** Exact record identity referenced by the audit event (evidence record for the evidence audit; target record for the reconstructed audit). */
+    readonly referencedRecordId: string;
+    /** Exact referenced record digest (evidence digest; target digest). */
+    readonly referencedRecordDigest: string;
+    /** Exact audit event kind (`authorized-write` | `recovery-audit-reconstruction`; role-paired). */
+    readonly eventKind: RecoveryPermitAuditEventKind;
+    /** Exact trusted action identity carried by the audit event (recovery action identity). */
     readonly trustedActionIdentity: string;
   };
 }
@@ -606,12 +623,14 @@ function freezeRecoveryPublicationBinding(binding: RecoveryPublicationPermitBind
 }
 
 /**
- * Gated exact-record recovery-publication permit creator (WP-8-F). Imported
- * only by `src/storage/recovery/evidence.ts` (static-guard enforced); never
+ * Gated exact-record recovery-publication permit creator (WP-8-F; WP-8-G
+ * role extension). Imported only by `src/storage/recovery/evidence.ts` and
+ * `src/storage/recovery/reconstruct.ts` (static-guard enforced); never
  * exported from any barrel or the package root. Requires a genuine branded
- * `RecoveryCapability` and an internally derived destination designation; the
- * binding is validated (digest syntax, role/class correlation, audit
- * binding, destination derivation) before the permit is branded.
+ * `RecoveryCapability` that verifies the exact operation, and an internally
+ * derived destination designation; the binding is validated (digest syntax,
+ * role/class correlation, role/kind pairing, audit binding, destination
+ * derivation) before the permit is branded.
  */
 export function createRecoveryPublicationPermit(input: {
   readonly capability: unknown;
@@ -622,16 +641,19 @@ export function createRecoveryPublicationPermit(input: {
   readonly canonicalBytesDigest: string;
   readonly destinationDesignation: string;
   readonly audit?: {
-    readonly evidenceRecordId: string;
-    readonly evidenceRecordDigest: string;
-    readonly eventKind: 'authorized-write';
+    readonly referencedRecordId: string;
+    readonly referencedRecordDigest: string;
+    readonly eventKind: RecoveryPermitAuditEventKind;
     readonly trustedActionIdentity: string;
   };
 }): RecoveryPublicationPermit | undefined {
   if (!isGenuineRecoveryCapability(input.capability)) return undefined;
   const capability = input.capability as RecoveryCapability;
-  if (input.operation !== 'orphan-removal' && input.operation !== 'quarantine-temporary') return undefined;
-  if (input.role !== 'recovery-evidence' && input.role !== 'recovery-authorized-write-audit') return undefined;
+  // Least authority at mint time: the capability must verify the exact
+  // bound operation (an orphan-only or quarantine-only capability can never
+  // mint an audit-reconstruction permit; WP-8-G §1).
+  if (!capability.verify(input.operation).ok) return undefined;
+  if (input.role !== 'recovery-evidence' && input.role !== 'recovery-authorized-write-audit' && input.role !== 'reconstructed-recovery-audit') return undefined;
   const recordClass: RecoveryPublicationRecordClass = input.role === 'recovery-evidence' ? 'store-evidence-record' : 'authoritative-audit-event';
   if (!isValidDigestSyntax(input.recordDigest) || !isValidDigestSyntax(input.canonicalBytesDigest)) return undefined;
   if (input.recordDigest !== input.canonicalBytesDigest) return undefined;
@@ -640,10 +662,20 @@ export function createRecoveryPublicationPermit(input: {
   if (input.role === 'recovery-authorized-write-audit') {
     if (input.audit === undefined) return undefined;
     if (input.audit.eventKind !== 'authorized-write') return undefined;
-    if (!isValidDigestSyntax(input.audit.evidenceRecordDigest)) return undefined;
-    if (!/^pgw:r:[0-9a-f]{32}$/.test(input.audit.evidenceRecordId)) return undefined;
+    if (!isValidDigestSyntax(input.audit.referencedRecordDigest)) return undefined;
+    if (!/^pgw:r:[0-9a-f]{32}$/.test(input.audit.referencedRecordId)) return undefined;
     if (typeof input.audit.trustedActionIdentity !== 'string' || input.audit.trustedActionIdentity.length === 0) return undefined;
-    if (input.audit.evidenceRecordId === input.recordId && input.audit.evidenceRecordDigest === input.recordDigest) return undefined;
+    if (input.audit.referencedRecordId === input.recordId && input.audit.referencedRecordDigest === input.recordDigest) return undefined;
+  } else if (input.role === 'reconstructed-recovery-audit') {
+    // WP-8-G: the reconstructed audit is the contract's distinct
+    // `recovery-audit-reconstruction` event (16.3/AUD-011), never an
+    // authorized-write event; role/kind pairing is exact.
+    if (input.audit === undefined) return undefined;
+    if (input.audit.eventKind !== RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND) return undefined;
+    if (!isValidDigestSyntax(input.audit.referencedRecordDigest)) return undefined;
+    if (!/^pgw:r:[0-9a-f]{32}$/.test(input.audit.referencedRecordId)) return undefined;
+    if (typeof input.audit.trustedActionIdentity !== 'string' || input.audit.trustedActionIdentity.length === 0) return undefined;
+    if (input.audit.referencedRecordId === input.recordId && input.audit.referencedRecordDigest === input.recordDigest) return undefined;
   } else if (input.audit !== undefined) {
     return undefined;
   }

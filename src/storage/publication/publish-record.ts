@@ -28,6 +28,7 @@ import { deriveRecordRelativePath } from '../layout/layout.js';
 import { writeAllSync } from '../metadata/bootstrap-persist.js';
 import { comparePrePostStat, verifyDirectoryStat, verifyRegularFileStat } from '../root/identity.js';
 import { isGenuineWriteCapability, isGenuineRecoveryPublicationPermit, recoveryPublicationPermitLive, type RecoveryPublicationPermit, type WriteCapability } from '../capabilities/authenticity.js';
+import { RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND } from '../audit/write-audit.js';
 import type { PublicationHooks, RecordClassId } from '../types.js';
 
 const { O_CREAT, O_EXCL, O_WRONLY, O_RDONLY, O_NOFOLLOW, O_DIRECTORY } = constants;
@@ -556,27 +557,39 @@ export function publishRecoveryBoundRecord(input: {
     return { ok: false, code: 'ERR-STO-MALFORMED', message: 'record payload is malformed' };
   }
   const p = payload as Readonly<Record<string, unknown>>;
-  if (binding.role === 'recovery-authorized-write-audit') {
-    // Exact audit binding: event kind, referenced evidence identity and
-    // digest, trusted recovery action identity.
+  if (binding.role === 'recovery-authorized-write-audit' || binding.role === 'reconstructed-recovery-audit') {
+    // Exact audit binding: event kind, referenced record identity and
+    // digest, trusted recovery action identity, and reference linkage.
     const audit = binding.audit;
     if (audit === undefined) {
       return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit permit binding is missing' };
     }
-    if (p['eventKind'] !== 'authorized-write') {
-      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit event kind does not match the permit binding' };
+    if (binding.role === 'recovery-authorized-write-audit') {
+      if (p['eventKind'] !== 'authorized-write') {
+        return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit event kind does not match the permit binding' };
+      }
+    } else {
+      // WP-8-G reconstructed audit: the exact `recovery-audit-reconstruction`
+      // kind with the explicit gap marker naming the missing original event.
+      if (p['eventKind'] !== RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND) {
+        return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit event kind does not match the reconstructed-audit permit binding' };
+      }
+      const gapMarker = p['gapMarker'];
+      if (typeof gapMarker !== 'object' || gapMarker === null || Array.isArray(gapMarker) || (gapMarker as Readonly<Record<string, unknown>>)['missingEventKind'] !== 'authorized-write') {
+        return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'reconstructed audit gap marker does not match the permit binding' };
+      }
     }
-    if (p['recordId'] !== audit.evidenceRecordId) {
+    if (p['recordId'] !== audit.referencedRecordId) {
       return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit referenced record does not match the permit binding' };
     }
-    if (p['recordDigest'] !== audit.evidenceRecordDigest) {
+    if (p['recordDigest'] !== audit.referencedRecordDigest) {
       return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit referenced digest does not match the permit binding' };
     }
     if (model['trustedActionId'] !== audit.trustedActionIdentity) {
       return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit trusted action identity does not match the permit binding' };
     }
     const references = model['referenceDigests'];
-    if (!Array.isArray(references) || references[0] !== audit.evidenceRecordDigest) {
+    if (!Array.isArray(references) || references[0] !== audit.referencedRecordDigest) {
       return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit reference digests do not match the permit binding' };
     }
   } else {
@@ -603,8 +616,9 @@ export function publishRecoveryBoundRecord(input: {
   const finalDirPath = `${namespaceRoot}/${derived.relativePath.slice(0, derived.relativePath.lastIndexOf('/'))}`;
   const tmpDirPath = `${namespaceRoot}/tmp`;
   // Same deterministic per-operation temp ordinals as the recovery evidence
-  // path: evidence = base, audit = base + 1 (2/3 orphan-removal, 4/5 quarantine).
-  const ordinalBase = binding.operation === 'quarantine-temporary' ? 4 : 2;
+  // path: evidence = base, audit = base + 1 (2/3 orphan-removal, 4/5
+  // quarantine-temporary, 6/7 audit-reconstruction).
+  const ordinalBase = binding.operation === 'quarantine-temporary' ? 4 : binding.operation === 'audit-reconstruction' ? 6 : 2;
   const ordinal = binding.role === 'recovery-authorized-write-audit' ? ordinalBase + 1 : ordinalBase;
   const tmpPath = `${tmpDirPath}/${publicationTempName(capability.binding.actionIdentity, ordinal)}`;
   // 7. Provision only the exact bound class/shard (module-private; authority

@@ -944,7 +944,7 @@ test('recovery publication: audit permit binds the exact authorized-write event;
       recordDigest: record.auditDigest,
       canonicalBytesDigest: record.auditDigest,
       destinationDesignation: auditDerived.relativePath,
-      audit: { evidenceRecordId: record.recordId, evidenceRecordDigest: record.digest, eventKind: 'idempotent-duplicate' as never, trustedActionIdentity: RECOVERY_ACTION },
+      audit: { referencedRecordId: record.recordId, referencedRecordDigest: record.digest, eventKind: 'idempotent-duplicate' as never, trustedActionIdentity: RECOVERY_ACTION },
     });
     assert.equal(wrongKind, undefined, 'only the authorized-write event kind may be bound');
     // Exact audit permit for the mechanically corresponding event.
@@ -956,7 +956,7 @@ test('recovery publication: audit permit binds the exact authorized-write event;
       recordDigest: record.auditDigest,
       canonicalBytesDigest: record.auditDigest,
       destinationDesignation: auditDerived.relativePath,
-      audit: { evidenceRecordId: record.recordId, evidenceRecordDigest: record.digest, eventKind: 'authorized-write', trustedActionIdentity: RECOVERY_ACTION },
+      audit: { referencedRecordId: record.recordId, referencedRecordDigest: record.digest, eventKind: 'authorized-write', trustedActionIdentity: RECOVERY_ACTION },
     });
     assert.ok(auditPermit !== undefined);
     // Probe E: the exact audit event publishes under its audit permit.
@@ -986,7 +986,7 @@ test('recovery publication: audit permit binds the exact authorized-write event;
       recordDigest: record.auditDigest,
       canonicalBytesDigest: record.auditDigest,
       destinationDesignation: auditDerived.relativePath,
-      audit: { evidenceRecordId: 'pgw:r:' + 'a'.repeat(32), evidenceRecordDigest: 'sha-256:' + '7'.repeat(64), eventKind: 'authorized-write', trustedActionIdentity: RECOVERY_ACTION },
+      audit: { referencedRecordId: 'pgw:r:' + 'a'.repeat(32), referencedRecordDigest: 'sha-256:' + '7'.repeat(64), eventKind: 'authorized-write', trustedActionIdentity: RECOVERY_ACTION },
     });
     assert.ok(wrongRef !== undefined);
     const wrongRefPub = publishRecoveryBoundRecord({ permit: wrongRef!, canonicalUtf8: record.auditCanonicalUtf8, byteLimit, serviceUid: UID });

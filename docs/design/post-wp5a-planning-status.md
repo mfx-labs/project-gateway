@@ -175,9 +175,43 @@ migration, index rebuild, WP-9, and WP-12 remain out of scope. The
 **implementation report
 (`docs/reports/wp-8f-recovery-mutation-foundation-implementation-report.md`)
 is complete**; **WP-8-F is not yet closed** — implementation review
-pending; WP-8 implementation is **not closed**. WP-9 and later packages
-are **not authorized**. No push, release, publication, installation, or
-deployment has occurred. Each disposition
+pending. **WP-8-G (audit reconstruction, contract §16.3, W8A-C11,
+AUD-011/012, CSA-013/014) is implemented**: the third recovery operation
+`audit-reconstruction` joins the recovery capability operation set
+(`['orphan-removal', 'quarantine-temporary', 'audit-reconstruction']`);
+verified durable store-records targets missing their write audit are
+re-verified descriptor-bound and receive the contract's distinct
+`recovery-audit-reconstruction` audit event (recovery action identity,
+recovery-time timestamp, explicit gap marker, digest-bound target
+reference; the original trusted action identity is verified and recorded
+in the reconstruction evidence, never substituted into the event),
+published through a dedicated exact-record permit (role
+`reconstructed-recovery-audit`), followed by durable `StoreEvidenceRecord`
+recovery evidence (`audit-reconstruction` operation; domain-separated
+`PGAP-STORAGE-AUDIT-RECONSTRUCTION-EVIDENCE-v1` identity) and its
+mechanical authorized-write audit; current-state audit/evidence
+enumeration, deterministic idempotency and conflict states
+(roll-forward, already-completed, evidence-without-audit integrity
+failure, conflicting/contesting audits fail closed), scanner
+classification of every interrupted and completed state, a fixed 12-stage
+crash inventory, and exact static-guard/global-security extensions (no
+new filesystem-bearing module). The work-package §5/§6 model (exact
+`authorized-write` event with the original trusted action identity) was
+not adopted: the human contract decision records that the existing WP-8
+contract remains normative (§16.3/AUD-011/AUD-012/CSA-013/DS-28; distinct
+`recovery-audit-reconstruction` event, recovery action identity,
+recovery-time `createdAt`, explicit gap marker, original trusted action
+identity evidence-only, no fabrication of the missing historical
+`authorized-write`, no contract amendment required; the gap-marker
+representation is accepted for the current storage model). Stale-lock
+breaking, deletion, WPR-023
+(d) disposition, retention, migration, index rebuild, WP-9, and WP-12
+remain out of scope. The **implementation report
+(`docs/reports/wp-8g-audit-reconstruction-implementation-report.md`)
+is complete**; **WP-8-F and WP-8-G are not yet closed** — implementation
+review pending; WP-8 implementation is **not closed**. WP-9 and later
+packages are **not authorized**. No push, release, publication,
+installation, or deployment has occurred. Each disposition
 is one of RESOLVED (by this planning package or earlier closed packages),
 DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
 

@@ -596,6 +596,16 @@ export interface RecordScanObservation extends ScanObservationBase {
   readonly envelope?: RecordObservationFacts;
   /** WP-8-F: quarantine-temporary evidence payload facts (store-evidence-record class only). */
   readonly quarantineEvidenceFacts?: { readonly quarantineId: string; readonly sourceDigest: string; readonly sourceEntry: string };
+  /** WP-8-G: audit-reconstruction evidence payload facts (store-evidence-record class only). */
+  readonly reconstructionEvidenceFacts?: {
+    readonly targetRecordId?: string;
+    readonly targetRecordClass?: string;
+    readonly targetRecordDigest?: string;
+    readonly reconstructionAuditId?: string;
+    readonly outcome?: string;
+    /** True when the payload claims audit-reconstruction but the facts are incomplete/invalid. */
+    readonly malformed: boolean;
+  };
 }
 
 export interface AuditScanObservation extends ScanObservationBase {
@@ -845,6 +855,32 @@ export interface ReconstructionCandidateFinding {
   readonly reason: string;
 }
 
+/** WP-8-G: one deterministic reconstruction-state classification (16.3; §11). */
+export interface ReconstructionStateFinding {
+  /** Target record identity (the durable primary the state refers to). */
+  readonly recordId: string;
+  readonly recordClass: RecordClassId;
+  readonly recordDigest: string;
+  readonly state:
+    /** Exact reconstruction audit durable but its recovery evidence missing (roll-forward state). */
+    | 'audit-without-evidence'
+    /** Exact reconstruction audit plus matching recovery evidence (complete). */
+    | 'complete'
+    /** Recovery evidence present but no exact reconstruction audit (integrity failure; never republish from evidence alone). */
+    | 'evidence-without-audit'
+    /** Reconstruction-kind audit referencing a wrong digest or an absent target. */
+    | 'conflicting-audit'
+    /** More than one reconstruction-kind audit for the same target. */
+    | 'duplicate-audit'
+    /** Evidence record claims audit-reconstruction with incomplete or invalid facts. */
+    | 'malformed-evidence'
+    /** Evidence references a target that is not verified present with the bound digest. */
+    | 'dangling-evidence';
+  readonly auditEventIds: readonly string[];
+  readonly evidenceObservationId?: string;
+  readonly reason: string;
+}
+
 /** Bounded recovery assessment over one scanned snapshot (CSA-001…015; observation only). */
 export interface RecoveryAssessment {
   readonly source: ScanFacts;
@@ -861,6 +897,8 @@ export interface RecoveryAssessment {
   readonly quarantineObjects: readonly QuarantineScanObservation[];
   /** WP-8-F: quarantine evidence referencing no present quarantine object. */
   readonly danglingQuarantineEvidence: readonly { readonly evidenceObservationId: string; readonly quarantineId: string; readonly sourceEntry?: string }[];
+  /** WP-8-G: deterministic audit-reconstruction state classifications (16.3; §11). */
+  readonly reconstructionStates: readonly ReconstructionStateFinding[];
   readonly findings: readonly StorageFinding[];
 }
 
@@ -996,7 +1034,14 @@ export type RecoveryMutationStage =
   | 'before-destination-directory-fsync'
   | 'after-destination-directory-fsync'
   | 'before-tmp-directory-fsync'
-  | 'after-tmp-directory-fsync';
+  | 'after-tmp-directory-fsync'
+  // WP-8-G audit-reconstruction stages (fixed inventory; 16.3).
+  | 'after-audit-absence-verification'
+  | 'before-reconstructed-audit-publication'
+  | 'after-reconstructed-audit-publication'
+  | 'before-reconstructed-audit-durability-confirmation'
+  | 'after-reconstructed-audit-durability-confirmation'
+  | 'after-evidence-audit-publication';
 
 /** Test-only crash/fsync injection hooks (same pattern as `PublicationHooks`). */
 export interface RecoveryMutationHooks {
@@ -1009,9 +1054,9 @@ export interface RecoveryMutationHooks {
 /** Narrow structured recovery-mutation action (never a plan action, never a path). */
 export interface RecoveryMutationAction {
   /** Closed category vocabulary: exactly the implemented recovery operations; no generic `quarantine` exists. */
-  readonly category: 'orphan-removal' | 'quarantine-temporary';
-  /** Deterministic entry designation (temporary name; never a path). */
-  readonly targetEntry: string;
+  readonly category: 'orphan-removal' | 'quarantine-temporary' | 'audit-reconstruction';
+  /** Orphan-removal/quarantine-temporary only: deterministic entry designation (temporary name; never a path). */
+  readonly targetEntry?: string;
   /** Orphan-removal only: verified durable publication sharing the temporary's inode (WPR-023 (a)). */
   readonly expectedTwinRecordId?: string;
   /** Orphan-removal only: closed-vocabulary class of the durable publication. */
@@ -1030,6 +1075,16 @@ export interface RecoveryMutationAction {
   readonly expectedClassification?: 'incomplete-unpublished' | 'malformed-temporary';
   /** Quarantine-temporary only: exact source content digest (the pre-mutation evidence digest). */
   readonly expectedSourceDigest?: string;
+  /** Audit-reconstruction only: closed store-records target class (never store-metadata, registry-snapshot, audit, or configuration). */
+  readonly targetRecordClass?: RecordClassId;
+  /** Audit-reconstruction only: canonical target record identity (`pgw:r:<32-hex>`). */
+  readonly targetRecordId?: string;
+  /** Audit-reconstruction only: record-bytes digest of the durable target (the pre-reconstruction evidence digest). */
+  readonly targetRecordDigest?: string;
+  /** Audit-reconstruction only: expected original trusted action identity of the durable record (verified, never substituted into the reconstructed event). */
+  readonly expectedOriginalActionIdentity?: string;
+  /** Audit-reconstruction only: the assessment's missing-audit finding id (equals the record observation id). */
+  readonly expectedMissingAuditFindingId?: string;
 }
 
 /** Authorized recovery-mutation request (WP-8-F composition boundary). */
@@ -1053,8 +1108,8 @@ export interface RecoveryMutationRequest {
 /** Recovery-mutation result (advisory data; no capability, path, or nonce). */
 export interface RecoveryMutationResult {
   readonly ok: boolean;
-  /** `removed` (orphan removed), `quarantined` (temporary quarantined), `already-completed`: no work needed. */
-  readonly outcome?: 'removed' | 'quarantined' | 'already-completed';
+  /** `removed` (orphan removed), `quarantined` (temporary quarantined), `reconstructed` (audit reconstructed), `already-completed`: no work needed. */
+  readonly outcome?: 'removed' | 'quarantined' | 'reconstructed' | 'already-completed';
   /** Deterministic evidence record identity when evidence is durable. */
   readonly evidenceId?: string;
   readonly findings?: readonly StorageFinding[];

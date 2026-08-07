@@ -102,7 +102,10 @@ const CREATOR_EDGES: Readonly<Record<string, readonly string[]>> = {
   // WP-8-F correction edges: the exact-record recovery publication permit
   // is minted only by the evidence module and verified/liveness-checked
   // only by the narrow permit-bound publication implementation.
-  createRecoveryPublicationPermit: ['src/storage/recovery/evidence.ts'],
+  // WP-8-G: the audit-reconstruction publication builder joins the permit
+  // creator edge (the permitted "other single exact recovery publication
+  // builder").
+  createRecoveryPublicationPermit: ['src/storage/recovery/evidence.ts', 'src/storage/recovery/reconstruct.ts'],
   isGenuineRecoveryPublicationPermit: ['src/storage/publication/publish-record.ts'],
   recoveryPublicationPermitLive: ['src/storage/publication/publish-record.ts'],
 };
@@ -575,7 +578,7 @@ test('static guard: read/scan tree is mutation-free and readdirSync is the scan 
 
 test('static guard: registry/recovery boundaries hold (WP-8-E)', () => {
   const files = collectTsFiles(STORAGE_SRC);
-  const fsFree = ['src/storage/registry/classify.ts', 'src/storage/registry/derive.ts', 'src/storage/registry/compose.ts', 'src/storage/recovery/assess.ts', 'src/storage/recovery/plan.ts', 'src/storage/recovery/compose.ts', 'src/storage/recovery/execute.ts', 'src/storage/recovery/evidence.ts'];
+  const fsFree = ['src/storage/registry/classify.ts', 'src/storage/registry/derive.ts', 'src/storage/registry/compose.ts', 'src/storage/recovery/assess.ts', 'src/storage/recovery/plan.ts', 'src/storage/recovery/compose.ts', 'src/storage/recovery/execute.ts', 'src/storage/recovery/evidence.ts', 'src/storage/recovery/reconstruct.ts'];
   const scanAllowlist = FS_ALLOWLIST['src/storage/recovery/scan.ts'] ?? [];
   const mutating = ['writeSync', 'linkSync', 'unlinkSync', 'mkdirSync', 'fsyncSync', 'fchmodSync', 'renameSync', 'rmSync', 'rmdirSync', 'cpSync', 'chmodSync', 'chownSync'];
   for (const name of mutating) {
@@ -592,7 +595,7 @@ test('static guard: registry/recovery boundaries hold (WP-8-E)', () => {
   // execution, lock breaking, audit reconstruction, generic recovery
   // execution, capability issuance) are denied everywhere; the orphan-removal
   // primitive and the composition boundary exist ONLY in their exact owners.
-  const RECOVERY_MUTATION_OWNERS = new Set(['src/storage/recovery/execute.ts', 'src/storage/recovery/cleanup.ts', 'src/storage/recovery/quarantine.ts', 'src/storage/recovery/index.ts']); // index.ts re-exports only the exact boundary
+  const RECOVERY_MUTATION_OWNERS = new Set(['src/storage/recovery/execute.ts', 'src/storage/recovery/cleanup.ts', 'src/storage/recovery/quarantine.ts', 'src/storage/recovery/reconstruct.ts', 'src/storage/recovery/index.ts']); // index.ts re-exports only the exact boundary
   for (const file of files) {
     const content = readFileSync(file, 'utf8');
     if (!RECOVERY_MUTATION_OWNERS.has(rel(file))) {
@@ -635,6 +638,54 @@ test('static guard: publication sink accepts write authority only; recovery publ
     const content = readFileSync(join(REPO, barrel), 'utf8');
     assert.equal(/createRecoveryPublicationPermit|isGenuineRecoveryPublicationPermit|recoveryPublicationPermitLive/.test(content), false, `${barrel} must not export the recovery publication permit creator or verifier`);
   }
+});
+
+test('static guard: audit-reconstruction vocabulary is closed and confined (WP-8-G)', () => {
+  const files = collectTsFiles(STORAGE_SRC);
+  // The recovery operation set contains exactly the three implemented
+  // operations — no generic audit-write/audit-repair/recovery-write/
+  // publish-audit operation exists anywhere in src/storage.
+  const authenticity = readFileSync(join(STORAGE_SRC, 'capabilities', 'authenticity.ts'), 'utf8');
+  assert.equal(
+    /RECOVERY_OPERATION_SET = \['orphan-removal', 'quarantine-temporary', 'audit-reconstruction'\]/.test(authenticity),
+    true,
+    'the recovery operation set must contain exactly the three implemented operations',
+  );
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    assert.equal(/\baudit-write\b|\baudit-repair\b|\brecovery-write\b|\bpublish-audit\b/.test(content), false, `${rel(file)} contains a generic audit-operation marker`);
+  }
+  // The reconstructed-audit publication role exists only in the brand
+  // module, the permit-bound publication sink, and the reconstruction
+  // publication builder.
+  const roleOwners = new Set(['src/storage/capabilities/authenticity.ts', 'src/storage/publication/publish-record.ts', 'src/storage/recovery/reconstruct.ts']);
+  for (const file of files) {
+    if (/reconstructed-recovery-audit/.test(readFileSync(file, 'utf8'))) {
+      assert.ok(roleOwners.has(rel(file)), `${rel(file)} references the reconstructed-audit publication role outside its owners`);
+    }
+  }
+  // The contract's distinct event-kind literal exists only in the audit
+  // builder module; every other production module imports the constant
+  // (no duplicate vocabulary, no generic audit publication API).
+  const kindOwners = new Set(['src/storage/audit/write-audit.ts']);
+  for (const file of files) {
+    if (readFileSync(file, 'utf8').includes(`'recovery-audit-reconstruction'`)) {
+      assert.ok(kindOwners.has(rel(file)), `${rel(file)} contains the event-kind literal; import the constant instead`);
+    }
+  }
+  // The permit creator remains confined to the two exact recovery
+  // publication builders; no barrel re-exports it (the creator-edge test
+  // covers production importers; this asserts the new builder is a member).
+  const reconstruct = readFileSync(join(STORAGE_SRC, 'recovery', 'reconstruct.ts'), 'utf8');
+  assert.equal(/createRecoveryPublicationPermit/.test(reconstruct), true, 'reconstruct.ts must be the recovery publication builder');
+  assert.equal(/import\s*[\s\S]*node:fs/.test(reconstruct), false, 'reconstruct.ts must remain filesystem-free');
+  // The reconstructed event never carries a caller-selected payload,
+  // destination, or event kind: the sink's audit binding is exact.
+  const substrate = readFileSync(join(STORAGE_SRC, 'publication', 'publish-record.ts'), 'utf8');
+  assert.equal(/readonly payload|readonly eventKind|readonly destination/.test(substrate.slice(substrate.indexOf('export function publishRecoveryBoundRecord'), substrate.indexOf('export function publishRecoveryBoundRecord') + 900)), false, 'the recovery publication entry point must not accept caller-selected audit operands');
+  // The recovery capability creator accepts only the closed vocabulary.
+  const capCreator = authenticity.slice(authenticity.indexOf('export function createRecoveryCapability'), authenticity.indexOf('export function createRecoveryCapability') + 1600);
+  assert.equal(/RECOVERY_OPERATION_SET\.includes\(op\)/.test(capCreator), true, 'the capability creator must validate its operation set against the closed vocabulary');
 });
 
 /**

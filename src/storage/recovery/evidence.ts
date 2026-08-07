@@ -92,7 +92,7 @@ export function quarantineDestinationDesignation(quarantineId: string): string {
 }
 
 /** Recovery operations that produce evidence in this slice. */
-export type RecoveryEvidenceOperation = 'orphan-removal';
+export type RecoveryEvidenceOperation = 'orphan-removal' | 'quarantine-temporary' | 'audit-reconstruction';
 
 /** Evidence outcome vocabulary (closed; the fact recorded, never a decision). */
 export type RecoveryEvidenceOutcome = 'orphan-removed' | 'already-completed';
@@ -457,7 +457,7 @@ export function publishRecoveryEvidence(input: {
   readonly byteLimit: number;
   readonly record: NonNullable<RecoveryEvidenceBuild['record']>;
   /** Recovery operation that produced the evidence (drives the capability check and temp ordinals). */
-  readonly operation?: 'orphan-removal' | 'quarantine-temporary';
+  readonly operation?: RecoveryEvidenceOperation;
   readonly hooks?: { readonly fsyncFile?: (fd: number) => void; readonly fsyncDirectory?: (path: string) => void };
 }): EvidencePublishResult {
   if (!isGenuineRecoveryCapability(input.capability)) {
@@ -522,8 +522,8 @@ export function publishRecoveryEvidence(input: {
       canonicalBytesDigest: input.record.auditDigest,
       destinationDesignation: auditDerived.relativePath,
       audit: {
-        evidenceRecordId: input.record.recordId,
-        evidenceRecordDigest: input.record.digest,
+        referencedRecordId: input.record.recordId,
+        referencedRecordDigest: input.record.digest,
         eventKind: 'authorized-write',
         trustedActionIdentity: input.capability.binding.actionIdentity,
       },

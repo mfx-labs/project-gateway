@@ -259,6 +259,91 @@ export function verifyQuarantineObjectDigest(input: {
 }
 
 /**
+ * WP-8-G immediate re-verification of the audit-reconstruction target
+ * (16.3; §4): descriptor-bound no-follow read of the durable record at its
+ * internally derived canonical location. Fails closed unless the record is
+ * a regular file with the exact store policy and `nlink === 1`, its
+ * identity and record-bytes digest equal the authorized request, its
+ * envelope record kind maps to exactly the authorized class, its revision
+ * is a positive safe integer, and its `trustedActionId` equals the expected
+ * original trusted action identity (a durable-record fact; it is verified
+ * here and recorded in the reconstruction evidence, never substituted into
+ * the reconstructed audit event). A missing, changed, replaced, contested,
+ * or wrong-location target fails closed with no mutation.
+ */
+export function reverifyReconstructionTarget(input: {
+  readonly capability: RecoveryCapability;
+  readonly namespaceRoot: string;
+  readonly serviceUid: number;
+  readonly recordBytes: number;
+  readonly targetRecordClass: RecordClassId;
+  readonly targetRecordId: string;
+  readonly targetRecordDigest: string;
+  readonly expectedOriginalActionIdentity: string;
+  readonly expectedSurfaceGeneration: string;
+}): { readonly ok: boolean; readonly target?: { readonly revision: number; readonly createdAt: string; readonly originalActionIdentity: string }; readonly code?: string; readonly message?: string } {
+  if (!isGenuineRecoveryCapability(input.capability)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery capability operand is not genuine' };
+  }
+  const check = input.capability.verify('audit-reconstruction');
+  if (!check.ok) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery capability is not usable at the audit-reconstruction re-verification boundary' };
+  }
+  const profile = RECORD_CLASS_BY_ID.get(input.targetRecordClass);
+  if (profile === undefined || profile.namespace !== 'store-records' || profile.suffix !== '.rec' || profile.id === 'store-metadata' || profile.id === 'registry-snapshot') {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'target record class is outside the reconstructable store-records vocabulary' };
+  }
+  const surface = recomputeSurfaceGeneration({ namespaceRoot: input.namespaceRoot, serviceUid: input.serviceUid, mode: 'recovery' });
+  if (!surface.ok || surface.generation === undefined) {
+    return { ok: false, code: surface.code ?? 'ERR-STO-IO-FAILURE', message: surface.message ?? 'surface structure could not be re-read' };
+  }
+  if (surface.generation !== input.expectedSurfaceGeneration) {
+    return { ok: false, code: 'ERR-STO-ROOT-IDENTITY-CHANGED', message: 'store structure changed since the recovery assessment' };
+  }
+  const derived = deriveRecordRelativePath(input.targetRecordClass, input.targetRecordId);
+  if (!derived.ok) {
+    return { ok: false, code: 'ERR-STO-CONTAINMENT-DENIED', message: 'target record path derivation failed' };
+  }
+  const targetRead = readVerifiedEnvelope({ path: `${input.namespaceRoot}/${derived.relativePath}`, serviceUid: input.serviceUid, byteLimit: input.recordBytes });
+  if (!targetRead.ok || targetRead.facts === undefined || targetRead.model === undefined) {
+    return { ok: false, code: targetRead.code ?? 'ERR-STO-INTEGRITY', message: targetRead.message ?? 'target record could not be re-verified descriptor-bound' };
+  }
+  const target = targetRead.facts;
+  if (target.recordId !== input.targetRecordId) {
+    return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'target record identity does not match the authorized request' };
+  }
+  if (target.recordClass !== input.targetRecordClass) {
+    return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'target record class does not match the authorized request' };
+  }
+  if (target.recordDigest !== input.targetRecordDigest) {
+    return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'target record content digest does not match the authorized request' };
+  }
+  if (target.nlink !== 1) {
+    return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'target record is contested (unexpected link count)' };
+  }
+  const model = targetRead.model;
+  if (model['recordKind'] !== profile.label) {
+    return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'target record kind does not match its class label' };
+  }
+  const revision = model['revision'];
+  const createdAt = model['createdAt'];
+  const trustedActionId = model['trustedActionId'];
+  if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 1) {
+    return { ok: false, code: 'ERR-STO-MALFORMED', message: 'target record revision is malformed' };
+  }
+  if (typeof createdAt !== 'string' || createdAt.length === 0) {
+    return { ok: false, code: 'ERR-STO-MALFORMED', message: 'target record creation time is malformed' };
+  }
+  if (typeof trustedActionId !== 'string' || trustedActionId.length === 0) {
+    return { ok: false, code: 'ERR-STO-MALFORMED', message: 'target record trusted action identity is malformed' };
+  }
+  if (trustedActionId !== input.expectedOriginalActionIdentity) {
+    return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'target record original action identity does not match the authorized request' };
+  }
+  return { ok: true, target: { revision, createdAt, originalActionIdentity: trustedActionId } };
+}
+
+/**
  * Re-verify a WPR-023 (b)/(c) quarantine source immediately before the
  * mutation (WP-8-F §16.5): regular file, exact UID/mode, size within the
  * temporary bound, `nlink` 1 (normal) or 2 (recoverable interrupted-link

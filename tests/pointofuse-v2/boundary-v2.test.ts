@@ -54,7 +54,8 @@ test('M: src/index.ts contains no Phase-3B name at the source level (m-2)', () =
 
 test('M: package exports map unchanged — no deep-import subpath (m-2)', () => {
   const pkg = JSON.parse(readFileSync(fileURLToPath(new URL('../../../package.json', import.meta.url)), 'utf8'));
-  assert.deepEqual(Object.keys(pkg['exports']).sort(), ['.', './pi-adapter']);
+  // WP-9: the narrow `./mcp` inspection-surface subpath is the only addition.
+  assert.deepEqual(Object.keys(pkg['exports']).sort(), ['.', './mcp', './pi-adapter']);
   for (const subpath of Object.keys(pkg['exports'])) {
     assert.ok(!subpath.includes('*'), `no wildcard subpath allowed: ${subpath}`);
     assert.ok(!subpath.startsWith('./src'), `no deep-import subpath allowed: ${subpath}`);

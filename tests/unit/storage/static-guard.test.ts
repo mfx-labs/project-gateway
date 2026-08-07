@@ -509,7 +509,7 @@ test('static guard: package exports and dependencies unchanged', () => {
     exports?: Record<string, unknown>;
     dependencies?: Record<string, string>;
   };
-  assert.deepEqual(Object.keys(pkg.exports ?? {}).sort(), ['.', './pi-adapter']);
+  assert.deepEqual(Object.keys(pkg.exports ?? {}).sort(), ['.', './mcp', './pi-adapter']);
   assert.deepEqual(pkg.dependencies, { ajv: '8.20.0' });
 });
 

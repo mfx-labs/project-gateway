@@ -14,6 +14,10 @@
     "./pi-adapter": {
       "types": "./dist/adapters/pi/index.d.ts",
       "import": "./dist/adapters/pi/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/adapters/mcp/index.d.ts",
+      "import": "./dist/adapters/mcp/index.js"
     }
   },
   "files": [
@@ -26,12 +30,13 @@
     "generate": "node scripts/generate-bundle.mjs",
     "build": "npm run generate && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run clean:generated && npm run build && tsc -p tsconfig.tests.json && node scripts/wp7-discovery-guard.mjs && node --test \"dist-test/tests/unit/*.test.js\" \"dist-test/tests/integration/*.test.js\" \"dist-test/tests/security/*.test.js\" \"dist-test/tests/pi-adapter/unit/*.test.js\" \"dist-test/tests/pi-adapter/integration/*.test.js\" \"dist-test/tests/pi-adapter/security/*.test.js\" \"dist-test/tests/pi-adapter/compatibility/*.test.js\" \"dist-test/tests/trusted/*.test.js\" \"dist-test/tests/pointofuse-v2/*.test.js\" && node scripts/run-wp7-tests.mjs",
+    "test": "npm run clean:generated && npm run build && tsc -p tsconfig.tests.json && node scripts/wp7-discovery-guard.mjs && node --test \"dist-test/tests/unit/*.test.js\" \"dist-test/tests/integration/*.test.js\" \"dist-test/tests/security/*.test.js\" \"dist-test/tests/pi-adapter/unit/*.test.js\" \"dist-test/tests/pi-adapter/integration/*.test.js\" \"dist-test/tests/pi-adapter/security/*.test.js\" \"dist-test/tests/pi-adapter/compatibility/*.test.js\" \"dist-test/tests/mcp/unit/*.test.js\" \"dist-test/tests/trusted/*.test.js\" \"dist-test/tests/pointofuse-v2/*.test.js\" && node scripts/run-wp7-tests.mjs",
     "test:unit": "node --test \"dist-test/tests/unit/*.test.js\"",
     "test:integration": "node --test \"dist-test/tests/integration/*.test.js\"",
     "test:conformance": "node --test \"dist-test/tests/integration/*.test.js\"",
     "test:security": "node --test \"dist-test/tests/security/*.test.js\"",
     "test:pi-adapter": "node --test \"dist-test/tests/pi-adapter/unit/*.test.js\" \"dist-test/tests/pi-adapter/integration/*.test.js\" \"dist-test/tests/pi-adapter/security/*.test.js\" \"dist-test/tests/pi-adapter/compatibility/*.test.js\"",
+    "test:mcp": "node --test \"dist-test/tests/mcp/unit/*.test.js\"",
     "test:pointofuse-v2": "node --test \"dist-test/tests/pointofuse-v2/*.test.js\"",
     "test:wp7-reader": "node --test \"dist-test/tests/wp7/reader/*.test.js\"",
     "test:wp7-git": "node --test \"dist-test/tests/wp7/git/*.test.js\"",

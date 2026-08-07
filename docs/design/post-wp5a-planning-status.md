@@ -461,6 +461,32 @@ evidence.
 > adjudication-only states remain intentional; the next work package
 > remains WP-9.
 
+**WP-9 (MCP inspection surface) STARTED — slice 1 implemented**
+(`docs/reports/wp-9-mcp-inspection-surface-implementation-report.md`): the
+**transport-free MCP inspection protocol/tool layer**
+(`src/adapters/mcp/`) exposes the closed read-only tool vocabulary
+`validate-artifact` (pure WP-4 validation), `inspect-stored-record`
+(exact verified WP-8 read), and `inspect-registry` (authoritative WP-8
+registry view with opaque self-validating continuation and optional
+verified persistent-index fast path). Strict closed-field request
+validation; deterministic public error taxonomy (invalid-request /
+not-found / unsupported / limit-exceeded / invalid-cursor / stale-cursor /
+integrity-conflict / adapter-error); host-supplied trusted store targeting
+(genuine branded trusted input + strict store verification at context
+construction; MCP clients never select roots, stores, or namespaces);
+deep-frozen redacted responses; zero filesystem/mutation imports (static
+proof). The `./mcp` package subpath is the only package-export change;
+`./mcp` exposes no storage authority. **Slice 1 independent review returned
+`CORRECTIONS REQUIRED` (F1: `validate-artifact` success responses failed to
+echo `requestId`); the narrow F1 correction is implemented — success
+requestId echo is now uniform across all three tools — and the candidate is
+ready for independent rereview**; acceptance is not declared by the
+implementation.
+Remaining WP-9 work: transport/runtime ownership (no MCP transport is
+normatively selected — exact open decision, out of this slice),
+audit-history / verify / enumeration MCP tools, multi-store surface
+registration, and WP-9 generation seeding.
+
 - **WP-8-N configuration migration DEFERRED** (human decision (c)
   Deferral) under DS-13 / §23.2 (DCS-002): the live configuration
   transition primitive is intentionally undefined;
@@ -482,8 +508,11 @@ evidence.
   maintenance procedures never invent lifecycle decisions).
 - **Later packages**: WP-9 generation seeding rides with WP-9; WP-12
   integration later-owned.
-- **Earliest next work package: WP-9 (MCP inspection surface)** —
-  prerequisites WP-7 and WP-4 satisfied; inspection-only.
+- **Current work package: WP-9 (MCP inspection surface)** —
+  prerequisites WP-7 and WP-4 satisfied; inspection-only; slice 1
+  (transport-free protocol/tool layer) implemented with the F1
+  requestId-echo correction applied, ready for independent rereview
+  (see the WP-9 section above).
 
 WP-9 and later
 packages are **not authorized**. No push, release, publication,

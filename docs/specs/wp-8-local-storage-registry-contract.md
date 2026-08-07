@@ -519,6 +519,54 @@ lock-instance identity — never the raw nonce, PID, or a path.
 - **RDS-011.** Reads MUST NOT mutate semantic trusted state; atime and equivalent OS metadata effects are outside the guarantee and documented per lane.
 - **RDS-012.** Read and enumeration diagnostics MUST NOT disclose absolute store paths, raw record bytes, or sensitive payloads.
 
+**13.4 Audit-history inspection (WP-8-K; ADR-034).** Audit-history
+inspection is the read-only operation `inspect-audit-history` over the
+exact durable identity/revision of one store-records record (the audit
+class itself and configuration-namespace metadata have no mechanical
+write-audit relationship and are outside the inspected set). The
+authoritative history source is the immutable `audit/` event surface and
+the durable target record; the persistent registry index is never the
+historical source of truth. History derivation never synthesizes or
+rewrites events: the original `authorized-write` event and the distinct
+`recovery-audit-reconstruction` event (16.3) keep their kinds; a
+reconstruction reports the gap (`missingEventKind: authorized-write`)
+and never fabricates the original event. Association is by verified
+immutable facts only: canonical event bytes and digest, derived-location
+identity, referenced record identity and digest, revision binding,
+reference digests, event-kind-specific payload facts, and the trusted
+action identity. An event with the target identity but a different
+digest is classified, never adopted. Inspection order is the normative
+audit ordering tuple (primary logical creation time, primary record
+identity, audit event identity; DTM-003/007) — timestamps are recorded
+facts and the event identity is the final tie-break. Bounds follow
+Section 19 with `dirEntries`, `enumerationResults`, and `recordBytes`;
+over-limit pages return an opaque self-validating continuation cursor
+bound to the store/namespace identity, the exact target identity and
+revision, the scan and surface generations, the limit shape, and the
+last scanned position; a cursor from another store, target, generation,
+surface, or query shape fails closed. The result is bound to a verified
+snapshot: the audit and evidence surfaces are re-verified after
+inspection and any material structural change fails closed
+(`ERR-STO-ROOT-IDENTITY-CHANGED`); events from two incompatible
+generations are never merged into one claimed complete history. Recovery
+evidence records (16.3/16.5/16.6/12.3.1) are reported only as operational
+annotations when a verified reference to the target exists, never
+flattened into the target's audit history. Findings use the closed
+vocabulary of HST-007. Inspection performs zero mutation (RDS-006/011).
+
+### Audit-history requirements
+
+- **HST-001.** Audit-history inspection MUST accept only closed logical identifiers (namespace binding, record class, record identity, exact revision); raw paths, descriptors, capabilities, provenance, callbacks, filter expressions, and plan objects are rejected.
+- **HST-002.** History MUST be derived from verified immutable record and audit facts; the persistent registry index MUST NOT become the historical source of truth.
+- **HST-003.** History MUST preserve the distinct event kinds (`authorized-write` vs `recovery-audit-reconstruction`) and MUST NOT synthesize an original event or rewrite a reconstruction event.
+- **HST-004.** Every reported event MUST be associated by verified immutable facts (canonical bytes/digest, derived-location identity, referenced identity/digest, revision binding, reference digests, event-kind payload, trusted action identity); wrong-digest associations MUST be classified, never adopted.
+- **HST-005.** History ordering MUST be deterministic from the normative audit ordering tuple; host directory order and wall-clock time alone MUST NOT establish ordering.
+- **HST-006.** Inspection MUST be bounded (events, bytes, evidence records, findings) with deterministic over-limit continuation or fail-closed semantics; over-limit results MUST NOT claim complete history.
+- **HST-007.** Findings MUST use the closed vocabulary: `complete`, `missing-authorized-write`, `reconstructed-gap`, `dangling-audit`, `wrong-target-digest`, `duplicate-audit`, `conflicting-audit`, `malformed-audit`, `unsupported-audit-version`, `unverified-audit`, `ambiguous-history`, `evidence-without-event`, `event-without-evidence`.
+- **HST-008.** Continuation cursors MUST be opaque and self-validating (store/namespace identity, exact target identity/revision, generation and surface generation, limit shape, last canonical position); a mismatched cursor MUST fail closed.
+- **HST-009.** Inspection MUST detect material structural change during inspection (surface re-verification) and fail closed rather than merge incompatible generations.
+- **HST-010.** Inspection MUST NOT mutate state and MUST NOT grant authority; results are pure data (target facts, verified events, annotations, findings, completeness, snapshot binding, continuation state).
+
 ## 14. Registry Semantics
 
 **14.1 Meaning.** In WP-8, "registry" is the derived, verifiable current-state view over immutable source records (approvals, issuances, grants, revocations, activations, and related classes) plus accepted registry snapshots (WP-2). Source records are authoritative; indexes and views are derived and rebuildable.
@@ -1051,6 +1099,7 @@ repair-by-guessing.
 - **AUD-011.** Recovery-generated audit events MUST use the distinct kind `recovery-audit-reconstruction` and MUST be visibly distinguishable from original operation events (CSA-013).
 - **AUD-012.** Recovery-generated audit events MUST NOT imply that the original operation emitted the event; the recovery action identity and recovery time are recorded.
 - **AUD-013.** Audit-stage failures (audit creation, audit publication, audit-directory sync) MUST be distinguished per 10.5: primary state may be durable while audit state is absent or partial; recovery completes or reconstructs with evidence; success is never reported with incomplete audit state.
+- **AUD-014.** Audit-history inspection MUST report the distinct event kinds without flattening and MUST NOT synthesize, rewrite, or repair audit events (HST-003/004).
 
 ## 23. Versioning and Migration
 
@@ -1269,7 +1318,7 @@ The following sequence is recommended for later human authorization. No phase id
 | Verify by identity | RDS-003, ITG-001…006, ERM |
 | Enumerate class | RDS-004/008/009, LMT-006/010, DTM-003 |
 | Resolve registry state | RDS-005, RGY-001…010, DTM-003 |
-| Inspect audit history | RDS-006/008, AUD-002…007 |
+| Inspect audit history | RDS-006/008, AUD-002…007/014, HST-001…010, DTM-003/007 |
 | Detect corruption | RDS-007, ITG-004/005, LMT-010, TML-007 |
 | Recovery scan | CSA-001…015, RDS-007, AUD-008/011/012, ITG-004, TML-006/007 |
 | Retention execution | RNT-001…010, AUD-004, LMT-004, TAX-008 |

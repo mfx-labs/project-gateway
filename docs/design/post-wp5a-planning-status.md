@@ -281,12 +281,42 @@ naming `break-writer-lock`; foreign lock objects are classified, never
 scan-fatal. The mutation lives in the existing lock owner (no new
 fs-bearing module). The contract gained §12.3.1/LOK-019…022 and its
 pinned SHA-256 was updated.
+
+**WP-8-K (read-only audit-history inspection; ADR-034; contract
+§13.4/HST-001…010, AUD-014) is complete**: the read boundary now exposes
+the capability-free `inspect-audit-history` — bounded, deterministic,
+read-only history for one exact durable record identity/revision,
+derived exclusively from verified immutable record and audit facts
+(never the registry index). Association is by verified facts only
+(canonical bytes/digest, derived-location identity, referenced
+identity/digest, revision binding, reference digests, event-kind
+payload, trusted action identity); the original `authorized-write` event
+must match the deterministic D-8 expected identity/digest; wrong-digest,
+malformed, dangling, duplicate, conflicting, unsupported-version, and
+unverified objects are closed-vocabulary findings, never adopted, never
+repaired. Original vs reconstructed kinds are never flattened; a
+reconstruction reports the gap marker and recovery action and never
+fabricates the original event. Ordering is the normative audit tuple
+(primary logical creation time, primary record identity, event
+identity); timestamps are recorded facts, never mtime/fs order. Bounds
+follow the limit profile (`totalScanEntries` fail closed, per-object
+`recordBytes`, per-page `enumerationResults` with an opaque
+self-validating continuation cursor bound to store/target/generation/
+surface/limits/last position). The result is bound to a verified
+snapshot (audit + evidence surface tokens, generations, and target
+digest re-verified after inspection; change → fail closed).
+`StoreEvidenceRecord` reconstruction evidence referencing the target is
+reported as operational annotations with verified linkage. The
+implementation is a read-only fs owner (strict read-only allowlist; no
+capability/provenance/permit/lock imports; zero mutation). The contract
+gained §13.4/HST-001…010 and AUD-014 and its pinned SHA-256 was
+updated.
 Deletion, retention, migration, disposition of the
 remaining adjudication-only classes, WP-9, and WP-12 remain out of
 scope. The **implementation report
-(`docs/reports/wp-8j-authorized-lock-recovery-implementation-report.md`)
-is complete**; **WP-8-F, WP-8-G, WP-8-H, WP-8-I, and WP-8-J are not yet
-closed**
+(`docs/reports/wp-8k-audit-history-inspection-implementation-report.md`)
+is complete**; **WP-8-F, WP-8-G, WP-8-H, WP-8-I, WP-8-J, and WP-8-K are
+not yet closed**
 — implementation review pending; WP-8 implementation is **not closed**.
 WP-9 and later
 packages are **not authorized**. No push, release, publication,

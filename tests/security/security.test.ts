@@ -50,6 +50,8 @@ const STORAGE_FS_DELEGATED_MODULES: ReadonlySet<string> = new Set([
   'storage/locks/lock.js',
   'storage/read/read-record.js',
   'storage/read/enumerate.js',
+  // WP-8-K: read-only audit-history inspection (13.4/HST-001…010; ADR-034).
+  'storage/read/history.js',
   // WP-8-E: the read-only store scan (sole new scan owner; read-only
   // allowlist; every other registry/recovery module is fs-free and remains
   // subject to this blanket assertion).

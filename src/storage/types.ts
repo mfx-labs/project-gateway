@@ -10,6 +10,7 @@
  * instance or factory exists in this phase.
  */
 import type { ReadCapability } from './capabilities/authenticity.js';
+import type { AuditEventKind } from './audit/write-audit.js';
 
 /** Supported layout version constant (contract LAY-001, LAY-006). */
 export const STORAGE_LAYOUT_VERSION = 'v1' as const;
@@ -338,6 +339,138 @@ export interface EnumerateClassResult {
   readonly scannedEntries: number;
   readonly truncated: boolean;
   readonly findings?: readonly StorageFinding[];
+}
+
+// ─── WP-8-K: audit-history inspection (contract 13.4, HST-001…010, AUD-014; ADR-034) ───
+
+/** Closed audit-history status vocabulary (HST-007). */
+export type AuditHistoryStatus = 'complete' | 'missing-authorized-write' | 'reconstructed-gap' | 'ambiguous-history';
+
+/** Closed audit-history finding vocabulary (HST-007). */
+export type AuditHistoryFindingKind =
+  | 'missing-authorized-write'
+  | 'dangling-audit'
+  | 'wrong-target-digest'
+  | 'duplicate-audit'
+  | 'conflicting-audit'
+  | 'malformed-audit'
+  | 'unsupported-audit-version'
+  | 'unverified-audit'
+  | 'ambiguous-history'
+  | 'evidence-without-event'
+  | 'event-without-evidence';
+
+/** One audit-history finding (closed vocabulary; never a repair instruction). */
+export interface AuditHistoryFinding {
+  readonly kind: AuditHistoryFindingKind;
+  /** Deterministic surface position of the object (layout components; never a raw path). */
+  readonly position?: { readonly surface: 'audit' | 'evidence'; readonly shard: string; readonly entry: string };
+  /** Associated audit event identity when the finding concerns a named event. */
+  readonly eventId?: string;
+  readonly reason: string;
+}
+
+/** One verified audit event in the target's history (event kind preserved; never flattened). */
+export interface HistoryAuditEvent {
+  /** Deterministic audit event identity (`pgw:l:<32-hex>`; D-8). */
+  readonly eventId: string;
+  /** Closed implemented event-kind vocabulary (imported; never duplicated; AUD-011/014). */
+  readonly eventKind: AuditEventKind;
+  /** Canonical record-bytes digest of the durable event bytes. */
+  readonly digest: string;
+  /** Recorded creation evidence (primary logical creation time or recovery time; never an ordering authority by itself). */
+  readonly createdAt: string;
+  /** Trusted action identity recorded in the event envelope (original write action for authorized-write; recovery action for reconstruction). */
+  readonly trustedActionId: string;
+  /** True when the event is the deterministic original authorized-write of the target (D-8 expected identity/digest match). */
+  readonly isOriginalWrite: boolean;
+  /** Reconstruction events only: the explicit gap marker naming the missing original event kind. */
+  readonly gapMarker?: { readonly missingEventKind: 'authorized-write' };
+}
+
+/** Operational recovery evidence related to the target (annotation; never part of the target's audit history). */
+export interface ReconstructionEvidenceAnnotation {
+  readonly evidenceId: string;
+  readonly outcome: string;
+  readonly targetRecordDigest: string;
+  readonly reconstructionAuditId: string;
+  /** Original trusted action identity recorded in the evidence payload (a durable fact). */
+  readonly originalActionIdentity: string;
+  /** Trusted recovery action identity recorded in the evidence envelope. */
+  readonly recoveryActionIdentity: string;
+  readonly createdAt: string;
+  /** Identity of the durable reconstruction event when the evidence's reconstructionAuditId matches one (undefined when none). */
+  readonly linkedReconstructionEventId?: string;
+  readonly verified: boolean;
+}
+
+/** Opaque self-validating audit-history continuation cursor (HST-008; never a raw path). */
+export interface AuditHistoryCursor {
+  /** Deterministic store/namespace identity binding (domain digest; PGAP-STORAGE-AUDIT-HISTORY-CURSOR-v1). */
+  readonly storeIdentity: string;
+  readonly recordClass: string;
+  readonly recordId: string;
+  readonly revision: number;
+  readonly generation: string;
+  readonly surfaceGeneration: string;
+  /** Deterministic digest of the query limit shape (changing limits invalidates the cursor). */
+  readonly queryShape: string;
+  /** Resume phase: the audit surface pass or the evidence-surface pass. */
+  readonly phase: 'audit' | 'evidence';
+  /** Last reported audit-surface position (layout components; resume boundary). */
+  readonly lastAuditShard?: string;
+  readonly lastAuditEntry?: string;
+  /** Last reported evidence-surface position (layout components; resume boundary). */
+  readonly lastEvidenceShard?: string;
+  readonly lastEvidenceEntry?: string;
+}
+
+/** Verified target-record facts for one history query (13.4; HST-002). */
+export interface AuditHistoryTargetFacts {
+  readonly recordClass: RecordClassId;
+  readonly recordId: string;
+  readonly revision: number;
+  readonly recordDigest: string;
+  readonly recordKind: string;
+  readonly formatVersion: string;
+  /** Original trusted action identity recorded in the durable target envelope (a fact, never an authority). */
+  readonly trustedActionId: string;
+  readonly createdAt: string;
+}
+
+/** Bounded audit-history inspection result (HST-010; pure data; no authority). */
+export interface AuditHistoryInspectionResult {
+  readonly ok: boolean;
+  /** Boundary failure findings (request/store/snapshot errors); empty when ok. */
+  readonly findings: readonly StorageFinding[];
+  readonly target?: AuditHistoryTargetFacts;
+  readonly status?: AuditHistoryStatus;
+  readonly originalAuthorizedWrite?: { readonly present: boolean; readonly eventId?: string; readonly digest?: string };
+  readonly reconstruction?: { readonly present: boolean; readonly events: readonly HistoryAuditEvent[] };
+  /** Verified events of the target (D-8 ordering tuple; kinds preserved). */
+  readonly events?: readonly HistoryAuditEvent[];
+  /** Closed-vocabulary history findings (HST-007). */
+  readonly auditFindings?: readonly AuditHistoryFinding[];
+  /** Operational recovery evidence annotations related to the target. */
+  readonly reconstructionEvidence?: readonly ReconstructionEvidenceAnnotation[];
+  readonly completeness?: { readonly complete: boolean; readonly truncated: boolean; readonly scannedAuditEntries: number; readonly scannedEvidenceEntries: number; readonly scannedBytes: number };
+  readonly snapshot?: { readonly generation: string; readonly surfaceGeneration: string };
+  readonly continuation?: AuditHistoryCursor;
+}
+
+/** Audit-history inspection request (closed logical identifiers only; HST-001). */
+export interface InspectAuditHistoryRequest {
+  /** Genuine WP-6 validated trusted configuration (runtime-branded). */
+  readonly trustedConfiguration: unknown;
+  /** Genuine branded `TrustedStorageBootstrapInput`. */
+  readonly trustedInput: unknown;
+  readonly recordClass: RecordClassId;
+  /** Canonical typed record identity (never a path). */
+  readonly recordId: string;
+  /** Exact revision (default 1); history is exact-revision inspection (13.4/HST-001). */
+  readonly revision?: number;
+  /** Opaque self-validating continuation cursor (HST-008). */
+  readonly continuation?: AuditHistoryCursor;
 }
 
 /** Injected time/identity sources for the lock module (D-3; non-authority fields). */

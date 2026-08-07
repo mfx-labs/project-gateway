@@ -20,9 +20,10 @@ import { isGenuineTrustedStorageBootstrapInput, type TrustedStorageBootstrapInpu
 import { verifyStoreInstance } from './read-record.js';
 import { enumerateClassByIdentity } from './enumerate.js';
 import { readRecordByIdentity, verifyRecordByIdentity } from './read-record.js';
+import { inspectAuditHistoryByIdentity } from './history.js';
 import { recordClassProfile } from '../format/taxonomy.js';
 import { parseTypedIdentifier } from '../format/identifier.js';
-import type { EnumerateClassRequest, EnumerateClassResult, ReadRecordRequest, ReadRecordResult, RecordClassId, RootIdentity, VerifiedStoreInstance, VerifyRecordRequest, VerifyRecordResult } from '../types.js';
+import type { AuditHistoryInspectionResult, EnumerateClassRequest, EnumerateClassResult, InspectAuditHistoryRequest, ReadRecordRequest, ReadRecordResult, RecordClassId, RootIdentity, VerifiedStoreInstance, VerifyRecordRequest, VerifyRecordResult } from '../types.js';
 
 function configFacts(trustedConfiguration: unknown): { readonly configurationVersion: string; readonly configurationIdentity: string } | undefined {
   if (typeof trustedConfiguration !== 'object' || trustedConfiguration === null) return undefined;
@@ -92,6 +93,32 @@ export function readRecord(request: ReadRecordRequest): ReadRecordResult {
 }
 
 /** Verify by identity (RDS-003): structured findings only, no content, no repair. */
+/**
+ * Bounded read-only audit-history inspection (13.4, RDS-006/008/011,
+ * HST-001…010, AUD-014; ADR-034): exact record identity/revision history
+ * over verified immutable audit facts. Capability-free — the trusted
+ * configuration + trusted input establish the verified store instance and
+ * the query never accepts or returns authority (HST-001/010).
+ */
+export function inspectAuditHistory(request: InspectAuditHistoryRequest): AuditHistoryInspectionResult {
+  const validated = validateClassAndIdentity(request.recordClass, request.recordId);
+  if (!validated.ok) {
+    return { ok: false, findings: [{ code: validated.code ?? 'ERR-STO-REQ-INVALID', message: validated.message ?? 'invalid audit-history request', phase: 'request-validation', state: { retryable: false, recoveryRequired: false, primaryStateChanged: 'no', durabilityPointReached: 'no', auditChanged: 'no', verifyBeforeRetry: false } }] };
+  }
+  const store = revalidateStore({ trustedConfiguration: request.trustedConfiguration, trustedInput: request.trustedInput });
+  if (!store.ok || store.storeInstance === undefined) {
+    return { ok: false, findings: [{ code: store.code ?? 'ERR-STO-INTEGRITY', message: store.message ?? 'store revalidation failed', phase: 'request-validation', state: { retryable: false, recoveryRequired: false, primaryStateChanged: 'no', durabilityPointReached: 'no', auditChanged: 'no', verifyBeforeRetry: false } }] };
+  }
+  return inspectAuditHistoryByIdentity({
+    storeInstance: store.storeInstance,
+    namespaceRoot: namespaceRootFor(store.storeInstance),
+    recordClass: request.recordClass,
+    recordId: request.recordId,
+    revision: request.revision,
+    continuation: request.continuation,
+  });
+}
+
 export function verifyRecord(request: VerifyRecordRequest): VerifyRecordResult {
   const validated = validateClassAndIdentity(request.recordClass, request.recordId);
   if (!validated.ok) {

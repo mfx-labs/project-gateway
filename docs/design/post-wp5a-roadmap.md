@@ -385,7 +385,32 @@ crash inventory; scanner `lockRecoveryStates`; advisory plan actions
 naming `break-writer-lock` with external-adjudication wording; foreign
 lock objects are classified, never scan-fatal. The mutation lives in the
 existing lock owner (no new fs-bearing module). The contract gained
-§12.3.1/LOK-019…022 and its pinned SHA-256 was updated. **Not begun**:
+§12.3.1/LOK-019…022 and its pinned SHA-256 was updated.
+
+**WP-8-K (contract §13.4/HST-001…010, AUD-014 — read-only audit-history
+inspection) is complete**: the capability-free `inspect-audit-history`
+read operation derives bounded, deterministic history for one exact
+record identity/revision from verified immutable record and audit facts
+only (never the registry index). Association binds canonical bytes and
+digest, derived-location identity, referenced identity/digest, revision,
+reference digests, event-kind payload, and trusted action identity; the
+original `authorized-write` must match the deterministic D-8 expected
+identity/digest; wrong-digest/malformed/dangling/duplicate/conflicting/
+unsupported/unverified objects are closed-vocabulary findings, never
+adopted or repaired. Original vs `recovery-audit-reconstruction` kinds
+are never flattened; reconstructions report the gap marker and recovery
+action and never fabricate the original event. Ordering follows the
+normative audit tuple; bounds follow the limit profile (`totalScanEntries`
+fail closed, `recordBytes` per object, `enumerationResults` per page with
+an opaque self-validating cursor bound to store/target/generation/
+surface/limits/last position); the result is snapshot-bound (surface
+tokens, generations, and target digest re-verified; change → fail
+closed). Reconstruction evidence referencing the target appears as
+operational annotations with verified linkage. The implementation is a
+new read-only fs owner (strict read-only allowlist; no capability,
+provenance, permit, lock, or recovery-mutation import; zero mutation).
+The contract gained §13.4/HST-001…010 and AUD-014 and its pinned SHA-256
+was updated. **Not begun**:
 primary/audit deletion, retention,
 
 **Normative cross-references:** `project-gateway-scope-and-principles.md`

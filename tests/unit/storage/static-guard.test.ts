@@ -55,6 +55,9 @@ const FS_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   'src/storage/locks/lock.ts': ['openSync', 'closeSync', 'writeSync', 'readFileSync', 'fsyncSync', 'fstatSync', 'unlinkSync', 'constants'],
   'src/storage/read/read-record.ts': ['openSync', 'closeSync', 'fstatSync', 'readFileSync', 'constants'],
   'src/storage/read/enumerate.ts': ['readdirSync', 'openSync', 'closeSync', 'fstatSync', 'constants'],
+  // WP-8-K: read-only audit-history inspection (13.4/HST-001…010; ADR-034).
+  // Strict read-only allowlist: no mutating fs API is delegated.
+  'src/storage/read/history.ts': ['readdirSync', 'openSync', 'closeSync', 'fstatSync', 'readFileSync', 'constants'],
   // WP-8-E: the read-only store scan (records/audit/tmp/locks surfaces). The
   // allowlist is deliberately read-only: no mutating fs API is delegated.
   'src/storage/recovery/scan.ts': ['readdirSync', 'openSync', 'closeSync', 'fstatSync', 'readFileSync', 'constants'],
@@ -489,7 +492,7 @@ test('static guard: package exports and dependencies unchanged', () => {
 test('static guard: authoritative contract is byte-identical at the accepted SHA-256', () => {
   const contract = readFileSync(join(REPO, 'docs', 'specs', 'wp-8-local-storage-registry-contract.md'), 'utf8');
   const hash = createHash('sha256').update(contract).digest('hex');
-  assert.equal(hash, '144875db3a77e726b87ef2e390f5fcb905688ac60a2e1f6b3e517f4b369c0b42');
+  assert.equal(hash, '5050c61c0b9539dfa19295f1545a624d83dd2f91463268f35333a6c085cd9d95');
 });
 
 test('static guard: no timers, randomness, or environment dependence in storage modules', () => {
@@ -566,7 +569,7 @@ test('static guard: locks-only entropy/process exception does not leak (D-3)', (
 });
 
 test('static guard: read/scan tree is mutation-free and readdirSync is the scan owner (WP-8-D/E/F)', () => {
-  const readTree = ['src/storage/read/read-record.ts', 'src/storage/read/enumerate.ts', 'src/storage/recovery/scan.ts', 'src/storage/recovery/reverify.ts'];
+  const readTree = ['src/storage/read/read-record.ts', 'src/storage/read/enumerate.ts', 'src/storage/read/history.ts', 'src/storage/recovery/scan.ts', 'src/storage/recovery/reverify.ts'];
   const mutating = /\b(writeSync|linkSync|unlinkSync|mkdirSync|fsyncSync|fchmodSync|renameSync|rmSync|rmdirSync|cpSync|chmodSync|chownSync)\b/;
   for (const path of readTree) {
     const content = readFileSync(join(STORAGE_SRC, path.replace('src/storage/', '')), 'utf8');
@@ -575,7 +578,7 @@ test('static guard: read/scan tree is mutation-free and readdirSync is the scan 
   // readdirSync is confined to the enumeration module, the provisioning
   // classifier, the WP-8-E recovery scan module, and the WP-8-H index store
   // (freshness probe) in the storage tree.
-  const readdirOwners = ['src/storage/read/enumerate.ts', 'src/storage/initialization/provision.ts', 'src/storage/recovery/scan.ts', 'src/storage/registry/index-store.ts'];
+  const readdirOwners = ['src/storage/read/enumerate.ts', 'src/storage/initialization/provision.ts', 'src/storage/recovery/scan.ts', 'src/storage/registry/index-store.ts', 'src/storage/read/history.ts'];
   const files = collectTsFiles(STORAGE_SRC);
   for (const file of files) {
     const path = rel(file);
@@ -874,6 +877,44 @@ test('static guard: lock-recovery vocabulary is closed, adjudication-only, and l
   const lockAllowlist = FS_ALLOWLIST['src/storage/locks/lock.ts'] ?? [];
   for (const forbidden of ['renameSync', 'copyFileSync', 'cpSync', 'rmSync', 'rmdirSync', 'mkdirSync', 'chmodSync', 'chownSync', 'fchmodSync']) {
     assert.equal(lockAllowlist.includes(forbidden), false, `lock allowlist must not contain ${forbidden}`);
+  }
+});
+
+test('static guard: audit-history inspection is read-only, capability-free, and authority-free (WP-8-K)', () => {
+  const files = collectTsFiles(STORAGE_SRC);
+  // The history module is a read-only fs owner with the exact read-only
+  // allowlist; no mutating fs API anywhere in it.
+  const history = readFileSync(join(STORAGE_SRC, 'read', 'history.ts'), 'utf8');
+  for (const name of ['unlinkSync', 'linkSync', 'mkdirSync', 'rmdirSync', 'renameSync', 'copyFileSync', 'cpSync', 'rmSync', 'chmodSync', 'chownSync', 'fchmodSync', 'writeSync', 'symlinkSync', 'fsyncSync']) {
+    assert.equal(new RegExp(`\\b${name}\\b`).test(history), false, `history.ts must not use ${name}`);
+  }
+  for (const marker of ['createRecoveryCapability', 'createWriteCapability', 'createReadCapability', 'createRecoveryPublicationPermit', 'publishRecoveryBoundRecord', 'publishRecord', 'acquireWriterLock', 'acquireRecoveryBreakGuard', 'createRecoveryActionProvenance', 'createTrustedRecoveryRequest']) {
+    assert.equal(history.includes(marker), false, `history.ts must not import ${marker}`);
+  }
+  // No liveness/heartbeat/lease vocabulary, no subprocess/network.
+  for (const pattern of [/\bisStale\b/, /heartbeat/, /\blease\b/, /\/proc\//, /process\s*\.\s*kill/, /child_process/]) {
+    assert.equal(pattern.test(history), false, `history.ts matches ${pattern}`);
+  }
+  // The read composition boundary exposes the capability-free query; the
+  // history module never receives or mints a capability.
+  const readIndex = readFileSync(join(STORAGE_SRC, 'read', 'index.ts'), 'utf8');
+  assert.equal(/export function inspectAuditHistory/.test(readIndex), true, 'read/index.ts must expose inspectAuditHistory');
+  const historyCall = readIndex.slice(readIndex.indexOf('export function inspectAuditHistory'), readIndex.indexOf('export function verifyRecord'));
+  assert.equal(/createReadCapability|createVerifyCapability/.test(historyCall), false, 'the history composition must be capability-free');
+  // The history result carries no authority fields: the result type binds
+  // only pure data.
+  const types = readFileSync(join(STORAGE_SRC, 'types.ts'), 'utf8');
+  const resultType = types.slice(types.indexOf('export interface AuditHistoryInspectionResult'), types.indexOf('export interface InspectAuditHistoryRequest'));
+  for (const marker of ['capability', 'provenance', 'permit', 'action', 'nonce']) {
+    assert.equal(resultType.includes(marker), false, `the history result type must not carry ${marker}`);
+  }
+  // No audit-history → capability dependency anywhere: no storage module
+  // imports history.ts except the read composition boundary.
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    if (content.includes("from './history.js'") || content.includes("from '../read/history.js'")) {
+      assert.equal(rel(file), 'src/storage/read/index.ts', `${rel(file)} must not import the history module`);
+    }
   }
 });
 

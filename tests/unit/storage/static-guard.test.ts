@@ -1010,6 +1010,25 @@ test('static guard: audit-history inspection is read-only, capability-free, and 
   for (const marker of ['capability', 'provenance', 'permit', 'action', 'nonce']) {
     assert.equal(resultType.includes(marker), false, `the history result type must not carry ${marker}`);
   }
+  // The continuation cursor carries an explicit format/version marker and
+  // the authoritative history snapshot binding (HST-008; F3); the result
+  // snapshot block exposes the same identity so every returned collection
+  // is provably derived from one authoritative snapshot (§13).
+  const cursorType = types.slice(types.indexOf('export interface AuditHistoryCursor'), types.indexOf('export interface AuditHistoryTargetFacts'));
+  assert.equal(/readonly formatVersion: number/.test(cursorType), true, 'the cursor type must carry an explicit format/version marker');
+  assert.equal(/readonly historySnapshotIdentity: string/.test(cursorType), true, 'the cursor type must carry the authoritative history snapshot binding');
+  assert.equal(/readonly historySnapshotIdentity: string/.test(resultType), true, 'the result snapshot block must carry the authoritative history snapshot binding');
+  // Reconstruction verification uses the required canonical identity path:
+  // the WP-8-K inspection must re-derive candidate reconstruction
+  // identities through the SAME deterministic D-8 identity derivation as
+  // the committed WP-8-G producer (computeAuditEventIdentity), and the
+  // snapshot binding must be domain-separated.
+  assert.equal(/computeAuditEventIdentity/.test(history), true, 'history.ts must verify reconstruction identities via the canonical D-8 derivation');
+  assert.equal(/PGAP-STORAGE-AUDIT-HISTORY-SNAPSHOT-v1/.test(history), true, 'history.ts must use a domain-separated history snapshot identity domain');
+  assert.equal(/AUDIT_HISTORY_CURSOR_FORMAT_VERSION/.test(history), true, 'history.ts must define and validate the cursor format version');
+  // The persistent registry index is never historical authority: the
+  // history module must not reference the index surface at all.
+  assert.equal(/registry-index|indexSnapshot|index\//.test(history), false, 'history.ts must not reference the persistent registry index');
   // No audit-history → capability dependency anywhere: no storage module
   // imports history.ts except the read composition boundary and the
   // WP-8-L retention mutation boundary (which derives the authoritative

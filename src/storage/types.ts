@@ -394,6 +394,8 @@ export interface ReconstructionEvidenceAnnotation {
   readonly outcome: string;
   readonly targetRecordDigest: string;
   readonly reconstructionAuditId: string;
+  /** Record-bytes digest of the reconstructed audit event as bound by the evidence payload (WP-8-G §8; linkage fact). */
+  readonly reconstructionAuditDigest: string;
   /** Original trusted action identity recorded in the evidence payload (a durable fact). */
   readonly originalActionIdentity: string;
   /** Trusted recovery action identity recorded in the evidence envelope. */
@@ -406,6 +408,10 @@ export interface ReconstructionEvidenceAnnotation {
 
 /** Opaque self-validating audit-history continuation cursor (HST-008; never a raw path). */
 export interface AuditHistoryCursor {
+  /** Explicit cursor schema/version marker (HST-008): old/unsupported/ambiguous cursor shapes fail closed. */
+  readonly formatVersion: number;
+  /** Deterministic authoritative history snapshot identity bound to this cursor (HST-008/009; domain digest). */
+  readonly historySnapshotIdentity: string;
   /** Deterministic store/namespace identity binding (domain digest; PGAP-STORAGE-AUDIT-HISTORY-CURSOR-v1). */
   readonly storeIdentity: string;
   readonly recordClass: string;
@@ -456,7 +462,7 @@ export interface AuditHistoryInspectionResult {
   /** Operational recovery evidence annotations related to the target. */
   readonly reconstructionEvidence?: readonly ReconstructionEvidenceAnnotation[];
   readonly completeness?: { readonly complete: boolean; readonly truncated: boolean; readonly scannedAuditEntries: number; readonly scannedEvidenceEntries: number; readonly scannedBytes: number };
-  readonly snapshot?: { readonly generation: string; readonly surfaceGeneration: string };
+  readonly snapshot?: { readonly generation: string; readonly surfaceGeneration: string; readonly historySnapshotIdentity: string };
   readonly continuation?: AuditHistoryCursor;
 }
 

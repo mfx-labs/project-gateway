@@ -410,7 +410,13 @@ operational annotations with verified linkage. The implementation is a
 new read-only fs owner (strict read-only allowlist; no capability,
 provenance, permit, lock, or recovery-mutation import; zero mutation).
 The contract gained §13.4/HST-001…010 and AUD-014 and its pinned SHA-256
-was updated.
+was updated. **Retrospective independent review returned corrections
+required** (F1 already resolved by WP-8-L; F2 reconstruction association,
+F3 cross-page snapshot binding, F4 annotation pagination, and cursor
+format versioning corrected at the current HEAD with deterministic
+adversarial tests — see the WP-8-K implementation report correction
+section). **WP-8 closure assurance pending retrospective independent
+review**; WP-8 is not re-closed.
 
 **WP-8-L (contract §15.4/RNT-011…020; ADR-035 — retention, legal hold,
 and exact deletion) is implemented**: the first policy-bound deletion
@@ -530,6 +536,14 @@ is complete** with the verification evidence.
 **WP-8 CLOSED** (closure decision: implementation through WP-8-M
 accepted; committed implementations, reports, tests, and commit history
 are the accepted evidence):
+
+> **Closure-assurance status:** retrospective independent review of the
+> WP-8-K audit-history inspection returned corrections required, which
+> were applied forward at the current HEAD (reconstruction association,
+> cross-page snapshot binding, annotation pagination, cursor format
+> versioning). **WP-8 closure assurance is pending retrospective
+> independent review**; the WP-8 closure decision above is historical and
+> is not re-declared.
 
 - **WP-8-N configuration migration is DEFERRED** by human decision
   (decision (c) Deferral) under the existing DS-13 / §23.2

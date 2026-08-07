@@ -179,27 +179,169 @@ fields exist (later policy layers).
 | Suite | Result |
 |---|---|
 | Typecheck / build / test TS compilation | pass |
-| Focused audit-history (`audit-history.test.js`) | **20 tests, 20 pass** |
+| Focused audit-history (`audit-history.test.js`) | **36 tests, 36 pass** (20 original + 16 correction tests) |
 | Audit reconstruction | pass |
 | Registry/recovery | pass |
 | Registry index | pass |
 | Recovery mutation | pass |
 | External disposition | pass |
 | Lock recovery | pass |
-| Complete storage suite | **355 tests, 353 pass, 2 skipped** (pre-existing privilege-gated chown tests) |
-| Static guard | **27 tests, 27 pass** |
-| Global security | **15 tests, 15 pass** |
+| Retention (WP-8-L) | pass |
+| Config recovery (WP-8-M) | pass |
+| Complete storage suite | **427 tests, 425 pass, 2 skipped** (pre-existing privilege-gated chown tests) |
+| Static guard | pass (44 tests incl. global security) |
 | Storage crash suites | 5/5 pass |
-| Unit + integration | 269/269 pass |
-| Pi adapter / trusted / pointofuse-v2 | 1073/1074 pass — the single accepted baseline Pi mismatch (expected `0.83.0`, installed `0.84.1`) |
 | WP-7 regression | 165/165 pass |
-| Contract-hash audit | pinned SHA-256 updated to `5050c61c…cd9d95` |
+| Pi adapter / trusted / pointofuse-v2 (full `npm test`) | 1358 tests, 1357 pass, 1 fail — the single accepted baseline Pi mismatch (expected `0.83.0`, installed `0.84.1`) |
 | `git diff --check` | clean |
 
-## 14. Remaining WP-8 Work
+## 14. Correction Section — Independent Review Disposition (F1–F4 + cursor versioning)
 
-Retention execution; legal holds; primary/audit deletion; compaction;
-migration; configuration-namespace recovery; disposition of remaining
-adjudication-only classes; lifecycle approval decisions; WP-12
-integration; WP-9 generation seeding. WP-8-F…WP-8-K remain unclosed
-(implementation review pending).
+Retrospective independent review of the WP-8-K implementation returned
+corrections required. This section records the disposition and the
+correction. The correction is applied forward from current HEAD; no
+historical commit was rewritten.
+
+### F1 (HST-005 reported-event ordering) — already resolved by WP-8-L
+
+The normative D-8 audit ordering tuple (primary logical creation time,
+primary record identity, event identity) governs reported event delivery
+and tuple-based pagination/resume, independent of filesystem enumeration
+order. No further change was required. The correction adds a
+**deterministic adversarial ordering fixture** that *proves* the premise
+before asserting: a pure digest search constructs a pair of reconstruction
+events whose surface enumeration order opposes their normative tuple
+order; the test asserts the premise explicitly and fails if it cannot be
+constructed, and additionally walks the pair under a one-result budget to
+prove tuple-ordered paginated delivery.
+
+### F2 — reconstruction-event association (corrected)
+
+A `recovery-audit-reconstruction` candidate is now adopted only when every
+contract-required association fact independently verifies:
+
+- canonical envelope validity, exact event kind, exact target record
+  identity, exact target digest (`wrong-target-digest`), exact gap marker
+  (`missingEventKind: authorized-write`), and reference-digest linkage;
+- envelope revision exactly `1`, record kind exactly
+  `AuthoritativeAuditEvent`, creation evidence in the producer's UTC
+  ISO-8601 format, and payload-digest binding (`malformed-audit`);
+- **deterministic identity re-derivation through the SAME canonical D-8
+  identity derivation as the committed WP-8-G producer
+  (`computeAuditEventIdentity`)** over the store instance, target
+  class/identity/revision/digest, the event kind, and the event's own
+  trusted action identity — the declared event identity must equal it
+  (`conflicting-audit`), which binds envelope revision, trusted action
+  identity, declared event identity, target revision, and target digest;
+- **exact linkage to reconstruction recovery evidence where evidence
+  exists**: the evidence's recovery action identity must equal the
+  event's trusted action identity and the evidence's
+  `reconstructionAuditDigest` must equal the durable event's canonical
+  digest (`conflicting-audit`; the event is removed from the verified
+  set before the page slice, synthesis, and continuation are derived).
+
+The reconstructed event's `trustedActionId` is the current
+recovery/reconstruction action identity; the original historical action
+remains a separate recovery-evidence fact and is never substituted into
+or fabricated for the event. Deterministic probes A–I cover envelope
+revision tamper, `trustedActionId` tamper, declared-identity tamper
+placed at its derived location, target-digest tamper, target-revision
+tamper, gap-marker tamper, evidence-action inconsistency, canonical-byte
+tamper (creation evidence and payload digest), and the unchanged valid
+reconstruction; A–H are never adopted and assert the exact finding/status,
+and I remains valid. No weaker hand-rolled verifier was introduced.
+
+### F3 — cross-page snapshot coherence (corrected)
+
+Every page now derives a deterministic **bounded `historySnapshotIdentity`**
+(domain-separated digest, `PGAP-STORAGE-AUDIT-HISTORY-SNAPSHOT-v1`) over:
+
+- the verified target facts (class, identity, revision, canonical digest);
+- the audit entries relevant to the query (every entry that produces a
+  classification for this walk, with canonical content digests; the
+  silently-skipped other-record events are excluded so that unrelated
+  publication — including WP-8-L intent evidence publication — never
+  invalidates an outstanding walk);
+- the reconstruction-evidence entries relevant to the target (names +
+  canonical content digests; retention and other recovery evidence is
+  excluded for the same reason);
+- the query shape (limit profile).
+
+Never mtime, directory inode alone, entry count, registry index, or wall
+clock; order-independent (sorted entry lists); bounded by the same scan
+limits (an identity that cannot be derived within the limits fails closed
+and no resumable cursor is issued). Every page verifies the **complete**
+bounded surfaces — verification is never cut short by the reporting
+budget — so the identity, the page slice, and the synthesis always derive
+from the full authoritative surface. The continuation cursor binds the
+identity; on resume the identity is recomputed and compared **before any
+page data is returned**; any material change between pages (new/removed/
+changed audit event, new reconstruction event, changed/new relevant
+recovery evidence, target-record change) fails closed with
+`ERR-STO-ROOT-IDENTITY-CHANGED`. Deterministic multi-page probes A–F
+cover earlier-tuple publication, later-tuple publication, reconstruction
+publication, relevant evidence publication, target tamper (all fail
+closed), and irrelevant registry-index mutation (the walk remains
+correct — the index is not part of history truth).
+
+### F4 — annotation pagination (corrected)
+
+Evidence findings and annotations are reported only on the first page on
+which the audit surface is fully reported, resuming by the **explicit
+evidence-surface position** (`lastEvidenceShard`/`lastEvidenceEntry`) —
+never by an empty `phase: audit` position — and the returned
+`reconstructionEvidence` collection is the page's reported slice (the
+full verified set remains internal to the synthesis). Across a complete
+walk each annotation is returned exactly once: the deterministic
+multi-page fixture (3 events + 2 annotations under a one-result budget,
+4 pages) asserts no duplicate/omitted annotation, no duplicate/omitted
+event, normative tuple order, and final status/findings from the same
+bound snapshot.
+
+### Cursor format versioning (corrected)
+
+The continuation cursor now carries an explicit `formatVersion` marker
+(currently `1`) and the authoritative `historySnapshotIdentity`. Current
+code fails closed — before any interpretation of the resume state — on
+old WP-8K cursors (pre-HST-005 shape), cursors missing the version or
+snapshot fields, unsupported future versions, tampered versions,
+structurally ambiguous positions, cross-target/cross-revision cursors,
+and cursors whose bound snapshot identity does not match the recomputed
+identity. No best-effort interpretation of old cursor state is attempted;
+cursor compatibility is not required across this pre-release internal
+storage implementation.
+
+### Finding/status consistency (regression-tested)
+
+Returned events, annotations, findings, reconstruction synthesis/status,
+and completeness all derive from the same authoritative snapshot: the
+correction adds a regression test proving every page of a contested
+walk binds one snapshot identity, truncated pages carry no definitive
+status, and the final synthesis equals a fresh walk's synthesis. The
+original authorized-write path is unchanged and a regression test proves
+a tampered original (bytes changed at the exact expected identity) is
+never adopted as verified original history.
+
+## 15. Current WP-8 Assurance State
+
+- WP-8K (audit-history inspection) was originally implemented and
+  committed at `20d689918fca8d197f91e5c90bd7bac09c414867`.
+- WP-8L (retention, legal hold, and exact deletion) and WP-8M
+  (configuration-namespace recovery) were subsequently implemented.
+- The WP-8 closure commit exists at
+  `db1b41539331d10704f87cf480a49beacacf9168`.
+- A retrospective independent review later found WP-8K defects (F2
+  reconstruction association, F3 cross-page snapshot binding, F4
+  annotation pagination, cursor format versioning; F1 already resolved
+  by WP-8L).
+- The current forward correction is **unstaged and uncommitted** at the
+  current HEAD.
+- **WP-8 closure assurance is therefore pending.** WP-8 must NOT be
+  treated as assurance-revalidated until: (1) the WP-8K independent
+  rereview passes; (2) the WP-8L independent retrospective review
+  passes; (3) the WP-8M independent retrospective review passes; and
+  (4) the closure state is revalidated.
+
+This section is the current assurance state; it does not re-close WP-8,
+and no part of this report claims the correction is independently
+accepted or that a review has passed.

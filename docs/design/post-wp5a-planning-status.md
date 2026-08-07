@@ -315,7 +315,13 @@ updated. WP-8-L also root-cause corrected the reported-event ordering
 audit ordering tuple instead of surface scan order (the previous
 scan-ordered pagination disagreed with the tuple whenever shard prefixes
 differed from creation order, a latent defect that made the budget tests
-depend on shard-prefix luck).
+depend on shard-prefix luck). **Retrospective independent review returned
+corrections required** (F1 already resolved by WP-8-L; F2 reconstruction
+association, F3 cross-page snapshot binding, F4 annotation pagination,
+and cursor format versioning corrected at the current HEAD with
+deterministic adversarial tests — see the WP-8-K implementation report
+correction section). **WP-8 closure assurance pending retrospective
+independent review**; WP-8 is not re-closed.
 
 **WP-8-L (retention, legal hold, and exact deletion; ADR-035; contract
 §15.4/RNT-011…020) is implemented**: the first policy-bound deletion path
@@ -411,6 +417,12 @@ is complete** with the verification evidence.
 **WP-8 CLOSED** — implementation through WP-8-M accepted; committed
 implementations, reports, tests, and commit history are the accepted
 evidence.
+
+> **Closure-assurance status:** retrospective independent review of the
+> WP-8-K audit-history inspection returned corrections required, applied
+> forward at the current HEAD. **WP-8 closure assurance is pending
+> retrospective independent review**; the historical closure statement
+> above is not re-declared.
 
 - **WP-8-N configuration migration DEFERRED** (human decision (c)
   Deferral) under DS-13 / §23.2 (DCS-002): the live configuration

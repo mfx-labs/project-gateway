@@ -16,6 +16,7 @@ import { createStorageBootstrapActionProvenance, createStorageWriteActionProvena
 import { initializeTrustedStore } from '../../../src/storage/initialization/initialize.js';
 import { publishRecord } from '../../../src/storage/publication/index.js';
 import { runRecoveryScan, executeRecoveryMutation } from '../../../src/storage/recovery/index.js';
+import { buildAuditReconstructionEvidenceRecord } from '../../../src/storage/recovery/index.js';
 import { runRegistrySnapshotScan } from '../../../src/storage/registry/index.js';
 import { buildAuthorizedWriteAuditEvent, buildRecoveryAuditReconstructionEvent, computeAuditEventIdentity } from '../../../src/storage/audit/write-audit.js';
 import { inspectAuditHistory } from '../../../src/storage/read/index.js';
@@ -24,7 +25,7 @@ import { verifyStoreInstance } from '../../../src/storage/read/read-record.js';
 import { computePayloadDigest, canonicalEnvelopeBytes, computeDomainDigest, STORAGE_RECORD_BYTES_DIGEST_DOMAIN } from '../../../src/storage/format/envelope.js';
 import { defaultLimitProfile, type SelectedLimitProfile } from '../../../src/storage/limits/limits.js';
 import { deriveRecordRelativePath } from '../../../src/storage/layout/layout.js';
-import type { AuditHistoryCursor, AuditHistoryInspectionResult, InspectAuditHistoryRequest, RecoveryMutationRequest } from '../../../src/storage/types.js';
+import type { AuditHistoryCursor, AuditHistoryFinding, AuditHistoryInspectionResult, HistoryAuditEvent, InspectAuditHistoryRequest, ReconstructionEvidenceAnnotation, RecoveryMutationRequest } from '../../../src/storage/types.js';
 
 const UID = process.getuid?.() ?? 0;
 const CONFIG_IDENTITY = 'sha-256:' + 'a'.repeat(64);
@@ -281,6 +282,98 @@ function recordPath(env: TestEnv, recordId: string): string {
   const derived = deriveRecordRelativePath('approval-record', recordId);
   assert.equal(derived.ok, true);
   return `${env.storeRoot}/${(derived as { readonly ok: true; readonly relativePath: string }).relativePath}`;
+}
+
+/** Write one canonical store-evidence envelope at its derived path (test fixture). */
+function writeEvidenceEnvelope(env: TestEnv, model: Readonly<Record<string, unknown>>): void {
+  const canonical = canonicalEnvelopeBytes(model);
+  const derived = deriveRecordRelativePath('store-evidence-record', model['recordId'] as string);
+  assert.equal(derived.ok, true);
+  const path = `${env.storeRoot}/${(derived as { readonly ok: true; readonly relativePath: string }).relativePath}`;
+  mkdirSync(path.slice(0, path.lastIndexOf('/')), { recursive: true, mode: 0o700 });
+  writeFileSync(path, canonical.canonicalUtf8, { mode: 0o600 });
+  chmodSync(path, 0o600);
+}
+
+/** Pure canonical reconstruction-evidence model for one reconstruction event (WP-8-G §8 builder). */
+function evidenceModelFor(env: TestEnv, targetDigest: string, event: { readonly recordId: string; readonly digest: string }, actionIdentity: string): Readonly<Record<string, unknown>> {
+  const storeResult = verifyStoreInstance({ locator: env.dir, serviceUid: UID, forbiddenRoots: [], configurationIdentity: CONFIG_IDENTITY, configurationVersion: '1', limitProfile: env.limitProfile });
+  assert.equal(storeResult.ok, true);
+  const built = buildAuditReconstructionEvidenceRecord({
+    storeInstance: storeResult.storeInstance!,
+    actionIdentity,
+    evidenceKind: 'recovery-evidence',
+    recoveryOperation: 'audit-reconstruction',
+    targetRecordClass: 'approval-record',
+    targetRecordId: RECORD_ID,
+    targetRecordDigest: targetDigest,
+    originalActionIdentity: WRITE_ACTION,
+    reconstructionAuditId: event.recordId,
+    reconstructionAuditDigest: event.digest,
+    missingAuditObservationId: 'obs-wp8k-fixture',
+    generation: 'sha-256:' + 'a'.repeat(64),
+    surfaceGeneration: 'sha-256:' + 'b'.repeat(64),
+    outcome: 'reconstructed',
+    createdAt: '2026-01-01T00:00:01.000Z',
+  });
+  assert.equal(built.ok, true);
+  return JSON.parse(built.record!.canonicalUtf8) as Readonly<Record<string, unknown>>;
+}
+
+/** One reconstruction event built through the committed WP-8-G builder (distinct action/time). */
+function reconstructionEvent(env: TestEnv, digest: string, recoveryActionIdentity: string, recoveryTime: string): NonNullable<ReturnType<typeof buildRecoveryAuditReconstructionEvent>['event']> {
+  const built = buildRecoveryAuditReconstructionEvent({
+    storeInstance: namespaces(env) as readonly { readonly kind: 'configuration' | 'store-records'; readonly dev: number; readonly ino: number }[],
+    primaryClass: 'approval-record',
+    primaryRecordId: RECORD_ID,
+    primaryRevision: 1,
+    primaryDigest: digest,
+    recoveryActionIdentity,
+    recoveryTime,
+  });
+  assert.equal(built.ok, true);
+  return built.event!;
+}
+
+/** Page-1 cursor of a two-event truncated walk (enumerationResults 1). */
+function truncatedWalkCursor(env: TestEnv): AuditHistoryCursor {
+  const page1 = history(env, RECORD_ID);
+  assert.equal(page1.ok, true, JSON.stringify(page1.findings));
+  assert.equal(page1.completeness?.truncated, true, 'the fixture must produce a truncated first page');
+  assert.ok(page1.continuation !== undefined);
+  return page1.continuation!;
+}
+
+/** Walk every continuation page to completion and concatenate the reported collections. */
+function walkAll(env: TestEnv, recordId: string, startCursor?: AuditHistoryCursor): {
+  readonly pages: AuditHistoryInspectionResult[];
+  readonly events: HistoryAuditEvent[];
+  readonly annotations: ReconstructionEvidenceAnnotation[];
+  readonly findings: AuditHistoryFinding[];
+} {
+  const pages: AuditHistoryInspectionResult[] = [];
+  const events: HistoryAuditEvent[] = [];
+  const annotations: ReconstructionEvidenceAnnotation[] = [];
+  const findings: AuditHistoryFinding[] = [];
+  let cursor: AuditHistoryCursor | undefined = startCursor;
+  for (let i = 0; i < 64; i++) {
+    const page = history(env, recordId, cursor === undefined ? {} : { continuation: cursor });
+    assert.equal(page.ok, true, JSON.stringify(page.findings));
+    pages.push(page);
+    events.push(...(page.events ?? []));
+    annotations.push(...(page.reconstructionEvidence ?? []));
+    findings.push(...(page.auditFindings ?? []));
+    if (page.continuation === undefined) return { pages, events, annotations, findings };
+    cursor = page.continuation;
+  }
+  throw new Error('walk did not terminate within 64 pages');
+}
+
+/** Strip fields from an object (cursor-tamper fixtures). */
+function without<T extends object, K extends keyof T>(obj: T, ...keys: readonly K[]): Omit<T, K> {
+  const copy = { ...obj } as Record<string, unknown>;
+  for (const k of keys) delete copy[k as string];
+  return copy as Omit<T, K>;
 }
 
 // ── Basic ──────────────────────────────────────────────────────────────────
@@ -679,42 +772,71 @@ test('audit-history: conflicting reconstruction evidence linkage is a finding', 
 
 // ── Ordering ───────────────────────────────────────────────────────────────
 
-test('audit-history: deterministic ordering follows the normative audit tuple, never filesystem order or mtime', () => {
+test('audit-history: normative tuple order is proven against an adversarial surface order (deterministic)', () => {
   const env = makeStore();
   try {
     const facts = publish(env, RECORD_ID);
     unlinkSync(facts.auditPath);
-    // Two reconstruction events with distinct recovery times and distinct
-    // recovery actions (the recovery time never enters the identity, so the
-    // action distinguishes the events; D-8).
-    const early = derivedReconstruction(env, { recordDigest: facts.digest, originalActionIdentity: WRITE_ACTION, recoveryTime: '2026-01-01T00:00:00.000Z' });
-    const lateBuilt = buildRecoveryAuditReconstructionEvent({
-      storeInstance: namespaces(env) as readonly { readonly kind: 'configuration' | 'store-records'; readonly dev: number; readonly ino: number }[],
-      primaryClass: 'approval-record',
-      primaryRecordId: RECORD_ID,
-      primaryRevision: 1,
-      primaryDigest: facts.digest,
-      recoveryActionIdentity: 'later-recovery-action',
-      recoveryTime: '2026-01-02T00:00:00.000Z',
-    });
-    assert.equal(lateBuilt.ok, true);
-    const late = { event: lateBuilt.event! };
-    writeAuditEnvelope(env, eventModel(env, late.event));
-    writeAuditEnvelope(env, eventModel(env, early.event)); // reverse creation order
+    const surfacePositionOf = (eventId: string): string => {
+      const d = deriveRecordRelativePath('authoritative-audit-event', eventId);
+      assert.equal(d.ok, true);
+      const ok = d as { readonly ok: true; readonly shard: string; readonly filename: string };
+      return `${ok.shard}/${ok.filename}`;
+    };
+    // Deterministic adversarial search (pure digest derivation; no fs
+    // randomness, no temp-directory luck): find a second reconstruction
+    // event whose SURFACE scan position precedes the first event's, so the
+    // test PROVES surface enumeration order opposes the normative tuple
+    // order before asserting the tuple-ordered delivery. The test fails if
+    // the adversarial premise cannot be constructed.
+    const early = derivedReconstruction(env, { recordDigest: facts.digest, originalActionIdentity: WRITE_ACTION, recoveryTime: '2026-01-01T00:00:00.000Z' }).event;
+    let late: NonNullable<ReturnType<typeof buildRecoveryAuditReconstructionEvent>['event']> | undefined;
+    for (let k = 0; k < 4096 && late === undefined; k++) {
+      const candidate = reconstructionEvent(env, facts.digest, `surface-first-${k}`, '2026-01-02T00:00:00.000Z');
+      if (surfacePositionOf(candidate.recordId) < surfacePositionOf(early.recordId)) {
+        late = candidate;
+      }
+    }
+    assert.ok(late !== undefined, 'adversarial premise: a surface-order-opposing pair must exist');
+    const lateId = late!.recordId;
+    assert.ok(surfacePositionOf(early.recordId) > surfacePositionOf(lateId), 'premise: surface enumeration order must oppose the normative tuple order');
+    // Write the late-surface event FIRST (reverse surface order): creation
+    // order on disk is irrelevant to both the scan and the tuple.
+    writeAuditEnvelope(env, eventModel(env, late!));
+    writeAuditEnvelope(env, eventModel(env, early));
     const result = history(env, RECORD_ID);
     assert.equal(result.events?.length, 2);
-    // D-8 tuple: (primaryCreatedAt, primaryRecordId, eventId) → recovery-time
-    // order with event identity as the final tie-break.
-    assert.equal(result.events![0]!.eventId, early.event.recordId);
-    assert.equal(result.events![1]!.eventId, late.event.recordId);
+    assert.deepEqual(result.events!.map((e) => e.eventId), [early.recordId, lateId], 'the D-8 tuple (createdAt, recordId, eventId) wins over surface scan order');
     // Filesystem mtimes must never influence the order.
-    utimesSync(auditDerivedPath(env, early.event.recordId), new Date(2030, 0, 1), new Date(2030, 0, 1));
-    utimesSync(auditDerivedPath(env, late.event.recordId), new Date(2000, 0, 1), new Date(2000, 0, 1));
+    utimesSync(auditDerivedPath(env, early.recordId), new Date(2030, 0, 1), new Date(2030, 0, 1));
+    utimesSync(auditDerivedPath(env, lateId), new Date(2000, 0, 1), new Date(2000, 0, 1));
     const again = history(env, RECORD_ID);
-    assert.deepEqual(again.events!.map((e) => e.eventId), [early.event.recordId, late.event.recordId], 'mtime never establishes ordering');
-    // Identical recovery times tie-break by event identity deterministically.
+    assert.deepEqual(again.events!.map((e) => e.eventId), [early.recordId, lateId], 'mtime never establishes ordering');
+    // Identical facts yield identical identities (time-independent).
     const twin = derivedReconstruction(env, { recordDigest: facts.digest, originalActionIdentity: WRITE_ACTION, recoveryTime: '2026-01-01T00:00:00.000Z' });
-    assert.equal(twin.event.recordId, early.event.recordId, 'time-independent identity: identical facts yield identical events');
+    assert.equal(twin.event.recordId, early.recordId, 'time-independent identity: identical facts yield identical events');
+    // The paginated delivery of the same pair follows the tuple too: with a
+    // one-result budget the first page carries the tuple-first event even
+    // though it surfaces second on disk.
+    const budgetEnv = makeStore(profile({ enumerationResults: 1 }));
+    try {
+      const bfacts = publish(budgetEnv, RECORD_ID);
+      unlinkSync(bfacts.auditPath);
+      const bEarly = derivedReconstruction(budgetEnv, { recordDigest: bfacts.digest, originalActionIdentity: WRITE_ACTION, recoveryTime: '2026-01-01T00:00:00.000Z' }).event;
+      let bLate: NonNullable<ReturnType<typeof buildRecoveryAuditReconstructionEvent>['event']> | undefined;
+      for (let k = 0; k < 4096 && bLate === undefined; k++) {
+        const candidate = reconstructionEvent(budgetEnv, bfacts.digest, `budget-surface-first-${k}`, '2026-01-02T00:00:00.000Z');
+        if (surfacePositionOf(candidate.recordId) < surfacePositionOf(bEarly.recordId)) bLate = candidate;
+      }
+      assert.ok(bLate !== undefined);
+      writeAuditEnvelope(budgetEnv, eventModel(budgetEnv, bLate!));
+      writeAuditEnvelope(budgetEnv, eventModel(budgetEnv, bEarly));
+      const walk = walkAll(budgetEnv, RECORD_ID);
+      assert.deepEqual(walk.events.map((e) => e.eventId), [bEarly.recordId, bLate!.recordId], 'paginated delivery preserves the normative tuple order');
+      assert.ok(walk.pages.length > 1, 'the budget fixture actually paginates');
+    } finally {
+      rmSync(budgetEnv.dir, { recursive: true, force: true });
+    }
   } finally {
     rmSync(env.dir, { recursive: true, force: true });
   }
@@ -988,6 +1110,503 @@ test('audit-history: results are pure data and can never be passed as authority'
     assert.equal(isHistoryTargetClass('store-metadata'), false);
     assert.equal(isHistoryTargetClass('approval-record'), true);
     assert.equal(isHistoryTargetClass('store-evidence-record'), true);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+// ── F2: reconstruction association probes (tampered candidates never adopted) ──
+
+/** Read + rewrite one durable audit event model at its derived path (fixture tamper). */
+function rewriteAuditModel(env: TestEnv, eventId: string, patch: (model: Record<string, unknown>) => void): void {
+  const path = auditDerivedPath(env, eventId);
+  const model = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+  patch(model);
+  writeFileSync(path, canonicalEnvelopeBytes(model).canonicalUtf8, { mode: 0o600 });
+  chmodSync(path, 0o600);
+}
+
+test('audit-history F2-A: envelope revision tamper is malformed and never adopted', () => {
+  const env = makeStore();
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    const valid = derivedReconstruction(env, { recordDigest: facts.digest, originalActionIdentity: WRITE_ACTION, recoveryTime: '2026-01-01T00:00:00.000Z' }).event;
+    writeAuditEnvelope(env, eventModel(env, valid));
+    rewriteAuditModel(env, valid.recordId, (m) => { m['revision'] = 2; });
+    const result = history(env, RECORD_ID);
+    assert.equal(result.ok, true, JSON.stringify(result.findings));
+    assert.equal(result.events?.length, 0, 'the revision-tampered candidate is never adopted as verified history');
+    const f = result.auditFindings!.find((x) => x.kind === 'malformed-audit' && x.reason.includes('envelope revision'));
+    assert.ok(f !== undefined, JSON.stringify(result.auditFindings));
+    assert.equal(f!.eventId, valid.recordId);
+    assert.equal(result.status, 'missing-authorized-write');
+    assert.equal(result.reconstruction?.present, false);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('audit-history F2-B: trustedActionId tamper is conflicting and never adopted', () => {
+  const env = makeStore();
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    const valid = derivedReconstruction(env, { recordDigest: facts.digest, originalActionIdentity: WRITE_ACTION, recoveryTime: '2026-01-01T00:00:00.000Z' }).event;
+    writeAuditEnvelope(env, eventModel(env, valid));
+    // Declared identity unchanged; the trusted action identity is replaced.
+    rewriteAuditModel(env, valid.recordId, (m) => { m['trustedActionId'] = 'tampered-action'; });
+    const result = history(env, RECORD_ID);
+    assert.equal(result.ok, true, JSON.stringify(result.findings));
+    assert.equal(result.events?.length, 0, 'the action-tampered candidate is never adopted');
+    const f = result.auditFindings!.find((x) => x.kind === 'conflicting-audit' && x.reason.includes('deterministic derivation'));
+    assert.ok(f !== undefined, JSON.stringify(result.auditFindings));
+    assert.equal(result.status, 'ambiguous-history');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('audit-history F2-C: declared event identity changed and placed at its derived location is conflicting', () => {
+  const env = makeStore();
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    const valid = derivedReconstruction(env, { recordDigest: facts.digest, originalActionIdentity: WRITE_ACTION, recoveryTime: '2026-01-01T00:00:00.000Z' }).event;
+    const forgedId = computeAuditEventIdentity({
+      storeInstance: namespaces(env),
+      primaryClass: 'approval-record',
+      primaryRecordId: RECORD_ID,
+      primaryRevision: 1,
+      primaryDigest: facts.digest,
+      eventKind: 'recovery-audit-reconstruction',
+      trustedActionIdentity: 'declared-identity-tamper',
+      primaryCreatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const model = JSON.parse(valid.canonicalUtf8) as Record<string, unknown>;
+    model['recordId'] = forgedId;
+    // Written at the derived location of the FORGED identity (probe C).
+    writeAuditEnvelope(env, model);
+    const result = history(env, RECORD_ID);
+    assert.equal(result.ok, true, JSON.stringify(result.findings));
+    assert.equal(result.events?.length, 0, 'the identity-forged candidate is never adopted');
+    const f = result.auditFindings!.find((x) => x.kind === 'conflicting-audit' && x.reason.includes('deterministic derivation'));
+    assert.ok(f !== undefined, JSON.stringify(result.auditFindings));
+    assert.equal(f!.eventId, forgedId);
+    assert.equal(result.status, 'ambiguous-history');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('audit-history F2-D/E/F: digest, revision, and gap-marker tamper are never adopted', () => {
+  const env = makeStore();
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    // D: target digest changed.
+    const wrongDigest = reconstructionEvent(env, 'sha-256:' + '9'.repeat(64), 'f2-d', '2026-01-01T00:00:00.000Z');
+    writeAuditEnvelope(env, eventModel(env, wrongDigest));
+    // E: target revision changed (identity binds revision; envelope has none).
+    const wrongRevision = buildRecoveryAuditReconstructionEvent({
+      storeInstance: namespaces(env) as readonly { readonly kind: 'configuration' | 'store-records'; readonly dev: number; readonly ino: number }[],
+      primaryClass: 'approval-record',
+      primaryRecordId: RECORD_ID,
+      primaryRevision: 2,
+      primaryDigest: facts.digest,
+      recoveryActionIdentity: 'f2-e',
+      recoveryTime: '2026-01-02T00:00:00.000Z',
+    });
+    assert.equal(wrongRevision.ok, true);
+    writeAuditEnvelope(env, eventModel(env, wrongRevision.event!));
+    // F: gap marker changed (payload digest left stale on purpose: the gap
+    // check precedes the payload-digest check).
+    const valid = derivedReconstruction(env, { recordDigest: facts.digest, originalActionIdentity: WRITE_ACTION, recoveryTime: '2026-01-03T00:00:00.000Z' }).event;
+    writeAuditEnvelope(env, eventModel(env, valid));
+    rewriteAuditModel(env, valid.recordId, (m) => {
+      const p = m['payload'] as Record<string, unknown>;
+      const gap = p['gapMarker'] as Record<string, unknown>;
+      gap['missingEventKind'] = 'conflicting-write';
+    });
+    const result = history(env, RECORD_ID);
+    assert.equal(result.ok, true, JSON.stringify(result.findings));
+    assert.equal(result.events?.length, 0, 'no tampered candidate is ever adopted');
+    assert.equal(result.auditFindings!.some((x) => x.kind === 'wrong-target-digest' && x.reason.includes('reconstruction')), true, JSON.stringify(result.auditFindings));
+    assert.equal(result.auditFindings!.some((x) => x.kind === 'conflicting-audit' && x.reason.includes('deterministic derivation')), true, JSON.stringify(result.auditFindings));
+    assert.equal(result.auditFindings!.some((x) => x.kind === 'conflicting-audit' && x.reason.includes('gap marker')), true, JSON.stringify(result.auditFindings));
+    assert.equal(result.status, 'ambiguous-history');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('audit-history F2-G: evidence recovery-action binding inconsistent with the event is conflicting', () => {
+  const env = makeStore();
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    // A SELF-CONSISTENT tampered event (identity re-derived over the tampered
+    // action) plus evidence bound to a different recovery action.
+    const tampered = reconstructionEvent(env, facts.digest, 'tampered-action', '2026-01-02T00:00:00.000Z');
+    writeAuditEnvelope(env, eventModel(env, tampered));
+    writeEvidenceEnvelope(env, evidenceModelFor(env, facts.digest, tampered, 'genuine-recovery-action'));
+    const result = history(env, RECORD_ID);
+    assert.equal(result.ok, true, JSON.stringify(result.findings));
+    assert.equal(result.events?.length, 0, 'the action-inconsistent event is never adopted');
+    const f = result.auditFindings!.find((x) => x.kind === 'conflicting-audit' && x.reason.includes('recovery action identity'));
+    assert.ok(f !== undefined, JSON.stringify(result.auditFindings));
+    assert.equal(result.status, 'ambiguous-history');
+    // The evidence remains observable, unlinked to any verified event.
+    assert.equal(result.reconstructionEvidence?.length, 1);
+    assert.equal(result.reconstructionEvidence![0]!.recoveryActionIdentity, 'genuine-recovery-action');
+    assert.equal(result.reconstructionEvidence![0]!.linkedReconstructionEventId, undefined);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('audit-history F2-H: canonical byte tamper (createdAt / payloadDigest) is never adopted', () => {
+  const env = makeStore();
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    reconstruct(env); // genuine event + evidence
+    const auditId = reconstructionAuditIdOf(env);
+    const originalDigest = history(env, RECORD_ID).reconstruction?.events[0]?.digest;
+    assert.ok(originalDigest !== undefined);
+    // Byte tamper keeping the declared identity: creation evidence changed.
+    rewriteAuditModel(env, auditId, (m) => { m['createdAt'] = '2026-02-01T00:00:00.000Z'; });
+    const result = history(env, RECORD_ID);
+    assert.equal(result.ok, true, JSON.stringify(result.findings));
+    assert.equal(result.events?.length, 0, 'the byte-tampered event is never adopted');
+    const f = result.auditFindings!.find((x) => x.kind === 'conflicting-audit' && x.reason.includes('audit digest does not match'));
+    assert.ok(f !== undefined, JSON.stringify(result.auditFindings));
+    assert.equal(result.status, 'ambiguous-history');
+    assert.equal(result.reconstructionEvidence?.length, 1, 'the evidence remains observable');
+    assert.equal(result.reconstructionEvidence![0]!.linkedReconstructionEventId, undefined, 'no verified event is linked to the evidence');
+    assert.equal(result.reconstructionEvidence![0]!.reconstructionAuditDigest, originalDigest);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('audit-history F2-H2: payload-digest tamper is malformed and never adopted', () => {
+  const env = makeStore();
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    const valid = derivedReconstruction(env, { recordDigest: facts.digest, originalActionIdentity: WRITE_ACTION, recoveryTime: '2026-01-01T00:00:00.000Z' }).event;
+    writeAuditEnvelope(env, eventModel(env, valid));
+    rewriteAuditModel(env, valid.recordId, (m) => { m['payloadDigest'] = 'sha-256:' + '0'.repeat(64); });
+    const result = history(env, RECORD_ID);
+    assert.equal(result.ok, true, JSON.stringify(result.findings));
+    assert.equal(result.events?.length, 0, 'the digest-tampered candidate is never adopted');
+    const f = result.auditFindings!.find((x) => x.kind === 'malformed-audit' && x.reason.includes('payload digest'));
+    assert.ok(f !== undefined, JSON.stringify(result.auditFindings));
+    assert.equal(result.status, 'missing-authorized-write');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('audit-history F2-I: the valid reconstruction (event + evidence) remains fully adopted', () => {
+  const env = makeStore();
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    const e1 = reconstructionEvent(env, facts.digest, 'f2-i-1', '2026-01-02T00:00:00.000Z');
+    writeAuditEnvelope(env, eventModel(env, e1));
+    writeEvidenceEnvelope(env, evidenceModelFor(env, facts.digest, e1, 'f2-i-1'));
+    const result = history(env, RECORD_ID);
+    assert.equal(result.ok, true, JSON.stringify(result.findings));
+    assert.equal(result.status, 'reconstructed-gap');
+    assert.equal(result.events?.length, 1);
+    assert.equal(result.events![0]!.eventId, e1.recordId);
+    assert.equal(result.events![0]!.trustedActionId, 'f2-i-1', 'the event carries the recovery action identity');
+    assert.equal(result.reconstructionEvidence?.length, 1);
+    assert.equal(result.reconstructionEvidence![0]!.linkedReconstructionEventId, e1.recordId);
+    assert.equal(result.auditFindings?.length, 0);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+// ── F3: cross-page snapshot coherence probes ──────────────────────────────
+
+test('audit-history F3-A/B/C: between-page audit publication invalidates the cursor', () => {
+  const runProbe = (publishedEvent: (env: TestEnv, digest: string) => { readonly recordId: string; readonly canonicalUtf8: string }): void => {
+    const env = makeStore(profile({ enumerationResults: 1 }));
+    try {
+      const facts = publish(env, RECORD_ID);
+      unlinkSync(facts.auditPath);
+      writeAuditEnvelope(env, eventModel(env, reconstructionEvent(env, facts.digest, 'f3-a', '2026-01-02T00:00:00.000Z')));
+      writeAuditEnvelope(env, eventModel(env, reconstructionEvent(env, facts.digest, 'f3-b', '2026-01-03T00:00:00.000Z')));
+      const cursor = truncatedWalkCursor(env);
+      const published = publishedEvent(env, facts.digest);
+      assert.ok(published.recordId.length > 0);
+      // The new authoritative audit event materializes between pages.
+      writeAuditEnvelope(env, eventModel(env, published));
+      const resume = history(env, RECORD_ID, { continuation: cursor });
+      assert.equal(resume.ok, false, 'a new authoritative audit event between pages must fail the cursor closed');
+      assert.equal(resume.findings[0]?.code, 'ERR-STO-ROOT-IDENTITY-CHANGED');
+      assert.equal(resume.status, undefined, 'no page data or status is returned under a stale cursor');
+      assert.equal(resume.events, undefined);
+      // The change is never silently absorbed: a fresh walk sees every event.
+      const walk = walkAll(env, RECORD_ID);
+      assert.equal(walk.events.length, 3, 'the newly materialized event is neither omitted nor duplicated in a fresh walk');
+      assert.equal(new Set(walk.events.map((e) => e.eventId)).size, 3);
+    } finally {
+      rmSync(env.dir, { recursive: true, force: true });
+    }
+  };
+  // A: earlier-tuple audit published between pages.
+  runProbe((env, digest) => reconstructionEvent(env, digest, 'f3-earlier', '2026-01-01T00:00:00.000Z'));
+  // B: later-tuple audit published between pages.
+  runProbe((env, digest) => reconstructionEvent(env, digest, 'f3-later', '2026-01-04T00:00:00.000Z'));
+  // C: a reconstruction event published between pages.
+  runProbe((env, digest) => reconstructionEvent(env, digest, 'f3-recon', '2026-01-05T00:00:00.000Z'));
+});
+
+test('audit-history F3-D: between-page recovery-evidence publication invalidates the cursor', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    const e1 = reconstructionEvent(env, facts.digest, 'f3-d1', '2026-01-02T00:00:00.000Z');
+    const e2 = reconstructionEvent(env, facts.digest, 'f3-d2', '2026-01-03T00:00:00.000Z');
+    writeAuditEnvelope(env, eventModel(env, e1));
+    writeAuditEnvelope(env, eventModel(env, e2));
+    const cursor = truncatedWalkCursor(env);
+    writeEvidenceEnvelope(env, evidenceModelFor(env, facts.digest, e1, 'f3-d1'));
+    const resume = history(env, RECORD_ID, { continuation: cursor });
+    assert.equal(resume.ok, false, 'relevant evidence publication between pages must fail the cursor closed');
+    assert.equal(resume.findings[0]?.code, 'ERR-STO-ROOT-IDENTITY-CHANGED');
+    assert.equal(resume.status, undefined);
+    // A fresh walk reports the evidence exactly once.
+    const walk = walkAll(env, RECORD_ID);
+    assert.equal(walk.annotations.length, 1);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('audit-history F3-E: between-page target tamper invalidates the cursor', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    writeAuditEnvelope(env, eventModel(env, reconstructionEvent(env, facts.digest, 'f3-e1', '2026-01-02T00:00:00.000Z')));
+    writeAuditEnvelope(env, eventModel(env, reconstructionEvent(env, facts.digest, 'f3-e2', '2026-01-03T00:00:00.000Z')));
+    const cursor = truncatedWalkCursor(env);
+    const payload = { approved: false, replaced: true };
+    const model = { recordKind: 'ApprovalRecord', formatVersion: '1.0', recordId: RECORD_ID, revision: 1, createdAt: '2026-02-01T00:00:00.000Z', trustedActionId: WRITE_ACTION, payload, payloadDigest: computePayloadDigest(payload) };
+    writeFileSync(recordPath(env, RECORD_ID), canonicalEnvelopeBytes(model).canonicalUtf8, { mode: 0o600 });
+    chmodSync(recordPath(env, RECORD_ID), 0o600);
+    const resume = history(env, RECORD_ID, { continuation: cursor });
+    assert.equal(resume.ok, false, 'a target-record change between pages must fail the cursor closed');
+    assert.equal(resume.findings[0]?.code, 'ERR-STO-ROOT-IDENTITY-CHANGED');
+    assert.equal(resume.status, undefined);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('audit-history F3-F: registry-index mutation between pages never invalidates the walk', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    // The index family exists BEFORE the walk (structural stability); the
+    // between-page mutation only writes an index entry into the shard.
+    const indexDir = `${env.storeRoot}/index/registry-index/0000`;
+    mkdirSync(indexDir, { recursive: true, mode: 0o700 });
+    writeAuditEnvelope(env, eventModel(env, reconstructionEvent(env, facts.digest, 'f3-f1', '2026-01-02T00:00:00.000Z')));
+    writeAuditEnvelope(env, eventModel(env, reconstructionEvent(env, facts.digest, 'f3-f2', '2026-01-03T00:00:00.000Z')));
+    const cursor = truncatedWalkCursor(env);
+    const page1Events = [...(history(env, RECORD_ID).events ?? [])];
+    // Irrelevant registry-index state mutated between pages.
+    writeFileSync(`${indexDir}/00000000000000000000000000000000.idx`, 'stale junk bytes', { mode: 0o600 });
+    chmodSync(`${indexDir}/00000000000000000000000000000000.idx`, 0o600);
+    const walk = walkAll(env, RECORD_ID, cursor);
+    const allEvents = [...page1Events, ...walk.events];
+    assert.equal(allEvents.length, 2, 'the walk completes with the exact authoritative events');
+    assert.equal(new Set(allEvents.map((e) => e.eventId)).size, 2);
+    assert.equal(walk.pages[walk.pages.length - 1]!.status, 'ambiguous-history');
+    assert.equal(walk.pages[walk.pages.length - 1]!.continuation, undefined);
+    // The same walk without the index mutation is identical (history truth is
+    // independent of the persistent registry index).
+    const baseline = walkAll(env, RECORD_ID);
+    assert.deepEqual(baseline.events, allEvents);
+    assert.deepEqual(baseline.findings, [...(history(env, RECORD_ID).auditFindings ?? []), ...walk.findings]);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+// ── F4: annotation pagination ─────────────────────────────────────────────
+
+test('audit-history F4: annotations and events are reported exactly once across a multi-page walk', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    const e1 = reconstructionEvent(env, facts.digest, 'f4-e1', '2026-01-02T00:00:00.000Z');
+    const e2 = reconstructionEvent(env, facts.digest, 'f4-e2', '2026-01-03T00:00:00.000Z');
+    const e3 = reconstructionEvent(env, facts.digest, 'f4-e3', '2026-01-04T00:00:00.000Z');
+    writeAuditEnvelope(env, eventModel(env, e1));
+    writeAuditEnvelope(env, eventModel(env, e2));
+    writeAuditEnvelope(env, eventModel(env, e3));
+    writeEvidenceEnvelope(env, evidenceModelFor(env, facts.digest, e1, 'f4-e1'));
+    writeEvidenceEnvelope(env, evidenceModelFor(env, facts.digest, e2, 'f4-e2'));
+    const walk = walkAll(env, RECORD_ID);
+    assert.ok(walk.pages.length > 2, `the walk spans more than two pages (${walk.pages.length})`);
+    // No duplicate or omitted event; normative tuple order preserved.
+    assert.deepEqual(walk.events.map((e) => e.eventId), [e1.recordId, e2.recordId, e3.recordId]);
+    assert.equal(new Set(walk.events.map((e) => e.eventId)).size, 3);
+    // No duplicate or omitted annotation across the concatenated pages.
+    assert.equal(walk.annotations.length, 2);
+    assert.equal(new Set(walk.annotations.map((a) => a.evidenceId)).size, 2);
+    // Pages whose audit surface was truncated carry no annotations at all.
+    for (const page of walk.pages) {
+      if (page.completeness?.truncated && page.continuation?.phase === 'audit') {
+        assert.equal(page.reconstructionEvidence?.length, 0, 'annotations never leak onto event-budget pages');
+      }
+    }
+    // Final page: synthesis and completeness from the same bound snapshot.
+    const last = walk.pages[walk.pages.length - 1]!;
+    assert.equal(last.status, 'ambiguous-history');
+    assert.equal(last.continuation, undefined);
+    assert.equal(last.completeness?.truncated, false);
+    assert.equal(last.completeness?.complete, false);
+    assert.equal(walk.findings.filter((f) => f.reason.includes('multiple reconstruction')).length, 1, 'the summary finding appears exactly once');
+    // Every page of the walk binds the SAME authoritative snapshot identity.
+    const identities = new Set(walk.pages.map((p) => p.snapshot?.historySnapshotIdentity));
+    assert.equal(identities.size, 1, 'one authoritative snapshot across the whole walk');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+// ── Cursor format versioning ──────────────────────────────────────────────
+
+test('audit-history: cursor format version and snapshot binding fail closed (versioning)', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    writeAuditEnvelope(env, eventModel(env, reconstructionEvent(env, facts.digest, 'ver-1', '2026-01-02T00:00:00.000Z')));
+    writeAuditEnvelope(env, eventModel(env, reconstructionEvent(env, facts.digest, 'ver-2', '2026-01-03T00:00:00.000Z')));
+    const cursor = truncatedWalkCursor(env);
+    // Current cursor accepted.
+    const resumed = history(env, RECORD_ID, { continuation: cursor });
+    assert.equal(resumed.ok, true, JSON.stringify(resumed.findings));
+    // Pre-HST-005 / old-shape cursor (no format marker, no snapshot binding,
+    // no tuple resume state): rejected, never interpreted.
+    const oldShape = without(cursor, 'formatVersion', 'historySnapshotIdentity', 'lastReportedEventTuple') as AuditHistoryCursor;
+    assert.equal(history(env, RECORD_ID, { continuation: oldShape }).ok, false);
+    // Missing version field.
+    const missingVersion = without(cursor, 'formatVersion') as AuditHistoryCursor;
+    const mv = history(env, RECORD_ID, { continuation: missingVersion });
+    assert.equal(mv.ok, false);
+    assert.equal(mv.findings[0]?.code, 'ERR-STO-REQ-INVALID');
+    // Missing snapshot binding.
+    const missingSnapshot = without(cursor, 'historySnapshotIdentity') as AuditHistoryCursor;
+    const ms = history(env, RECORD_ID, { continuation: missingSnapshot });
+    assert.equal(ms.ok, false);
+    assert.equal(ms.findings[0]?.code, 'ERR-STO-REQ-INVALID');
+    // Unsupported future version.
+    const future = history(env, RECORD_ID, { continuation: { ...cursor, formatVersion: 2 } });
+    assert.equal(future.ok, false);
+    assert.equal(future.findings[0]?.code, 'ERR-STO-REQ-INVALID');
+    // Tampered version (wrong type).
+    const tampered = history(env, RECORD_ID, { continuation: { ...cursor, formatVersion: 'v1' as unknown as number } });
+    assert.equal(tampered.ok, false);
+    assert.equal(tampered.findings[0]?.code, 'ERR-STO-REQ-INVALID');
+    // Current cursor from another target/revision.
+    const otherTarget = history(env, RECORD_ID, { continuation: { ...cursor, recordId: OTHER_RECORD_ID } });
+    assert.equal(otherTarget.ok, false);
+    assert.equal(otherTarget.findings[0]?.code, 'ERR-STO-REQ-INVALID');
+    const otherRevision = history(env, RECORD_ID, { continuation: { ...cursor, revision: 2 } });
+    assert.equal(otherRevision.ok, false);
+    assert.equal(otherRevision.findings[0]?.code, 'ERR-STO-REQ-INVALID');
+    // Current cursor with a modified snapshot identity: valid format, but the
+    // recomputed authoritative identity differs — fail closed before data.
+    const modifiedSnapshot = history(env, RECORD_ID, { continuation: { ...cursor, historySnapshotIdentity: 'pgw:h:' + 'f'.repeat(32) } });
+    assert.equal(modifiedSnapshot.ok, false);
+    assert.equal(modifiedSnapshot.findings[0]?.code, 'ERR-STO-ROOT-IDENTITY-CHANGED');
+    assert.equal(modifiedSnapshot.status, undefined);
+    // Structurally ambiguous cursor: audit phase without a position.
+    const ambiguous = history(env, RECORD_ID, { continuation: { ...cursor, phase: 'audit' as const, lastAuditShard: undefined as unknown as string, lastAuditEntry: undefined as unknown as string } });
+    assert.equal(ambiguous.ok, false);
+    assert.equal(ambiguous.findings[0]?.code, 'ERR-STO-REQ-INVALID');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+// ── Finding/status consistency across one authoritative snapshot ─────────
+
+test('audit-history: every page of a walk derives from one authoritative history snapshot (regression)', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    const facts = publish(env, RECORD_ID);
+    unlinkSync(facts.auditPath);
+    reconstruct(env);
+    const auditId = reconstructionAuditIdOf(env);
+    // Contested lineage: re-add the exact original alongside the reconstruction.
+    writeAuditEnvelope(env, eventModel(env, { recordId: facts.auditEventId, canonicalUtf8: facts.auditCanonicalUtf8 }));
+    const walk = walkAll(env, RECORD_ID);
+    const last = walk.pages[walk.pages.length - 1]!;
+    assert.equal(last.status, 'ambiguous-history');
+    assert.equal(last.continuation, undefined);
+    assert.equal(walk.events.length, 2, 'the concatenated walk delivers both events exactly once');
+    assert.equal(walk.events.some((e) => e.eventId === auditId), true);
+    assert.equal(walk.events.some((e) => e.eventId === facts.auditEventId && e.isOriginalWrite), true);
+    // A truncated page never carries a definitive status.
+    for (const page of walk.pages) {
+      if (page.completeness?.truncated === true) {
+        assert.equal(page.status, undefined, 'truncated pages carry no status');
+      }
+    }
+    // All pages bind one snapshot identity.
+    const identities = new Set(walk.pages.map((p) => p.snapshot?.historySnapshotIdentity));
+    assert.equal(identities.size, 1);
+    // The final findings/status equal a fresh walk's synthesis (a single
+    // inspection under a bounded budget is itself truncated and carries no
+    // definitive status).
+    const freshWalk = walkAll(env, RECORD_ID);
+    assert.equal(freshWalk.pages[freshWalk.pages.length - 1]!.status, last.status);
+    assert.equal(freshWalk.pages[freshWalk.pages.length - 1]!.auditFindings!.filter((f) => f.kind === 'ambiguous-history').length, 1);
+    assert.equal(walk.findings.filter((f) => f.kind === 'ambiguous-history').length, 1, 'the contested-lineage finding appears exactly once in the walk');
+    // Page 1 of the walk equals a fresh walk's first page (deterministic replay).
+    assert.deepEqual(freshWalk.pages[0]!.events, walk.pages[0]!.events);
+    assert.equal(freshWalk.pages[0]!.snapshot?.historySnapshotIdentity, walk.pages[0]!.snapshot?.historySnapshotIdentity);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+// ── Original authorized-write path (never weakened) ───────────────────────
+
+test('audit-history: tampered original authorized-write is never adopted as verified original history (regression)', () => {
+  const env = makeStore();
+  try {
+    const facts = publish(env, RECORD_ID);
+    // In-place tamper at the EXACT expected identity: creation evidence
+    // changed, declared identity unchanged → bytes no longer match the
+    // deterministic D-8 expected event.
+    rewriteAuditModel(env, facts.auditEventId, (m) => { m['createdAt'] = '2026-03-01T00:00:00.000Z'; });
+    const result = history(env, RECORD_ID);
+    assert.equal(result.ok, true, JSON.stringify(result.findings));
+    assert.equal(result.originalAuthorizedWrite?.present, false, 'the tampered original is never adopted');
+    assert.equal(result.events?.length, 0);
+    assert.equal(result.events?.some((e) => e.isOriginalWrite), false);
+    const f = result.auditFindings!.find((x) => x.kind === 'conflicting-audit' && x.reason.includes('expected identity'));
+    assert.ok(f !== undefined, JSON.stringify(result.auditFindings));
+    assert.equal(f!.eventId, facts.auditEventId);
+    assert.equal(result.status, 'ambiguous-history');
+    // Nothing is repaired: the tampered artifact is still present.
+    assert.equal(exists(facts.auditPath), true);
   } finally {
     rmSync(env.dir, { recursive: true, force: true });
   }

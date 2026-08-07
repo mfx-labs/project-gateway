@@ -112,6 +112,29 @@ test('mcp static guard: the closed tool inventory includes exactly the six commi
   assert.equal(/MCP_INSPECTION_TOOLS = \['validate-artifact', 'inspect-stored-record', 'inspect-registry', 'inspect-audit-history', 'verify-record', 'enumerate-class'\]/.test(types), true, 'the closed tool inventory must be exactly the six-tool vocabulary');
 });
 
+test('mcp static guard: multi-store registration is host composition, not a tool, and exposes no authority (WP-9 Slice 4)', () => {
+  const registry = readFileSync(join(MCP_SRC, 'registry.ts'), 'utf8');
+  // The registry is NOT an inspection tool: it never registers a tool name.
+  assert.equal(/MCP_INSPECTION_TOOLS/.test(registry), false, 'registry.ts must not extend the tool vocabulary');
+  // Registration inputs are trusted composition operands only; no fs/path fields.
+  for (const forbidden of ['readonly locator', 'readonly root', 'readonly path', 'node:fs', 'node:child_process', 'process.env', 'Math.random', 'Date.now', 'createTrustedStorageBootstrapInput', 'createStorageBootstrapActionProvenance', 'createRecoveryCapability', 'createWriteCapability', 'publishRecord', 'executeRecoveryMutation', 'executeRetentionMutation', 'acquireWriterLock', 'unlinkSync', 'writeFileSync', 'mkdirSync', 'rmSync', 'openSync', 'net.createServer', 'http.createServer', '@modelcontextprotocol']) {
+    assert.equal(registry.includes(forbidden), false, `registry.ts must not reach ${forbidden}`);
+  }
+  // The registry routes only through the committed surface; it never exposes
+  // trusted inputs, contexts, or capabilities.
+  assert.equal(registry.includes('trustedConfiguration'), true, 'registration inputs carry the trusted configuration operand');
+  assert.equal(/readonly trustedInput: unknown/.test(registry), true, 'the trusted input remains an opaque host operand');
+  assert.equal(registry.includes('createInspectionContext'), true, 'registration uses the exact single-store verification');
+  assert.equal(registry.includes('createMcpInspectionSurface'), true, 'routing delegates to the committed surface');
+  assert.equal(/SURFACE_ID_RE = \/\^\[a-z0-9\]\(\[a-z0-9-\]\*\[a-z0-9\]\)\?\$\//.test(registry), true, 'the closed logical selector pattern must reject path/locator material');
+  // The entry point exports the registry factory but no authority.
+  const entry = readFileSync(join(MCP_SRC, 'index.ts'), 'utf8');
+  assert.equal(/createMcpInspectionRegistry/.test(entry), true, 'the ./mcp entry exports the registry factory');
+  for (const forbidden of ['createTrustedStorageBootstrapInput', 'createRecoveryCapability', 'createWriteCapability', 'persistRecoveryConfigurationMetadata']) {
+    assert.equal(entry.includes(forbidden), false, `entry must not export ${forbidden}`);
+  }
+});
+
 test('mcp static guard: the adapter is transport-free (no server/runtime imports) and dependency-free', () => {
   for (const file of mcpFiles) {
     const content = readFileSync(file, 'utf8');

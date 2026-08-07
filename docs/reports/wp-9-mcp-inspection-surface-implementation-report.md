@@ -320,14 +320,85 @@ equals the direct domain walk), foreign-entry findings, empty-enumeration
 semantics (empty success never confused with truncation or malformed
 cursors), cursor tamper matrix, between-page mutation semantics, cross-store
 position-resume equivalence, redaction, and read-only/non-escalation.
+
+## 12d. Slice 4 — Multi-store inspection surface registration
+
+Slice 4 adds a host-owned multi-store composition layer WITHOUT any client
+control of roots, locators, or store selection:
+
+- **Registration model:** `createMcpInspectionRegistry({ registrations })` —
+  the trusted host registers logical `surfaceId`s, each derived from the SAME
+  genuine trusted composition inputs as the committed single-store
+  `createInspectionContext` (genuine branded trusted configuration + genuine
+  branded `TrustedStorageBootstrapInput` + optional per-surface schema
+  registry; strict `verifyStoreInstance` at construction). Registration is
+  immutable after construction (no unregistration API; no client mutation);
+  registration inputs are never client-supplied; no trusted-input creator,
+  capability, provenance, or locator is exported.
+- **Public selector model:** an opaque logical `surfaceId` — closed pattern
+  `[a-z0-9]([a-z0-9-]*[a-z0-9])?`, 1-64 chars — that resolves ONLY through
+  the host-owned registry. Malformed selectors fail as `invalid-request`
+  (no coercion, no fuzzy matching); well-formed but unregistered selectors
+  fail as `not-found` with a fixed message (no inventory, path, or
+  similar-store leakage). No new public error code was added.
+- **Routing:** `registry.inspect(surfaceId, request)` validates the selector
+  and delegates to the committed per-surface `McpInspectionSurface`; the
+  request envelope `{ tool, params, requestId? }` and all six tool
+  semantics are byte-identical to the single-store API (proven by
+  deep-equality tests across all six tools and by one-store backward
+  equivalence). The committed single-store `createInspectionContext` /
+  `createMcpInspectionSurface` API is unchanged.
+- **Duplicate/conflict semantics:** exact duplicate and conflicting duplicate
+  `surfaceId` registrations fail construction deterministically (never
+  silently overwritten); distinct `surfaceId`s may name the same verified
+  store (each routes independently; no shared mutable state); behavior and
+  the canonical sorted `surfaces` listing are insertion-order-independent.
+- **Freshness / staleness:** registration is NOT cached authority — every
+  routed store-backed request re-runs the domain's per-request store
+  revalidation and fresh capability issuance. A tampered/replaced/symlinked
+  store fails closed per request while an independent healthy store stays
+  usable; an in-process trusted-generation advance fails the
+  capability-gated tools closed (`inspect-audit-history` is capability-free
+  by WP-8K design and keeps its own accepted per-request revalidation
+  model; pure `validate-artifact` is generation-independent).
+- **Cursor routing semantics (per tool):** registry/history cursors are
+  store/snapshot-bound and fail closed when replayed against another
+  surface (`invalid-cursor`); the enumeration cursor is position-only per
+  the committed RDS-004 contract — routed to another surface it resumes
+  THAT surface's walk at the same position, never returning the other
+  store's data, and the response is exactly the selected surface's
+  response (no false continuation claim).
+- **WP-9 generation seeding: NOT implemented — INDEPENDENT.** No normative
+  definition of a WP-9 generation seed exists anywhere in the repository
+  (all references are later-work list items), and registration correctness
+  does not require it (existing per-store verification + per-request
+  revalidation provide identity/freshness). It remains explicitly remaining
+  WP-9 work.
+- **Read-only / non-escalation:** registration bookkeeping is host-local
+  in-memory composition, never storage mutation; routed inspection reaches
+  no publication/recovery/retention/lock/Git/fs mutation (static-guard
+  proven; the runtime mutation watchdog covers both registered stores across
+  all six tools). Selectors, registration handles, the registry object, and
+  routed responses are plain frozen data — replay against the trusted-input
+  brand boundary confers zero authority; the registry object exposes no
+  trusted operands, contexts, or host paths.
+- **Package/export changes:** none beyond extending the committed `./mcp`
+  entry with `createMcpInspectionRegistry` and its closed types; no new
+  subpath; no authority exports.
+- **Focused tests:** 16 new tests (selector boundary, unknown/duplicate/
+  conflicting/empty/order semantics, one-store and A/B six-tool
+  equivalence, same-id different-content isolation, registry-index
+  isolation, history store-bound cursor, enumeration position-cursor
+  cross-surface behavior, tampered-store isolation, requestId echo,
+  authority replay, mutation watchdog, generation-advance probe).
 ## 13. Remaining WP-9 Work (not in this slice)
 
 - **Transport/runtime ownership — exact open decision:** no MCP transport is
   normatively selected; a transport shim (MCP server runtime, stdio/SSE/SDK
   ownership, host process wiring) requires a product decision and is
   explicitly out of this slice.
-- Multi-store surface registration (currently one verified store per
-  surface instance).
-- WP-9 generation seeding (rides with WP-9 per the WP-8 planning note).
+- WP-9 generation seeding (rides with WP-9 per the WP-8 planning note;
+  semantics remain undefined in the repository — registration does not
+  require it).
 - Transport/runtime ownership remains the exact open product decision
   (unchanged; not part of Slice 1, Slice 2, or Slice 3).

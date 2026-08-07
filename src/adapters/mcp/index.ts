@@ -14,6 +14,8 @@
  */
 export { createMcpInspectionSurface, mapDomainError } from './inspect.js';
 export { createInspectionContext } from './context.js';
+export { createMcpInspectionRegistry, SURFACE_ID_RE } from './registry.js';
+export type { McpStoreRegistrationInput, McpInspectionRegistry, RegistryResult } from './registry.js';
 export { MCP_INSPECTION_TOOLS, MCP_ERROR_CODES } from './types.js';
 export type { McpInspectionContext, McpInspectionContextInput, McpInspectionSurface, McpInspectionTool, McpErrorCode, McpInspectionRequest, McpInspectionResponse, McpToolDescriptor } from './types.js';
 export { decodeContinuation, encodeContinuation, validateInspectionRequest } from './validate.js';

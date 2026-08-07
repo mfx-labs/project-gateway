@@ -240,11 +240,23 @@ export function buildRecoveryPlan(assessment: RecoveryAssessment): RecoveryPlan 
         targetKind: 'lock-object',
         category: 'lock-recovery',
         observedEvidence: [lock.observationId],
-        reason: 'persistent writer lock; staleness undetermined, breaking requires confirmed stale-lock determination and explicit recovery authority (LOK-007/008/009)',
+        reason: 'persistent writer lock; breakable ONLY through an externally adjudicated trusted recovery action that explicitly adjudicates the exact current lock instance (break-writer-lock; storage performs no liveness inference; 12.3.1/ADR-033)',
         requiredCapability: 'recovery',
-        requiredOperation: 'lock-recovery',
+        requiredOperation: 'break-writer-lock',
         verifyImmediatelyBeforeMutation: true,
         safety: 'unsafe',
+      });
+    } else if (lock.classification === 'recovery-break-guard-present' || lock.classification === 'recovery-break-guard-malformed') {
+      specs.push({
+        targetLogicalIdentity: 'recovery-break.guard',
+        targetKind: 'lock-object',
+        category: 'disposition',
+        observedEvidence: [lock.observationId],
+        reason: 'leftover recovery-break guard artifact; external disposition required (12.3.1)',
+        requiredCapability: 'control-plane',
+        requiredOperation: 'disposition',
+        verifyImmediatelyBeforeMutation: true,
+        safety: 'requires-external-disposition',
       });
     } else {
       specs.push({

@@ -259,11 +259,34 @@ scanner `dispositionStates` classification, exact operation naming in
 advisory plan actions, and exact static-guard/global-security boundaries
 (no generic disposition/deletion authority; no new evidence kind). The
 contract gained §16.6/DPS-001…007 and its pinned SHA-256 was updated.
-Stale-lock breaking, deletion, retention, migration, disposition of the
+
+**WP-8-J (externally adjudicated lock recovery; ADR-033; contract
+§12.3.1/LOK-019…022) is complete**: the human decision is normative —
+`break-writer-lock` is permitted ONLY through a genuine trusted recovery
+action that explicitly adjudicates the exact currently observed
+writer-lock instance as breakable; the storage layer performs NO liveness
+inference (no PID/process-liveness/age/timestamp/boot/heartbeat/lease
+authorization; no subprocess, no `/proc`). Lock-break serialization uses
+the distinct recovery-break guard (`locks/recovery-break.guard`;
+exclusive create, canonical record, fsync; never a general writer lock;
+leftover guard = external disposition); removal binds the exact
+lock-record digest and the deterministic lock-instance identity, with
+the post-unlink absence check protecting a legitimate new writer lock
+(old evidence never authorizes breaking it); durable `StoreEvidenceRecord`
+evidence (`recovery-evidence`, `break-writer-lock`, identity domain
+`PGAP-STORAGE-LOCK-RECOVERY-EVIDENCE-v1`, no nonce/path) + its
+`authorized-write` audit; idempotency per LOK-022; a fixed 12-stage
+crash inventory; scanner `lockRecoveryStates`; advisory plan actions
+naming `break-writer-lock`; foreign lock objects are classified, never
+scan-fatal. The mutation lives in the existing lock owner (no new
+fs-bearing module). The contract gained §12.3.1/LOK-019…022 and its
+pinned SHA-256 was updated.
+Deletion, retention, migration, disposition of the
 remaining adjudication-only classes, WP-9, and WP-12 remain out of
 scope. The **implementation report
-(`docs/reports/wp-8i-authorized-external-disposition-implementation-report.md`)
-is complete**; **WP-8-F, WP-8-G, WP-8-H, and WP-8-I are not yet closed**
+(`docs/reports/wp-8j-authorized-lock-recovery-implementation-report.md`)
+is complete**; **WP-8-F, WP-8-G, WP-8-H, WP-8-I, and WP-8-J are not yet
+closed**
 — implementation review pending; WP-8 implementation is **not closed**.
 WP-9 and later
 packages are **not authorized**. No push, release, publication,

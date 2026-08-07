@@ -430,6 +430,43 @@ Failure semantics by stage:
 - concurrent recovery: recovery acquires the lock before any recovery action; a second recovery fails closed;
 - cancellation and timeout: bounded lock wait (LMT); timeout fails closed with ERR-STO-LOCK-TIMEOUT.
 
+**12.3.1 Externally adjudicated lock recovery (WP-8-J; ADR-033).** Lock
+recovery mutation is the exact operation `break-writer-lock`, permitted
+ONLY through a genuine trusted recovery action that explicitly
+adjudicates the exact currently observed writer-lock instance as
+breakable (human decision, recorded in ADR-033). The storage layer NEVER
+infers lock staleness as a mutation authorization condition: PID
+existence, process liveness, lock age, timestamps, host boot identity,
+heartbeat absence, lease guesses, caller booleans, and elapsed wall-clock
+time are recorded facts or evidence-creation times, never authorization.
+The liveness-based stale classification of 12.3 is superseded for the
+recovery path by external adjudication; ordinary recovery scanning still
+never classifies a persistent writer lock as stale automatically and
+never breaks it.
+
+Lock-recovery serialization uses a distinct recovery-break guard at the
+fixed path `locks/recovery-break.guard`: exclusive creation
+(`O_CREAT|O_EXCL|O_NOFOLLOW`, mode `0600`) with a canonical guard record
+(guard version, store-instance identity, random nonce, trusted action
+identity digest, acquisition time), file `fsync`, and locks-directory
+`fsync`; the guard cannot coexist with another lock-break attempt and is
+never acquired by writers (it is not a second general writer lock). A
+leftover guard is a foreign lock object requiring external disposition.
+
+The mutation primitive removes exactly the one verified name: no-follow
+descriptor read, canonical lock-record parse, exact record-digest and
+lock-instance recheck against the trusted request, unlink of exactly
+that one name, absence verification, locks-directory `fsync`, then
+durable `StoreEvidenceRecord` recovery evidence (operation
+`break-writer-lock`) and its `authorized-write` audit before success.
+The final removal is bound to the exact verified lock instance: a
+legitimate new writer lock created at the same name after the
+adjudicated lock is gone is never removed by the recovery flow, and a
+replacement lock fails the recheck and fails closed. Evidence and
+idempotency states follow LOK-022; the recovery action binds the lock
+observation identity, the lock-record digest, and the deterministic
+lock-instance identity — never the raw nonce, PID, or a path.
+
 **12.4 Unsupported filesystems.** Filesystems without the required primitives fail closed at initialization (FSL).
 
 **12.5 Optimistic concurrency.** Not required for the MVP single-writer model; conflicting revisions are rejected by the revision rule. Lost updates are prevented by exclusive creation, hard-link publication, and single-writer enforcement.
@@ -454,6 +491,10 @@ Failure semantics by stage:
 - **LOK-016.** Recovery MUST acquire the lock before any recovery action; concurrent recovery fails closed.
 - **LOK-017.** Conflicting revisions MUST fail closed (RFM-006); no lost-update path exists under the single-writer rule.
 - **LOK-018.** Repository-controlled lock files MUST NEVER control trusted-store authority.
+- **LOK-019.** Lock-recovery mutation is the exact operation `break-writer-lock`; no generic lock deletion or recovery-administration operation exists. The trusted recovery action explicitly adjudicates the exact currently observed writer-lock instance as breakable; the storage layer performs no liveness inference (PID, start time, boot identity, age, heartbeat) as an authorization condition.
+- **LOK-020.** Lock-recovery mutation serializes through the recovery-break guard (`locks/recovery-break.guard`, 12.3.1) acquired exclusively for the duration of the break; the guard is never a general writer lock, never breaks itself, and a leftover guard is external disposition.
+- **LOK-021.** The final removal is bound to the exact verified lock instance (record digest + deterministic lock-instance identity): a legitimate new writer lock that replaced the adjudicated lock is never removed; a replacement, changed digest, malformed, foreign, or multiple-lock state fails closed.
+- **LOK-022.** Lock-recovery idempotency and crash behavior: lock present with the exact adjudicated instance and no evidence → break and publish evidence; lock absent with matching evidence → `already-completed`; lock absent without evidence → fail closed (no inference); lock present with matching evidence → fail closed as an integrity inconsistency; changed digest/instance or conflicting evidence → fail closed; no repair-by-guessing; stale locks and leftover guards are never automatically broken.
 
 ## 13. Read and Enumeration Semantics
 

@@ -37,7 +37,7 @@ import { constants } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { parseRawJson } from '../../json/scanner.js';
 import { jcsSerialize } from '../../canonical/jcs.js';
-import { computeDomainDigest, isValidDigestSyntax } from '../format/envelope.js';
+import { computeDomainDigest, isValidDigestSyntax, STORAGE_RECORD_BYTES_DIGEST_DOMAIN } from '../format/envelope.js';
 import { writeAllSync } from '../metadata/bootstrap-persist.js';
 import { comparePrePostStat, verifyRegularFileStat } from '../root/identity.js';
 import { isGenuineWriteCapability, isGenuineRecoveryCapability, type CapabilityCheck, type RecoveryCapability, type WriteCapability } from '../capabilities/authenticity.js';
@@ -59,14 +59,15 @@ export type LockOperation =
   | 'registry-index-rebuild'
   | 'dispose-wpr023d-temporary'
   | 'dispose-quarantined-temporary'
-  | 'dispose-conflicting-index';
+  | 'dispose-conflicting-index'
+  | 'break-writer-lock';
 
 function isGenuineLockAuthority(value: unknown): value is LockAuthority {
   return isGenuineWriteCapability(value) || isGenuineRecoveryCapability(value);
 }
 import type { LockResult, LockTimeSource, WriterLockRecord } from '../types.js';
 
-const { O_CREAT, O_EXCL, O_WRONLY, O_RDONLY, O_NOFOLLOW, O_DIRECTORY } = constants;
+const { O_CREAT, O_EXCL, O_WRONLY, O_RDONLY, O_NOFOLLOW, O_NONBLOCK, O_DIRECTORY } = constants;
 
 /** Lock-record format version (12.3 "lock version"). */
 export const LOCK_VERSION = '1' as const;
@@ -74,6 +75,25 @@ export const LOCK_VERSION = '1' as const;
 export const STORAGE_LOCK_ACTION_DIGEST_DOMAIN = 'PGAP-STORAGE-LOCK-ACTION-v1\u0000';
 /** Bounded lock-record byte cap (transient state; not a normative limit). */
 export const LOCK_RECORD_MAX_BYTES = 4096;
+
+// WP-8-J (12.3.1/ADR-033): recovery-break guard and lock-instance identity.
+/** Fixed recovery-break guard name under `locks/` (12.3.1; never a general writer lock). */
+export const RECOVERY_BREAK_GUARD_NAME = 'recovery-break.guard' as const;
+/** Guard record format version. */
+export const LOCK_GUARD_VERSION = '1' as const;
+/** Domain-separated lock-instance identity domain (non-authoritative binding; 12.3.1). */
+export const STORAGE_WRITER_LOCK_INSTANCE_DOMAIN = 'PGAP-STORAGE-WRITER-LOCK-INSTANCE-v1\u0000';
+
+/** Canonical recovery-break guard record (12.3.1). */
+export interface RecoveryBreakGuardRecord {
+  readonly guardVersion: '1';
+  readonly storeInstance: readonly { readonly kind: 'configuration' | 'store-records'; readonly dev: number; readonly ino: number }[];
+  /** Random per-acquisition nonce. */
+  readonly nonce: string;
+  /** Safe reference: domain digest of the trusted recovery action identity. */
+  readonly actionIdentityDigest: string;
+  readonly acquisitionTime: number;
+}
 
 /** Injectable fs/clock hooks for deterministic per-stage lock tests. */
 export interface LockHooks {
@@ -402,5 +422,320 @@ export function releaseWriterLock(input: {
     return { ok: false, outcome: 'not-owned', code: mapped.code, message: mapped.message };
   } finally {
     if (fd !== undefined) closeSync(fd);
+  }
+}
+
+// ── WP-8-J: recovery-break guard and instance-bound lock removal (12.3.1) ──
+
+/** Canonical recovery-break guard bytes (deterministic field order via JCS). */
+export function canonicalLockRecoveryGuardBytes(record: RecoveryBreakGuardRecord): string {
+  return jcsSerialize(record);
+}
+
+/** Build the normative recovery-break guard record (12.3.1/ADR-033). */
+export function buildLockRecoveryGuardRecord(input: {
+  readonly storeInstance: readonly { readonly kind: string; readonly dev: number; readonly ino: number }[];
+  readonly actionIdentity: string;
+  readonly timeSource: LockTimeSource;
+}): RecoveryBreakGuardRecord {
+  const nonce = randomBytes(16).toString('hex');
+  const actionIdentityDigest = computeDomainDigest(STORAGE_LOCK_ACTION_DIGEST_DOMAIN, input.actionIdentity);
+  if (!isValidDigestSyntax(actionIdentityDigest)) {
+    throw new TypeError('action identity digest failed syntax check');
+  }
+  return {
+    guardVersion: LOCK_GUARD_VERSION,
+    storeInstance: input.storeInstance.map((n) => ({ kind: n.kind as 'configuration' | 'store-records', dev: n.dev, ino: n.ino })),
+    nonce,
+    actionIdentityDigest,
+    acquisitionTime: input.timeSource.now(),
+  };
+}
+
+/**
+ * Deterministic non-authoritative lock-instance identity (12.3.1; ADR-033):
+ * domain digest over (store identity, fixed lock name, canonical lock-record
+ * digest). The random per-acquisition nonce makes the record digest unique
+ * per instance, so the instance identity is a stable non-secret binding for
+ * the trusted request and the recovery evidence. It grants no authority and
+ * never discloses the nonce.
+ */
+export function computeWriterLockInstanceIdentity(input: {
+  readonly storeInstance: readonly { readonly kind: string; readonly dev: number; readonly ino: number }[];
+  readonly lockRecordDigest: string;
+}): string {
+  const tuple = {
+    storeInstance: [...input.storeInstance]
+      .map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino }))
+      .sort((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0)),
+    lockName: 'writer.lock',
+    lockRecordDigest: input.lockRecordDigest,
+  };
+  const digest = computeDomainDigest(STORAGE_WRITER_LOCK_INSTANCE_DOMAIN, jcsSerialize(tuple));
+  return `pgw:r:${digest.slice('sha-256:'.length, 'sha-256:'.length + 32)}`;
+}
+
+/** Descriptor-bound no-follow read of one lock-like object with canonical parse. */
+function readLockObject(input: {
+  readonly path: string;
+  readonly serviceUid: number;
+}): { readonly ok: boolean; readonly raw?: string; readonly digest?: string; readonly dev?: number; readonly ino?: number; readonly nlink?: number; readonly code?: string; readonly message?: string } {
+  let fd: number | undefined;
+  try {
+    fd = openSync(input.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    const pre = fstatSync(fd);
+    if (!pre.isFile()) {
+      return { ok: false, code: 'ERR-STO-FTYPE-UNSUPPORTED', message: 'lock location is not a regular file' };
+    }
+    if (pre.uid !== input.serviceUid || (pre.mode & 0o777) !== 0o600) {
+      return { ok: false, code: 'ERR-STO-PERM-DENIED', message: 'lock object violates the store permission policy' };
+    }
+    if (pre.size > LOCK_RECORD_MAX_BYTES) {
+      return { ok: false, code: 'ERR-STO-LIMIT-EXCEEDED', message: 'lock object exceeds the bounded byte limit' };
+    }
+    const bytes = readFileSync(fd);
+    const post = fstatSync(fd);
+    const revalidated = comparePrePostStat(pre, post);
+    if (!revalidated.ok || post.size !== bytes.length) {
+      return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'lock object changed during descriptor-based read' };
+    }
+    const raw = bytes.toString('utf8');
+    let model: unknown;
+    try {
+      model = parseRawJson(raw, LOCK_RECORD_MAX_BYTES).model;
+    } catch {
+      return { ok: false, code: 'ERR-STO-MALFORMED', message: 'lock object is not canonical JSON' };
+    }
+    if (typeof model !== 'object' || model === null || Array.isArray(model) || jcsSerialize(model) !== raw) {
+      return { ok: false, code: 'ERR-STO-MALFORMED', message: 'lock object bytes are not canonical' };
+    }
+    return {
+      ok: true,
+      raw,
+      digest: computeDomainDigest(STORAGE_RECORD_BYTES_DIGEST_DOMAIN, raw),
+      dev: Number(pre.dev),
+      ino: Number(pre.ino),
+      nlink: Number(pre.nlink),
+    };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      return { ok: false, code: 'ERR-STO-NOT-FOUND', message: 'lock object is absent' };
+    }
+    if (code === 'ELOOP' || code === 'ENOTDIR' || code === 'EISDIR') {
+      return { ok: false, code: 'ERR-STO-FTYPE-UNSUPPORTED', message: 'lock location is not a regular file' };
+    }
+    return { ok: false, code: 'ERR-STO-IO-FAILURE', message: 'lock object could not be read' };
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/**
+ * Acquire the recovery-break guard (12.3.1; LOK-020/ADR-033): exclusive
+ * creation of `locks/recovery-break.guard` with a canonical guard record,
+ * file fsync, and locks-directory fsync. The guard cannot coexist with
+ * another lock-break attempt (EEXIST fails closed) and is never acquired by
+ * writers. The caller's capability must verify the exact
+ * `break-writer-lock` operation.
+ */
+export function acquireRecoveryBreakGuard(input: {
+  readonly capability: LockAuthority;
+  readonly lockPath: string;
+  readonly locksDirPath: string;
+  readonly storeInstance: readonly { readonly kind: string; readonly dev: number; readonly ino: number }[];
+  readonly actionIdentity: string;
+  readonly timeSource: LockTimeSource;
+  readonly hooks?: LockHooks;
+}): LockResult {
+  if (!isGenuineLockAuthority(input.capability)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery-break guard capability operand is not genuine' };
+  }
+  const check = (input.capability as { verify(op: string): CapabilityCheck }).verify('break-writer-lock');
+  if (!check.ok) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'capability is not usable at the recovery-break guard boundary' };
+  }
+  const serviceUid = input.capability.binding.serviceUid;
+  const record = buildLockRecoveryGuardRecord({
+    storeInstance: input.storeInstance,
+    actionIdentity: input.actionIdentity,
+    timeSource: input.timeSource,
+  });
+  const bytes = Buffer.from(canonicalLockRecoveryGuardBytes(record), 'utf8');
+  if (bytes.length > LOCK_RECORD_MAX_BYTES) {
+    return { ok: false, code: 'ERR-STO-LIMIT-EXCEEDED', message: 'recovery-break guard record exceeds the bounded size' };
+  }
+  const hooks = input.hooks ?? {};
+  const syncFile = hooks.fsyncFile ?? fsyncSync;
+  const writeBytes = hooks.write ?? ((fd: number, buf: Uint8Array, off: number, len: number, pos: number | null) => writeSync(fd, buf, off, len, pos));
+  const unlinkPath = hooks.unlink ?? ((p: string) => unlinkSync(p));
+  let fd: number | undefined;
+  try {
+    fd = openSync(input.lockPath, O_CREAT | O_EXCL | O_NOFOLLOW | O_WRONLY, 0o600);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+      return { ok: false, outcome: 'contention', code: 'ERR-STO-LOCK-UNAVAILABLE', message: 'another lock-recovery break is in progress; the recovery-break guard is held' };
+    }
+    const mapped = mapLockError((err as NodeJS.ErrnoException).code);
+    return { ok: false, outcome: 'foreign-lock', code: mapped.code, message: mapped.message };
+  }
+  const guardFd = fd;
+  try {
+    const preStat = fstatSync(guardFd);
+    const verified = verifyRegularFileStat(preStat, serviceUid);
+    if (!verified.ok) {
+      unlinkPath(input.lockPath);
+      return { ok: false, code: verified.code, message: verified.message };
+    }
+    if (!writeAllSync(bytes, (buf, off, len, pos) => writeBytes(guardFd, buf, off, len, pos))) {
+      unlinkPath(input.lockPath);
+      return { ok: false, code: 'ERR-STO-DURABILITY', message: 'recovery-break guard write did not complete' };
+    }
+    const postStat = fstatSync(guardFd);
+    if (postStat.size !== bytes.length) {
+      unlinkPath(input.lockPath);
+      return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'recovery-break guard size does not match canonical bytes' };
+    }
+    syncFile(guardFd);
+    closeSync(guardFd);
+    fd = undefined;
+    fsyncDirectory(input.locksDirPath, hooks);
+    return { ok: true, outcome: 'acquired', record: record as unknown as WriterLockRecord };
+  } catch {
+    try {
+      unlinkPath(input.lockPath);
+    } catch {
+      // ignore: recovery classifies the leftover guard (12.3.1).
+    }
+    return { ok: false, outcome: 'foreign-lock', code: 'ERR-STO-IO-FAILURE', message: 'recovery-break guard acquisition could not be completed' };
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/**
+ * Identity-bound guard release (12.3.1): verify the guard record's nonce and
+ * store-instance identity, unlink the exact guard name, and fsync the locks
+ * directory. A guard that cannot be positively verified as the caller's own
+ * is never touched.
+ */
+export function releaseRecoveryBreakGuard(input: {
+  readonly capability: LockAuthority;
+  readonly lockPath: string;
+  readonly locksDirPath: string;
+  readonly expected: { readonly nonce: string; readonly storeInstance: readonly { readonly kind: string; readonly dev: number; readonly ino: number }[] };
+  readonly hooks?: LockHooks;
+}): LockResult {
+  if (!isGenuineLockAuthority(input.capability)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery-break guard capability operand is not genuine' };
+  }
+  const check = (input.capability as { verify(op: string): CapabilityCheck }).verify('break-writer-lock');
+  if (!check.ok) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'capability is not usable at the recovery-break guard release boundary' };
+  }
+  const serviceUid = input.capability.binding.serviceUid;
+  const read = readLockObject({ path: input.lockPath, serviceUid });
+  if (!read.ok || read.raw === undefined) {
+    return { ok: false, outcome: 'not-owned', code: read.code ?? 'ERR-STO-INTEGRITY', message: read.message ?? 'recovery-break guard could not be verified' };
+  }
+  let model: unknown;
+  try {
+    model = parseRawJson(read.raw, LOCK_RECORD_MAX_BYTES).model;
+  } catch {
+    return { ok: false, outcome: 'not-owned', code: 'ERR-STO-MALFORMED', message: 'recovery-break guard record is not canonical JSON' };
+  }
+  const record = model as Readonly<Record<string, unknown>>;
+  if (record['guardVersion'] !== LOCK_GUARD_VERSION) {
+    return { ok: false, outcome: 'not-owned', code: 'ERR-STO-MALFORMED', message: 'recovery-break guard version is not supported' };
+  }
+  if (record['nonce'] !== input.expected.nonce) {
+    return { ok: false, outcome: 'not-owned', code: 'ERR-STO-LOCK-UNAVAILABLE', message: 'recovery-break guard nonce does not match the caller acquisition' };
+  }
+  const stored = record['storeInstance'];
+  if (!Array.isArray(stored) || stored.length !== input.expected.storeInstance.length) {
+    return { ok: false, outcome: 'not-owned', code: 'ERR-STO-LOCK-UNAVAILABLE', message: 'recovery-break guard store instance does not match' };
+  }
+  for (let i = 0; i < stored.length; i++) {
+    const s = stored[i] as Readonly<Record<string, unknown>> | null | undefined;
+    const e = input.expected.storeInstance[i]!;
+    if (s === null || typeof s !== 'object' || s['kind'] !== e.kind || s['dev'] !== e.dev || s['ino'] !== e.ino) {
+      return { ok: false, outcome: 'not-owned', code: 'ERR-STO-LOCK-UNAVAILABLE', message: 'recovery-break guard store instance does not match' };
+    }
+  }
+  const unlinkPath = input.hooks?.unlink ?? ((p: string) => unlinkSync(p));
+  unlinkPath(input.lockPath);
+  fsyncDirectory(input.locksDirPath, input.hooks ?? {});
+  return { ok: true, outcome: 'released' };
+}
+
+/**
+ * Instance-bound writer-lock removal (12.3.1; LOK-021/ADR-033): descriptor
+ * read of the exact lock name, canonical parse, and the FINAL recheck of
+ * the exact lock-record digest, descriptor identity (dev/ino), and link
+ * count against the verified facts; then unlink of exactly that one name,
+ * absence verification, and locks-directory fsync. A replacement lock
+ * (different digest — the per-acquisition nonce makes byte equality
+ * impossible for a new acquisition), a reappearing name, a malformed,
+ * foreign, or changed object fails closed before any removal or after it
+ * (absence check). The caller holds the recovery-break guard for the whole
+ * break, so no second breaker can span this window.
+ */
+export function unlinkVerifiedWriterLock(input: {
+  readonly capability: LockAuthority;
+  readonly lockPath: string;
+  readonly locksDirPath: string;
+  readonly serviceUid: number;
+  /** Verified lock facts from the current-state re-verification (digest + descriptor). */
+  readonly expected: { readonly recordDigest: string; readonly dev: number; readonly ino: number; readonly nlink: number };
+  readonly hooks?: LockHooks;
+}): LockResult {
+  if (!isGenuineLockAuthority(input.capability)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'lock-removal capability operand is not genuine' };
+  }
+  const check = (input.capability as { verify(op: string): CapabilityCheck }).verify('break-writer-lock');
+  if (!check.ok) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'capability is not usable at the lock-removal boundary' };
+  }
+  const read = readLockObject({ path: input.lockPath, serviceUid: input.serviceUid });
+  if (!read.ok) {
+    return { ok: false, outcome: 'not-owned', code: read.code ?? 'ERR-STO-INTEGRITY', message: read.message ?? 'writer lock could not be re-verified before removal' };
+  }
+  if (read.digest !== input.expected.recordDigest) {
+    return { ok: false, outcome: 'not-owned', code: 'ERR-STO-INTEGRITY', message: 'writer lock record digest does not match the adjudicated instance; fail closed' };
+  }
+  if (read.dev !== input.expected.dev || read.ino !== input.expected.ino) {
+    return { ok: false, outcome: 'not-owned', code: 'ERR-STO-INTEGRITY', message: 'writer lock inode changed since re-verification; fail closed' };
+  }
+  if (read.nlink !== input.expected.nlink) {
+    return { ok: false, outcome: 'not-owned', code: 'ERR-STO-INTEGRITY', message: 'writer lock link count changed since re-verification; fail closed' };
+  }
+  const unlinkPath = input.hooks?.unlink ?? ((p: string) => unlinkSync(p));
+  try {
+    unlinkPath(input.lockPath);
+  } catch (err) {
+    const mapped = mapLockError((err as NodeJS.ErrnoException).code);
+    return { ok: false, outcome: 'not-owned', code: mapped.code, message: mapped.message };
+  }
+  // Absence verification: the exact name must no longer resolve. A
+  // reappearing or replaced name fails closed (LOK-021): a legitimate new
+  // writer lock created after this removal is never removed again.
+  const after = readLockObject({ path: input.lockPath, serviceUid: input.serviceUid });
+  if (after.ok) {
+    return { ok: false, outcome: 'not-owned', code: 'ERR-STO-INTEGRITY', message: 'writer lock name reappeared immediately after removal; fail closed' };
+  }
+  if (after.code !== 'ERR-STO-NOT-FOUND') {
+    return { ok: false, outcome: 'not-owned', code: after.code ?? 'ERR-STO-INTEGRITY', message: 'writer lock name state is uncertain after removal; fail closed' };
+  }
+  return { ok: true, outcome: 'released' };
+}
+
+/** fsync the locks directory descriptor-bound (12.3.1; the composition
+ * boundary orders this after the unlink and before evidence publication). */
+export function fsyncLocksDirectory(input: { readonly locksDirPath: string; readonly serviceUid: number; readonly hooks?: LockHooks }): LockResult {
+  try {
+    fsyncDirectory(input.locksDirPath, input.hooks ?? {});
+    return { ok: true, outcome: 'released' };
+  } catch {
+    return { ok: false, outcome: 'not-owned', code: 'ERR-STO-IO-FAILURE', message: 'locks directory fsync failed' };
   }
 }

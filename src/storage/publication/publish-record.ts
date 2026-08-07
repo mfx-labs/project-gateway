@@ -699,7 +699,8 @@ export function publishRecoveryBoundRecord(input: {
   // Same deterministic per-operation temp ordinals as the recovery evidence
   // path: evidence = base, audit = base + 1 (2/3 orphan-removal, 4/5
   // quarantine-temporary, 6/7 audit-reconstruction, 8/9 index rebuild,
-  // 10/11 quarantine disposition, 12/13 index disposition).
+  // 10/11 quarantine disposition, 12/13 index disposition, 14/15 lock
+  // recovery).
   const ordinalBase =
     binding.operation === 'quarantine-temporary'
       ? 4
@@ -711,7 +712,9 @@ export function publishRecoveryBoundRecord(input: {
             ? 10
             : binding.operation === 'dispose-conflicting-index'
               ? 12
-              : 2;
+              : binding.operation === 'break-writer-lock'
+                ? 14
+                : 2;
   const ordinal = binding.role === 'recovery-authorized-write-audit' ? ordinalBase + 1 : ordinalBase;
   const tmpPath = `${tmpDirPath}/${publicationTempName(capability.binding.actionIdentity, ordinal)}`;
   // 7. Provision only the exact bound class/shard or index family/shard

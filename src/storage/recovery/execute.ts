@@ -45,12 +45,13 @@ import { runRegistrySnapshotScan } from '../registry/compose.js';
 import { buildRegistryIndex, parseRegistryIndex, registryIndexManifest, REGISTRY_INDEX_MAX_ENTRIES } from '../registry/index-model.js';
 import { probeRegistryEntrySet, readRegistryIndexFile, compareManifestAgainstProbe } from '../registry/index-store.js';
 import { publishRegistryIndex } from './index-rebuild.js';
-import { computeScanGeneration, recordObservationId, auditEventsForRecord, reconstructionEvidenceForTarget, temporaryObservationId, quarantineObservationId, indexObservationId, currentTemporaryObservation, currentQuarantineObservation, currentIndexObservation, recomputeSurfaceGeneration, isPublicationTemporaryName } from './scan.js';
+import { computeScanGeneration, recordObservationId, auditEventsForRecord, reconstructionEvidenceForTarget, temporaryObservationId, quarantineObservationId, indexObservationId, currentTemporaryObservation, currentQuarantineObservation, currentIndexObservation, currentLockObservation, lockObservationId, recomputeSurfaceGeneration, isPublicationTemporaryName } from './scan.js';
 import { reverifyOrphanTwin, reverifyQuarantineSource, reverifyTwinOnly, reverifyReconstructionTarget } from './reverify.js';
 import { removeOrphanTemporary } from './cleanup.js';
 import { executeQuarantineTemporary } from './quarantine.js';
-import { buildQuarantineEvidenceRecord, buildRecoveryEvidenceRecord, computeQuarantineEvidenceIdentity, computeQuarantineTemporaryId, publishRecoveryEvidence, verifyExistingRecoveryEvidence, isoFromEpochMs, buildDispositionEvidenceRecord, computeDispositionEvidenceIdentity, verifyExistingDispositionEvidence } from './evidence.js';
+import { buildQuarantineEvidenceRecord, buildRecoveryEvidenceRecord, computeQuarantineEvidenceIdentity, computeQuarantineTemporaryId, publishRecoveryEvidence, verifyExistingRecoveryEvidence, isoFromEpochMs, buildDispositionEvidenceRecord, computeDispositionEvidenceIdentity, verifyExistingDispositionEvidence, buildLockRecoveryEvidenceRecord, computeLockRecoveryEvidenceIdentity, verifyExistingLockRecoveryEvidence } from './evidence.js';
 import { unlinkVerifiedTarget, fsyncContainingDirectory } from './disposition.js';
+import { acquireRecoveryBreakGuard, releaseRecoveryBreakGuard, unlinkVerifiedWriterLock, fsyncLocksDirectory, RECOVERY_BREAK_GUARD_NAME } from '../locks/lock.js';
 import { buildRecoveryAuditReconstructionEvent, AUTHORIZED_WRITE_EVENT_KIND, RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND } from '../audit/write-audit.js';
 import {
   buildAuditReconstructionEvidenceRecord,
@@ -92,7 +93,7 @@ function validateAction(input: RecoveryMutationRequest): { readonly ok: boolean;
   if (typeof action !== 'object' || action === null) {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery action is malformed' };
   }
-  if (action.category !== 'orphan-removal' && action.category !== 'quarantine-temporary' && action.category !== 'audit-reconstruction' && action.category !== 'registry-index-rebuild' && action.category !== 'dispose-wpr023d-temporary' && action.category !== 'dispose-quarantined-temporary' && action.category !== 'dispose-conflicting-index') {
+  if (action.category !== 'orphan-removal' && action.category !== 'quarantine-temporary' && action.category !== 'audit-reconstruction' && action.category !== 'registry-index-rebuild' && action.category !== 'dispose-wpr023d-temporary' && action.category !== 'dispose-quarantined-temporary' && action.category !== 'dispose-conflicting-index' && action.category !== 'break-writer-lock') {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery action category is outside the supported vocabulary; no generic quarantine authority exists' };
   }
   if (action.category === 'audit-reconstruction') {
@@ -140,6 +141,30 @@ function validateAction(input: RecoveryMutationRequest): { readonly ok: boolean;
     }
     if (typeof action.expectedRegistrySurfaceGeneration !== 'string' || !isValidDigestSyntax(action.expectedRegistrySurfaceGeneration)) {
       return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected registry surface generation is malformed' };
+    }
+    return { ok: true };
+  }
+  if (action.category === 'break-writer-lock') {
+    // WP-8-J (12.3.1/ADR-033): the request binds ONLY non-secret immutable
+    // facts — the lock-record digest, the deterministic lock-instance
+    // identity, the deterministic observation identity, and the
+    // generation/surface tokens. No raw path, no nonce, no PID, no
+    // liveness/age field, no callback, no plan action is accepted (those
+    // fields do not exist in the action type).
+    if (typeof action.expectedLockRecordDigest !== 'string' || !isValidDigestSyntax(action.expectedLockRecordDigest)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected lock-record digest is malformed' };
+    }
+    if (typeof action.expectedLockInstanceId !== 'string' || !/^pgw:r:[0-9a-f]{32}$/.test(action.expectedLockInstanceId)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected lock-instance identity is malformed' };
+    }
+    if (typeof action.expectedLockObservationId !== 'string' || action.expectedLockObservationId.length === 0) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected lock observation identity is malformed' };
+    }
+    if (typeof action.expectedGeneration !== 'string' || !isValidDigestSyntax(action.expectedGeneration)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected scan generation is malformed' };
+    }
+    if (typeof action.expectedSurfaceGeneration !== 'string' || !isValidDigestSyntax(action.expectedSurfaceGeneration)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected surface generation is malformed' };
     }
     return { ok: true };
   }
@@ -1221,6 +1246,334 @@ function executeRegistryIndexRebuildMutation(
  * identity/type/digest changed, or conflicting evidence → fail closed;
  * repeated execution is idempotent. The target is left byte-identical.
  */
+/**
+ * WP-8-J lock-recovery mutation flow (12.3.1; LOK-019…022; ADR-033): the
+ * externally adjudicated `break-writer-lock` operation. The trusted
+ * recovery action explicitly adjudicates the exact currently observed
+ * writer-lock instance as breakable; this flow performs NO liveness
+ * inference (no PID/start-time/boot/age authorization, no
+ * subprocess, no /proc). Serialization: the recovery-break guard
+ * (`locks/recovery-break.guard`) is acquired exclusively BEFORE the
+ * current lock re-verification (the writer lock itself is the target and
+ * cannot serialize its own break), the writer lock is re-verified after
+ * guard acquisition, removal binds the exact lock-record digest and
+ * lock-instance identity, and the guard is released only after durable
+ * evidence. A legitimate new writer lock created at the same name after
+ * the adjudicated lock is gone is never removed (digest-bound recheck and
+ * post-unlink absence check fail closed; the guard prevents a second
+ * breaker from spanning another breaker's unlink).
+ */
+function executeLockRecoveryMutation(
+  request: RecoveryMutationRequest,
+  action: RecoveryMutationRequest['action'] & { category: 'break-writer-lock' },
+  hooks: NonNullable<RecoveryMutationRequest['hooks']>,
+): RecoveryMutationResult {
+  const expectedLockRecordDigest = action.expectedLockRecordDigest as string;
+  const expectedLockInstanceId = action.expectedLockInstanceId as string;
+  if (typeof expectedLockRecordDigest !== 'string' || typeof expectedLockInstanceId !== 'string') {
+    return failResult('ERR-STO-REQ-INVALID', 'lock-recovery request is missing a required instance binding');
+  }
+  const inputResult = createTrustedRecoveryRequest(
+    request.trustedConfiguration,
+    request.recoveryActionProvenance,
+    { locator: request.locator, serviceUid: request.serviceUid, forbiddenRoots: request.forbiddenRoots, limitProfile: request.limitProfile },
+  );
+  if (!inputResult.ok || inputResult.request === undefined) {
+    const code = inputResult.reason === 'not-genuine-configuration' || inputResult.reason === 'not-genuine-action-provenance' || inputResult.reason === 'configuration-identity-mismatch'
+      ? 'ERR-STO-CONFIG-UNAVAILABLE'
+      : 'ERR-STO-REQ-INVALID';
+    return failResult(code, inputResult.message ?? 'trusted recovery request could not be established');
+  }
+  const store = verifyStoreInstance({
+    locator: request.locator,
+    serviceUid: request.serviceUid,
+    forbiddenRoots: request.forbiddenRoots,
+    configurationIdentity: (request.trustedConfiguration as { readonly identity: string }).identity,
+    configurationVersion: (request.trustedConfiguration as { readonly configurationVersion: string }).configurationVersion,
+    limitProfile: request.limitProfile,
+  });
+  if (!store.ok || store.storeInstance === undefined) {
+    return failResult(store.code ?? 'ERR-STO-INTEGRITY', store.message ?? 'store revalidation failed');
+  }
+  const storeInstance = store.storeInstance;
+  const recoveryCapability = createRecoveryCapability({ trustedRecoveryRequest: inputResult.request, storeInstance });
+  if (recoveryCapability === undefined) {
+    return failResult('ERR-STO-REQ-INVALID', 'recovery capability could not be issued');
+  }
+  let capability: RecoveryCapability | undefined = recoveryCapability;
+  try {
+    const profile = storeInstance.limitProfile;
+    const recomputedGeneration = computeScanGeneration({
+      storeInstance,
+      mode: 'recovery',
+      entryLimit: profile['recoveryScanEntries'] ?? 1024 * 1024,
+      byteLimit: profile['totalScanBytes'] ?? 4 * 1024 * 1024 * 1024,
+      failClosed: true,
+    });
+    if (recomputedGeneration !== action.expectedGeneration) {
+      return failResult('ERR-STO-REQ-INVALID', 'assessment scan generation does not match the current store and limits');
+    }
+    const storeRoot = `${storeInstance.parentIdentity.canonicalPath}/store-v1`;
+    const surface = recomputeSurfaceGeneration({ namespaceRoot: storeRoot, serviceUid: request.serviceUid, mode: 'recovery' });
+    if (!surface.ok || surface.generation === undefined) {
+      return failResult(surface.code ?? 'ERR-STO-IO-FAILURE', surface.message ?? 'surface structure could not be re-read');
+    }
+    if (surface.generation !== action.expectedSurfaceGeneration) {
+      return failResult('ERR-STO-ROOT-IDENTITY-CHANGED', 'store structure changed since the recovery assessment');
+    }
+    const bound = capability.assertExpected({
+      storeInstance,
+      configurationIdentity: storeInstance.configurationIdentity,
+      serviceUid: request.serviceUid,
+      limitProfile: storeInstance.limitProfile,
+    });
+    if (!bound.ok) {
+      return failResult('ERR-STO-REQ-INVALID', 'recovery capability binding mismatch');
+    }
+    const locksDir = `${storeRoot}/locks`;
+    const guardPath = `${locksDir}/${RECOVERY_BREAK_GUARD_NAME}`;
+    // Serialization: the recovery-break guard (12.3.1; LOK-020). The
+    // writer lock itself is the target and cannot serialize its own
+    // break; the guard is a distinct exclusive artifact that cannot
+    // coexist with another lock-break attempt and is never a general
+    // writer lock.
+    hooks.stage?.('before-recovery-break-guard');
+    const guard = acquireRecoveryBreakGuard({
+      capability,
+      lockPath: guardPath,
+      locksDirPath: locksDir,
+      storeInstance: storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })),
+      actionIdentity: inputResult.request.actionIdentity,
+      timeSource: request.timeSource,
+      hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+    });
+    if (!guard.ok || guard.record === undefined) {
+      return failResult(guard.code ?? 'ERR-STO-LOCK-UNAVAILABLE', guard.message ?? 'recovery-break guard could not be acquired');
+    }
+    const guardRecord = guard.record as unknown as { readonly nonce: string };
+    hooks.stage?.('after-recovery-break-guard');
+    const release = (): RecoveryMutationResult => {
+      hooks.stage?.('before-recovery-break-guard-release');
+      const released = releaseRecoveryBreakGuard({
+        capability,
+        lockPath: guardPath,
+        locksDirPath: locksDir,
+        expected: { nonce: guardRecord.nonce, storeInstance: storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })) },
+        hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+      });
+      if (!released.ok) {
+        return failResult('ERR-STO-RECOVERY-FAILED', 'recovery-break guard release failed; the guard remains for recovery');
+      }
+      return { ok: true };
+    };
+    const failClosed = (code: string, message: string): RecoveryMutationResult => {
+      const released = release();
+      if (!released.ok) return released;
+      return failResult(code, message);
+    };
+    const recordBytes = profile['recordBytes'] ?? 1024 * 1024;
+    const expectedObservationId = action.expectedLockObservationId as string;
+
+    // Current writer-lock re-verification (12.3.1 §5): the committed
+    // scanner's classification against the CURRENT state. No liveness
+    // inference anywhere.
+    const current = currentLockObservation({
+      namespaceRoot: storeRoot,
+      serviceUid: request.serviceUid,
+      expectedStoreInstance: storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })),
+    });
+    if (!current.ok) {
+      // Absent lock: the externally adjudicated instance is not present.
+      // Matching durable evidence resolves `already-completed`; absence
+      // without evidence fails closed (no inference that the break
+      // happened; 12.3.1/LOK-022).
+      if (current.code === 'ERR-STO-NOT-FOUND') {
+        const evidenceId = recomputedLockEvidenceId(storeInstance, action, expectedLockRecordDigest, expectedLockInstanceId);
+        const existing = verifyExistingLockRecoveryEvidence({
+          namespaceRoot: storeRoot,
+          serviceUid: request.serviceUid,
+          byteLimit: recordBytes,
+          evidenceId,
+          recoveryOperation: 'break-writer-lock',
+          lockRecordDigest: expectedLockRecordDigest,
+          lockInstanceId: expectedLockInstanceId,
+          observationId: expectedObservationId,
+        });
+        if (!existing.ok) {
+          return failClosed(existing.code ?? 'ERR-STO-INTEGRITY', existing.message ?? 'existing lock-recovery evidence could not be verified');
+        }
+        if (existing.matches) {
+          const released = release();
+          if (!released.ok) return released;
+          return { ok: true, outcome: 'already-completed', evidenceId };
+        }
+      }
+      return failClosed(current.code ?? 'ERR-STO-INTEGRITY', current.message ?? 'writer lock could not be re-verified');
+    }
+    if (current.observation === undefined) {
+      return failClosed('ERR-STO-INTEGRITY', 'writer lock re-verification produced no observation');
+    }
+    const lock = current.observation;
+    if (lock.classification !== 'writer-lock-present' || lock.lock?.storeInstanceMatches !== true) {
+      return failClosed('ERR-STO-INTEGRITY', 'writer lock is not the exact canonical lock of this store; fail closed');
+    }
+    if (lock.lockRecordDigest !== expectedLockRecordDigest || lock.lockInstanceId !== expectedLockInstanceId) {
+      return failClosed('ERR-STO-INTEGRITY', 'writer lock instance changed since the external adjudication; fail closed');
+    }
+    const lockStat = lock.stat;
+    if (lockStat === undefined || lockStat.nlink !== 1) {
+      return failClosed('ERR-STO-INTEGRITY', 'writer lock descriptor facts are unavailable or contested; fail closed');
+    }
+    hooks.stage?.('after-lock-target-verification');
+    hooks.stage?.('after-lock-instance-recheck');
+
+    // Evidence-state check BEFORE removal (LOK-022): matching evidence with
+    // the exact lock still present is an integrity inconsistency; no
+    // repair-by-guessing.
+    const evidenceId = recomputedLockEvidenceId(storeInstance, action, expectedLockRecordDigest, expectedLockInstanceId);
+    const existingEvidence = verifyExistingLockRecoveryEvidence({
+      namespaceRoot: storeRoot,
+      serviceUid: request.serviceUid,
+      byteLimit: recordBytes,
+      evidenceId,
+      recoveryOperation: 'break-writer-lock',
+      lockRecordDigest: expectedLockRecordDigest,
+      lockInstanceId: expectedLockInstanceId,
+      observationId: expectedObservationId,
+    });
+    if (!existingEvidence.ok) {
+      return failClosed(existingEvidence.code ?? 'ERR-STO-INTEGRITY', existingEvidence.message ?? 'existing lock-recovery evidence could not be verified');
+    }
+    if (existingEvidence.matches) {
+      return failClosed('ERR-STO-INTEGRITY', 'lock-recovery evidence exists while the exact adjudicated writer lock is still present; integrity inconsistency');
+    }
+
+    // Exact instance-bound removal: descriptor read + canonical parse +
+    // FINAL recheck of the exact lock-record digest and descriptor
+    // identity, unlink of exactly that one name, absence verification.
+    const lockPath = `${locksDir}/writer.lock`;
+    hooks.stage?.('before-lock-unlink');
+    const unlinked = unlinkVerifiedWriterLock({
+      capability,
+      lockPath,
+      locksDirPath: locksDir,
+      serviceUid: request.serviceUid,
+      expected: { recordDigest: expectedLockRecordDigest, dev: lockStat.dev, ino: lockStat.ino, nlink: lockStat.nlink },
+      hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+    });
+    if (!unlinked.ok) {
+      return failClosed(unlinked.code ?? 'ERR-STO-RECOVERY-FAILED', unlinked.message ?? 'writer lock removal failed');
+    }
+    hooks.stage?.('after-lock-unlink');
+    hooks.stage?.('before-locks-directory-fsync');
+    const synced = fsyncLocksDirectory({ locksDirPath: locksDir, serviceUid: request.serviceUid, hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory } });
+    if (!synced.ok) {
+      return failClosed(synced.code ?? 'ERR-STO-DURABILITY', synced.message ?? 'locks directory fsync failed after removal');
+    }
+    hooks.stage?.('after-locks-directory-fsync');
+
+    // Durable lock-recovery evidence (12.3.1; LOK-010): StoreEvidenceRecord
+    // with the existing recovery-evidence kind, the exact break-writer-lock
+    // operation, and the domain-separated identity; published through the
+    // WP-8F exact-record permit pipeline followed by the evidence's
+    // mechanical authorized-write audit.
+    const evidenceBuilt = buildLockRecoveryEvidenceRecord({
+      storeInstance,
+      actionIdentity: inputResult.request!.actionIdentity,
+      evidenceKind: 'recovery-evidence',
+      recoveryOperation: 'break-writer-lock',
+      lockRecordDigest: expectedLockRecordDigest,
+      lockInstanceId: expectedLockInstanceId,
+      observationId: expectedObservationId,
+      generation: recomputedGeneration,
+      surfaceGeneration: surface.generation as string,
+      outcome: 'lock-broken',
+      createdAt: isoFromEpochMs(request.timeSource.now()),
+    });
+    if (!evidenceBuilt.ok || evidenceBuilt.record === undefined) {
+      return failClosed(evidenceBuilt.code ?? 'ERR-STO-INTERNAL-INVARIANT', evidenceBuilt.message ?? 'lock-recovery evidence could not be constructed');
+    }
+    const evidenceDerived = deriveRecordRelativePath('store-evidence-record', evidenceBuilt.record.recordId);
+    const evidenceAuditDerived = deriveRecordRelativePath('authoritative-audit-event', evidenceBuilt.record.auditEventId);
+    if (!evidenceDerived.ok || !evidenceAuditDerived.ok) {
+      return failClosed('ERR-STO-CONTAINMENT-DENIED', 'lock-recovery evidence path derivation failed');
+    }
+    hooks.stage?.('before-lock-evidence-publication');
+    const evidencePublished = publishRecoveryEvidence({
+      capability,
+      storeInstance,
+      namespaceRoot: storeRoot,
+      serviceUid: request.serviceUid,
+      byteLimit: recordBytes,
+      record: evidenceBuilt.record,
+      operation: 'break-writer-lock',
+      hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+    });
+    if (!evidencePublished.ok) {
+      return failClosed(evidencePublished.code ?? 'ERR-STO-RECOVERY-FAILED', evidencePublished.message ?? 'lock-recovery evidence is not durable');
+    }
+    hooks.stage?.('after-lock-evidence-publication');
+    hooks.stage?.('after-lock-evidence-audit-publication');
+    // Verify every required durability point (12.3.1): evidence, evidence
+    // audit, and the writer-lock name's absence.
+    const evidencePoint = verifyObjectBytesAt({ path: `${storeRoot}/${evidenceDerived.relativePath}`, serviceUid: request.serviceUid, byteLimit: recordBytes });
+    if (!evidencePoint.ok || evidencePoint.digest !== evidenceBuilt.record.digest) {
+      return failClosed('ERR-STO-DURABILITY', 'lock-recovery evidence durability point is not verified');
+    }
+    const evidenceAuditPoint = verifyObjectBytesAt({ path: `${storeRoot}/${evidenceAuditDerived.relativePath}`, serviceUid: request.serviceUid, byteLimit: recordBytes });
+    if (!evidenceAuditPoint.ok || evidenceAuditPoint.digest !== evidenceBuilt.record.auditDigest) {
+      return failClosed('ERR-STO-DURABILITY', 'lock-recovery evidence audit durability point is not verified');
+    }
+    const lockGone = verifyObjectBytesAt({ path: lockPath, serviceUid: request.serviceUid, byteLimit: recordBytes });
+    if (lockGone.ok) {
+      return failClosed('ERR-STO-INTEGRITY', 'writer lock name reappeared after removal; fail closed');
+    }
+    if (lockGone.code !== 'ERR-STO-NOT-FOUND') {
+      return failClosed(lockGone.code ?? 'ERR-STO-INTEGRITY', lockGone.message ?? 'writer lock absence could not be verified after removal');
+    }
+    const beforeSuccess = capability.assertExpected({
+      storeInstance,
+      configurationIdentity: storeInstance.configurationIdentity,
+      serviceUid: request.serviceUid,
+      limitProfile: storeInstance.limitProfile,
+    });
+    if (!beforeSuccess.ok) {
+      const released = release();
+      if (!released.ok) return released;
+      return failResult('ERR-STO-DURABILITY', 'capability invalidated before acknowledgement; lock recovery is durable');
+    }
+    const rootRevalidated = revalidateParentIdentity(storeInstance.parentIdentity, request.serviceUid);
+    if (!rootRevalidated.ok) {
+      const released = release();
+      if (!released.ok) return released;
+      return failResult(rootRevalidated.code ?? 'ERR-STO-ROOT-IDENTITY-CHANGED', rootRevalidated.message ?? 'trusted parent identity changed');
+    }
+    const released = release();
+    if (!released.ok) return released;
+    return { ok: true, outcome: 'lock-broken', evidenceId: evidenceBuilt.record.recordId };
+  } finally {
+    capability?.dispose();
+  }
+}
+
+/** Deterministic lock-recovery evidence identity for the request bindings (12.3.1; ADR-033). */
+function recomputedLockEvidenceId(
+  storeInstance: VerifiedStoreInstance,
+  action: RecoveryMutationRequest['action'] & { category: 'break-writer-lock' },
+  lockRecordDigest: string,
+  lockInstanceId: string,
+): string {
+  return computeLockRecoveryEvidenceIdentity({
+    storeInstance,
+    evidenceKind: 'recovery-evidence',
+    recoveryOperation: 'break-writer-lock',
+    lockRecordDigest,
+    lockInstanceId,
+    observationId: (action.expectedLockObservationId as string | undefined) ?? '',
+    outcome: 'lock-broken',
+  });
+}
+
 function executeDispositionAdjudication(
   request: RecoveryMutationRequest,
   action: RecoveryMutationRequest['action'] & { category: 'dispose-wpr023d-temporary' | 'dispose-quarantined-temporary' | 'dispose-conflicting-index' },
@@ -1735,6 +2088,14 @@ export function executeRecoveryMutation(request: RecoveryMutationRequest): Recov
   const hooks = request.hooks ?? {};
   if (request.action.category === 'registry-index-rebuild') {
     return executeRegistryIndexRebuildMutation(request, request.action as RecoveryMutationRequest['action'] & { category: 'registry-index-rebuild' }, hooks);
+  }
+  if (request.action.category === 'break-writer-lock') {
+    // The expected lock observation identity must match the deterministic
+    // writer-lock observation identity of the committed scanner (12.3.1).
+    if (request.action.expectedLockObservationId !== lockObservationId()) {
+      return failResult('ERR-STO-REQ-INVALID', 'expected lock observation identity does not match the scanned writer lock');
+    }
+    return executeLockRecoveryMutation(request, request.action as RecoveryMutationRequest['action'] & { category: 'break-writer-lock' }, hooks);
   }
   if (
     request.action.category === 'dispose-wpr023d-temporary' ||

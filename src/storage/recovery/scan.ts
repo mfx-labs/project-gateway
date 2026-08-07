@@ -113,7 +113,7 @@ import { verifyNamespaceRootIdentity } from '../read/read-record.js';
 import { classifyCandidate, extractEnvelopeFacts, type CandidateFacts } from '../registry/classify.js';
 import { parseRegistryIndex, computeRegistryIndexRoots, REGISTRY_INDEX_MODEL_VERSION, REGISTRY_INDEX_MAX_ENTRIES, REGISTRY_INDEX_FILENAME_RE, validateRegistryIndexSelfConsistency, type ParsedRegistryIndex } from '../registry/index-model.js';
 import { parseLockRecordFacts } from './assess.js';
-import { LOCK_RECORD_MAX_BYTES } from '../locks/lock.js';
+import { LOCK_RECORD_MAX_BYTES, RECOVERY_BREAK_GUARD_NAME, LOCK_GUARD_VERSION, computeWriterLockInstanceIdentity } from '../locks/lock.js';
 import type {
   AuditAssociationFacts,
   AuditScanObservation,
@@ -177,6 +177,11 @@ export function foreignObservationId(scope: string | undefined, shard: string | 
 /** Deterministic quarantine-object observation id (WP-8-F). */
 export function quarantineObservationId(shard: string, entry: string): string {
   return observationId('quarantine-object', shard, undefined, entry);
+}
+
+/** Deterministic writer-lock observation id (WP-8-J; the fixed `writer.lock` name). */
+export function lockObservationId(): string {
+  return observationId('lock-object', undefined, undefined, 'writer.lock');
 }
 
 /**
@@ -306,6 +311,48 @@ export function extractDispositionEvidenceFacts(raw: string): {
         outcome,
       },
     };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * WP-8-J lock-recovery evidence payload facts (12.3.1; ADR-033): extracted
+ * from one canonical store-evidence-record whose payload declares the
+ * `break-writer-lock` recovery operation. `lockRecovery` is true for every
+ * break-writer-lock evidence claim; `malformed` is true when the claimed
+ * facts are incomplete or the outcome is outside the closed vocabulary;
+ * otherwise `facts` carries the bound facts. Pure.
+ */
+export function extractLockRecoveryEvidenceFacts(raw: string): {
+  readonly lockRecovery?: boolean;
+  readonly malformed?: boolean;
+  readonly facts?: {
+    readonly lockRecordDigest: string;
+    readonly lockInstanceId: string;
+    readonly outcome: string;
+  };
+} {
+  try {
+    const model = parseRawJson(raw, 1024 * 1024).model;
+    if (typeof model !== 'object' || model === null || Array.isArray(model)) return {};
+    const payload = (model as Readonly<Record<string, unknown>>)['payload'];
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return {};
+    const p = payload as Readonly<Record<string, unknown>>;
+    if (p['recoveryOperation'] !== 'break-writer-lock') return {};
+    const lockRecordDigest = p['lockRecordDigest'];
+    const lockInstanceId = p['lockInstanceId'];
+    const outcome = p['outcome'];
+    if (
+      typeof lockRecordDigest !== 'string' ||
+      !isValidDigestSyntax(lockRecordDigest) ||
+      typeof lockInstanceId !== 'string' ||
+      !/^pgw:r:[0-9a-f]{32}$/.test(lockInstanceId) ||
+      (outcome !== 'lock-broken' && outcome !== 'already-completed')
+    ) {
+      return { lockRecovery: true, malformed: true };
+    }
+    return { lockRecovery: true, facts: { lockRecordDigest, lockInstanceId, outcome } };
   } catch {
     return {};
   }
@@ -832,6 +879,53 @@ export function currentTemporaryObservation(input: {
     return { ok: false, code: 'ERR-STO-INTERNAL-INVARIANT', message: 'temporary entry re-scan produced no observation' };
   }
   return { ok: true, observation: result.observation as TemporaryScanObservation | ForeignScanObservation, entryType: probe.entryType };
+}
+
+/**
+ * WP-8-J current-state re-verification of the writer lock (12.3.1;
+ * ADR-033): descriptor-bound no-follow read of `locks/writer.lock` with the
+ * committed scanner's classification, plus the non-secret instance bindings
+ * (lock-record digest and deterministic lock-instance identity). Used by
+ * the `break-writer-lock` boundary to verify, against the CURRENT state,
+ * that the exact adjudicated lock instance is present and unchanged. No
+ * liveness inference occurs: PID/start-time/age fields are recorded facts
+ * only. Absent → `ERR-STO-NOT-FOUND`; any other state maps to the committed
+ * classifications.
+ */
+export function currentLockObservation(input: {
+  readonly namespaceRoot: string;
+  readonly serviceUid: number;
+  readonly expectedStoreInstance: readonly { readonly kind: 'configuration' | 'store-records'; readonly dev: number; readonly ino: number }[];
+}): {
+  readonly ok: boolean;
+  readonly observation?: LockScanObservation;
+  readonly code?: string;
+  readonly message?: string;
+} {
+  const scanned = scanLockEntry({
+    path: `${input.namespaceRoot}/locks/writer.lock`,
+    name: 'writer.lock',
+    serviceUid: input.serviceUid,
+    bounds: { entryLimit: 1, byteLimit: LOCK_RECORD_MAX_BYTES, failClosed: true },
+    state: { scannedBytes: 0 },
+    expectedStoreInstance: input.expectedStoreInstance,
+  });
+  if (scanned.stop !== undefined) {
+    return { ok: false, code: scanned.code ?? 'ERR-STO-LIMIT-EXCEEDED', message: scanned.message ?? 'writer lock re-scan exceeded its bound' };
+  }
+  if (scanned.observation === undefined) {
+    return { ok: false, code: 'ERR-STO-INTERNAL-INVARIANT', message: 'writer lock re-scan produced no observation' };
+  }
+  if (scanned.observation.kind !== 'lock-object') {
+    return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'writer lock location is not a lock object' };
+  }
+  const observation = scanned.observation as LockScanObservation;
+  if (observation.classification === 'writer-lock-malformed' && observation.code === 'ERR-STO-INTEGRITY' && observation.lock === undefined && observation.stat === undefined) {
+    // The committed scanner reports a disappeared lock as writer-lock-
+    // malformed/ERR-STO-INTEGRITY without facts; map absence explicitly.
+    return { ok: false, code: 'ERR-STO-NOT-FOUND', message: 'writer lock is absent' };
+  }
+  return { ok: true, observation };
 }
 
 /**
@@ -1465,6 +1559,16 @@ function scanRecordEntry(input: {
             },
           };
         }
+        // WP-8-J: lock-recovery evidence facts (12.3.1/ADR-033; §14).
+        const lFacts = extractLockRecoveryEvidenceFacts(bytes.toString('utf8'));
+        if (lFacts.lockRecovery === true) {
+          return {
+            observation: {
+              ...observation,
+              lockRecoveryEvidenceFacts: lFacts.facts === undefined ? { malformed: true } : { malformed: false, ...lFacts.facts },
+            },
+          };
+        }
       }
       return { observation };
     }
@@ -1698,7 +1802,7 @@ export function isRegistryIndexBytes(raw: string): boolean {
   }
 }
 
-/** Scan the `locks/` surface (recovery mode; LOK-004…008). Observation only. */
+/** Scan the `locks/` surface (recovery mode; LOK-004…008; WP-8-J guard). Observation only. */
 function scanLockEntry(input: {
   readonly path: string;
   readonly name: string;
@@ -1708,6 +1812,12 @@ function scanLockEntry(input: {
   readonly expectedStoreInstance: readonly { readonly kind: 'configuration' | 'store-records'; readonly dev: number; readonly ino: number }[];
 }): { readonly observation?: ScanObservation; readonly stop?: 'truncated' | 'failed'; readonly code?: string; readonly message?: string } {
   const observationBase = { id: observationId('lock-object', undefined, undefined, input.name), entry: input.name };
+  if (input.name === RECOVERY_BREAK_GUARD_NAME) {
+    // WP-8-J (12.3.1): a recovery-break guard artifact is a foreign lock
+    // object; a leftover guard requires external disposition (never
+    // auto-broken). Classified observationally; grants nothing.
+    return { observation: scanGuardEntry(input) };
+  }
   if (input.name !== 'writer.lock') {
     const observation: ForeignScanObservation = { ...observationBase, kind: 'foreign-object', classification: 'foreign-entry', code: 'ERR-STO-MALFORMED' };
     return { observation };
@@ -1759,6 +1869,14 @@ function scanLockEntry(input: {
       code: parsed.ok ? '' : 'ERR-STO-MALFORMED',
       stat,
       ...(parsed.facts !== undefined ? { lock: parsed.facts } : {}),
+      // WP-8-J: non-secret instance bindings (record digest + deterministic
+      // instance identity) for the exact adjudicated lock.
+      ...(parsed.ok
+        ? {
+            lockRecordDigest: computeDomainDigest(STORAGE_RECORD_BYTES_DIGEST_DOMAIN, bytes.toString('utf8')),
+            lockInstanceId: computeWriterLockInstanceIdentity({ storeInstance: input.expectedStoreInstance, lockRecordDigest: computeDomainDigest(STORAGE_RECORD_BYTES_DIGEST_DOMAIN, bytes.toString('utf8')) }),
+          }
+        : {}),
     };
     return { observation };
   } catch (err) {
@@ -1767,7 +1885,67 @@ function scanLockEntry(input: {
       const observation: LockScanObservation = { ...observationBase, kind: 'lock-object', classification: 'writer-lock-malformed', code: 'ERR-STO-INTEGRITY' };
       return { observation };
     }
-    return { stop: 'failed', code: 'ERR-STO-IO-FAILURE', message: 'lock object could not be scanned' };
+    // WP-8-J: foreign lock objects (symlink, directory, special file,
+    // unreadable) are CLASSIFIED, never scan-fatal — the recovery scan must
+    // keep assessing the store (matching the quarantine-surface precedent;
+    // 12.3.1/ADR-033 §11).
+    if (code === 'ELOOP' || code === 'ENOTDIR' || code === 'EISDIR') {
+      const observation: LockScanObservation = { ...observationBase, kind: 'lock-object', classification: 'writer-lock-foreign', code: 'ERR-STO-FTYPE-UNSUPPORTED' };
+      return { observation };
+    }
+    if (code === 'EACCES' || code === 'EPERM') {
+      const observation: LockScanObservation = { ...observationBase, kind: 'lock-object', classification: 'writer-lock-foreign', code: 'ERR-STO-PERM-DENIED' };
+      return { observation };
+    }
+    const observation: LockScanObservation = { ...observationBase, kind: 'lock-object', classification: 'writer-lock-malformed', code: 'ERR-STO-IO-FAILURE' };
+    return { observation };
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/** WP-8-J: classify one recovery-break guard artifact observationally (12.3.1). */
+function scanGuardEntry(input: {
+  readonly path: string;
+  readonly name: string;
+  readonly serviceUid: number;
+  readonly expectedStoreInstance: readonly { readonly kind: 'configuration' | 'store-records'; readonly dev: number; readonly ino: number }[];
+}): LockScanObservation {
+  const observationBase = { id: observationId('lock-object', undefined, undefined, input.name), entry: input.name };
+  let fd: number | undefined;
+  try {
+    fd = openSync(input.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    const pre = fstatSync(fd);
+    const stat = statFacts(pre);
+    if (stat.fileType !== 'regular' || stat.uid !== input.serviceUid || (stat.mode & 0o777) !== 0o600 || stat.size > LOCK_RECORD_MAX_BYTES) {
+      return { ...observationBase, kind: 'lock-object', classification: 'recovery-break-guard-malformed', code: 'ERR-STO-MALFORMED', stat };
+    }
+    const bytes = readFileSync(fd);
+    const post = fstatSync(fd);
+    const revalidated = comparePrePostStat(pre, post);
+    if (!revalidated.ok || post.size !== bytes.length) {
+      return { ...observationBase, kind: 'lock-object', classification: 'recovery-break-guard-malformed', code: 'ERR-STO-INTEGRITY', stat };
+    }
+    let model: unknown;
+    try {
+      model = parseRawJson(bytes.toString('utf8'), LOCK_RECORD_MAX_BYTES).model;
+    } catch {
+      return { ...observationBase, kind: 'lock-object', classification: 'recovery-break-guard-malformed', code: 'ERR-STO-MALFORMED', stat };
+    }
+    const obj = model as Readonly<Record<string, unknown>> | null;
+    if (typeof obj !== 'object' || obj === null || obj['guardVersion'] !== LOCK_GUARD_VERSION) {
+      return { ...observationBase, kind: 'lock-object', classification: 'recovery-break-guard-malformed', code: 'ERR-STO-MALFORMED', stat };
+    }
+    const storeInstance = obj['storeInstance'];
+    const matches =
+      Array.isArray(storeInstance) &&
+      storeInstance.length === input.expectedStoreInstance.length &&
+      (storeInstance as ReadonlyArray<Readonly<Record<string, unknown>>>).every(
+        (n, i) => typeof n === 'object' && n !== null && n['kind'] === input.expectedStoreInstance[i]!.kind && n['dev'] === input.expectedStoreInstance[i]!.dev && n['ino'] === input.expectedStoreInstance[i]!.ino,
+      );
+    return { ...observationBase, kind: 'lock-object', classification: matches ? 'recovery-break-guard-present' : 'recovery-break-guard-malformed', code: '', stat };
+  } catch {
+    return { ...observationBase, kind: 'lock-object', classification: 'recovery-break-guard-malformed', code: 'ERR-STO-IO-FAILURE' };
   } finally {
     if (fd !== undefined) closeSync(fd);
   }

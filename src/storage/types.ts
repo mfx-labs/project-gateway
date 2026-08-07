@@ -546,7 +546,25 @@ export type TemporaryObjectClassification =
   | 'temporary-other';
 
 /** Closed writer-lock observation vocabulary (LOK-004…008; observation only). */
-export type LockObservationKind = 'writer-lock-present' | 'writer-lock-foreign' | 'writer-lock-malformed';
+export type LockObservationKind =
+  | 'writer-lock-present'
+  | 'writer-lock-foreign'
+  | 'writer-lock-malformed'
+  // WP-8-J: the recovery-break guard artifact (12.3.1/ADR-033; a leftover
+  // guard is a foreign lock object requiring external disposition).
+  | 'recovery-break-guard-present'
+  | 'recovery-break-guard-malformed';
+
+/** WP-8-J lock-recovery evidence payload facts (store-evidence-record class only). */
+export interface LockRecoveryEvidenceFacts {
+  /** Exact pre-break lock-record digest (canonical bytes digest). */
+  readonly lockRecordDigest?: string;
+  /** Deterministic lock-instance identity (non-authoritative; PGAP-STORAGE-WRITER-LOCK-INSTANCE-v1). */
+  readonly lockInstanceId?: string;
+  readonly outcome?: string;
+  /** True when the payload claims break-writer-lock but the facts are incomplete/invalid. */
+  readonly malformed: boolean;
+}
 
 /** Descriptor facts for one scanned object (never a path). */
 export interface ScannedObjectStat {
@@ -618,6 +636,14 @@ export interface RecordScanObservation extends ScanObservationBase {
     /** True when the payload claims an executable disposition operation but the facts are incomplete/invalid. */
     readonly malformed: boolean;
   };
+  /** WP-8-J: lock-recovery evidence payload facts (store-evidence-record class only). */
+  readonly lockRecoveryEvidenceFacts?: {
+    readonly lockRecordDigest?: string;
+    readonly lockInstanceId?: string;
+    readonly outcome?: string;
+    /** True when the payload claims break-writer-lock but the facts are incomplete/invalid. */
+    readonly malformed: boolean;
+  };
 }
 
 export interface AuditScanObservation extends ScanObservationBase {
@@ -645,6 +671,10 @@ export interface LockScanObservation extends ScanObservationBase {
   readonly kind: 'lock-object';
   readonly classification: LockObservationKind;
   readonly lock?: LockFacts;
+  /** WP-8-J: canonical lock-record bytes digest (writer-lock-present; non-secret instance binding). */
+  readonly lockRecordDigest?: string;
+  /** WP-8-J: deterministic lock-instance identity (PGAP-STORAGE-WRITER-LOCK-INSTANCE-v1; non-authoritative). */
+  readonly lockInstanceId?: string;
 }
 
 export interface ForeignScanObservation extends ScanObservationBase {
@@ -866,7 +896,7 @@ export interface OrphanTemporaryFinding {
   readonly sharesInodeWithPublished: boolean;
 }
 
-/** Persistent writer-lock observation (LOK-004…008; liveness is never assumed). */
+/** Persistent writer-lock observation (LOK-004…008; liveness is never assumed; WP-8-J: adjudication is external). */
 export interface LockObservationFinding {
   readonly observationId: string;
   readonly classification: LockObservationKind;
@@ -877,6 +907,10 @@ export interface LockObservationFinding {
   readonly acquisitionTime?: number;
   readonly maxAgeMs?: number;
   readonly bootIdentityPresent: boolean;
+  /** WP-8-J: canonical lock-record bytes digest (writer-lock-present only; non-secret instance binding). */
+  readonly lockRecordDigest?: string;
+  /** WP-8-J: deterministic lock-instance identity (non-authoritative). */
+  readonly lockInstanceId?: string;
 }
 
 export interface IncompletePublicationFinding {
@@ -950,6 +984,25 @@ export interface ReconstructionStateFinding {
   readonly reason: string;
 }
 
+/** WP-8-J: one deterministic lock-recovery state classification (12.3.1/ADR-033). */
+export interface LockRecoveryStateFinding {
+  /** Deterministic lock-instance identity referenced by the evidence (empty when malformed). */
+  readonly lockInstanceId: string;
+  /** Exact pre-break lock-record digest referenced by the evidence (empty when malformed). */
+  readonly lockRecordDigest: string;
+  readonly state:
+    /** Evidence durable and the referenced writer lock is absent. */
+    | 'completed-lock-recovery'
+    /** Evidence durable while the exact referenced lock is still present (integrity inconsistency). */
+    | 'conflicting-lock-recovery-evidence'
+    /** Evidence durable while a DIFFERENT writer lock is present (the evidence does not authorize it). */
+    | 'evidence-with-different-lock'
+    /** Evidence payload is incomplete or outside the closed vocabulary. */
+    | 'dangling-lock-recovery-evidence';
+  readonly evidenceObservationId: string;
+  readonly reason: string;
+}
+
 /** Bounded recovery assessment over one scanned snapshot (CSA-001…015; observation only). */
 export interface RecoveryAssessment {
   readonly source: ScanFacts;
@@ -974,6 +1027,8 @@ export interface RecoveryAssessment {
   readonly indexArtifacts: readonly IndexScanObservation[];
   /** WP-8-H: true when no registry-index family exists (rebuild candidate). */
   readonly indexMissing: boolean;
+  /** WP-8-J: deterministic lock-recovery evidence states (12.3.1/ADR-033; §14). */
+  readonly lockRecoveryStates: readonly LockRecoveryStateFinding[];
   readonly findings: readonly StorageFinding[];
 }
 
@@ -1002,6 +1057,7 @@ export interface RecoveryPlanAction {
     | 'audit-reconstruction'
     | 'registry-index-rebuild'
     | 'lock-recovery'
+    | 'break-writer-lock'
     | 'disposition'
     // WP-8-I: exact externally authorized disposition operations (ADR-032; §11).
     | 'dispose-wpr023d-temporary'
@@ -1147,7 +1203,23 @@ export type RecoveryMutationStage =
   // unlink-with-evidence sequence for the eligible quarantine and
   // conflicting-index subclasses.
   | 'before-unlink'
-  | 'after-unlink';
+  | 'after-unlink'
+  // WP-8-J lock-recovery stages (fixed 12-stage inventory; 12.3.1/ADR-033):
+  // recovery-break guard acquisition/release, current lock re-verification,
+  // digest-bound instance recheck, exact unlink, locks-directory fsync,
+  // recovery-evidence publication and durability.
+  | 'before-recovery-break-guard'
+  | 'after-recovery-break-guard'
+  | 'after-lock-target-verification'
+  | 'after-lock-instance-recheck'
+  | 'before-lock-unlink'
+  | 'after-lock-unlink'
+  | 'before-locks-directory-fsync'
+  | 'after-locks-directory-fsync'
+  | 'before-lock-evidence-publication'
+  | 'after-lock-evidence-publication'
+  | 'after-lock-evidence-audit-publication'
+  | 'before-recovery-break-guard-release';
 
 /** Test-only crash/fsync injection hooks (same pattern as `PublicationHooks`). */
 export interface RecoveryMutationHooks {
@@ -1174,7 +1246,8 @@ export interface RecoveryMutationAction {
     | 'registry-index-rebuild'
     | 'dispose-wpr023d-temporary'
     | 'dispose-quarantined-temporary'
-    | 'dispose-conflicting-index';
+    | 'dispose-conflicting-index'
+    | 'break-writer-lock';
   /** Orphan-removal/quarantine-temporary only: deterministic entry designation (temporary name; never a path). */
   readonly targetEntry?: string;
   /** Orphan-removal only: verified durable publication sharing the temporary's inode (WPR-023 (a)). */
@@ -1221,6 +1294,12 @@ export interface RecoveryMutationAction {
   readonly expectedContentDigest?: string;
   /** Disposition only: the assessment's requires-external-disposition finding id (equals the object observation id). */
   readonly expectedDispositionFindingId?: string;
+  /** Break-writer-lock only: canonical lock-record bytes digest of the exact adjudicated lock instance. */
+  readonly expectedLockRecordDigest?: string;
+  /** Break-writer-lock only: deterministic lock-instance identity of the exact adjudicated lock instance. */
+  readonly expectedLockInstanceId?: string;
+  /** Break-writer-lock only: deterministic lock observation identity (`writer.lock`; recomputed and compared). */
+  readonly expectedLockObservationId?: string;
 }
 
 /** Authorized recovery-mutation request (WP-8-F composition boundary). */
@@ -1246,8 +1325,8 @@ export interface RecoveryMutationRequest {
 /** Recovery-mutation result (advisory data; no capability, path, or nonce). */
 export interface RecoveryMutationResult {
   readonly ok: boolean;
-  /** `removed` (orphan removed), `quarantined` (temporary quarantined), `reconstructed` (audit reconstructed), `rebuilt` (index published), `disposed` (eligible disposition target unlinked with evidence), `disposition-required` (externally authorized disposition adjudicated; no mutation performed), `already-completed`: no work needed. */
-  readonly outcome?: 'removed' | 'quarantined' | 'reconstructed' | 'rebuilt' | 'disposed' | 'disposition-required' | 'already-completed';
+  /** `removed` (orphan removed), `quarantined` (temporary quarantined), `reconstructed` (audit reconstructed), `rebuilt` (index published), `disposed` (eligible disposition target unlinked with evidence), `disposition-required` (externally authorized disposition adjudicated; no mutation performed), `lock-broken` (adjudicated writer lock removed with evidence), `already-completed`: no work needed. */
+  readonly outcome?: 'removed' | 'quarantined' | 'reconstructed' | 'rebuilt' | 'disposed' | 'disposition-required' | 'lock-broken' | 'already-completed';
   /** Deterministic evidence record identity when evidence is durable. */
   readonly evidenceId?: string;
   /** WP-8-H: deterministic registry-index identity when an index is published/current. */

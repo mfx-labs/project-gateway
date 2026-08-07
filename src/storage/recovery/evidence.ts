@@ -67,6 +67,8 @@ export const STORAGE_QUARANTINE_TEMPORARY_ID_DOMAIN = 'PGAP-STORAGE-QUARANTINE-T
 /** WP-8-I disposition evidence identity domains (ADR-032; §7). */
 export const STORAGE_QUARANTINE_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN = 'PGAP-STORAGE-QUARANTINE-DISPOSITION-EVIDENCE-v1\u0000';
 export const STORAGE_INDEX_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN = 'PGAP-STORAGE-INDEX-DISPOSITION-EVIDENCE-v1\u0000';
+/** WP-8-J lock-recovery evidence identity domain (12.3.1/ADR-033; §9). */
+export const STORAGE_LOCK_RECOVERY_EVIDENCE_IDENTITY_DOMAIN = 'PGAP-STORAGE-LOCK-RECOVERY-EVIDENCE-v1\u0000';
 
 export interface QuarantineTemporaryIdInput {
   readonly storeInstance: VerifiedStoreInstance;
@@ -95,10 +97,16 @@ export function quarantineDestinationDesignation(quarantineId: string): string {
 }
 
 /** Recovery operations that produce evidence in this slice. */
-export type RecoveryEvidenceOperation = 'orphan-removal' | 'quarantine-temporary' | 'audit-reconstruction' | 'dispose-quarantined-temporary' | 'dispose-conflicting-index';
+export type RecoveryEvidenceOperation =
+  | 'orphan-removal'
+  | 'quarantine-temporary'
+  | 'audit-reconstruction'
+  | 'dispose-quarantined-temporary'
+  | 'dispose-conflicting-index'
+  | 'break-writer-lock';
 
 /** Evidence outcome vocabulary (closed; the fact recorded, never a decision). */
-export type RecoveryEvidenceOutcome = 'orphan-removed' | 'already-completed';
+export type RecoveryEvidenceOutcome = 'orphan-removed' | 'already-completed' | 'lock-broken';
 
 export interface RecoveryEvidenceInput {
   readonly storeInstance: VerifiedStoreInstance;
@@ -627,6 +635,180 @@ export function verifyExistingDispositionEvidence(input: {
     (outcome === 'disposed' || outcome === 'already-completed');
   if (!matches) {
     return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'existing disposition evidence conflicts with the authorized request' };
+  }
+  return { ok: true, matches: true };
+}
+
+/**
+ * WP-8-J lock-recovery evidence (12.3.1; ADR-033): deterministic
+ * `StoreEvidenceRecord` with the existing `recovery-evidence` evidence kind
+ * (TAX-013 implemented vocabulary; ADR-032 decision 4 precedent), the exact
+ * `break-writer-lock` operation, and the domain-separated identity
+ * `PGAP-STORAGE-LOCK-RECOVERY-EVIDENCE-v1`. The evidence binds the exact
+ * pre-break lock-record digest and the deterministic lock-instance identity
+ * — never the raw nonce and never a path — so it can never authorize
+ * breaking any other lock instance.
+ */
+export interface LockRecoveryEvidenceInput {
+  readonly storeInstance: VerifiedStoreInstance;
+  /** Trusted RECOVERY action identity (from the genuine provenance). */
+  readonly actionIdentity: string;
+  readonly evidenceKind: 'recovery-evidence';
+  readonly recoveryOperation: 'break-writer-lock';
+  /** Exact pre-break canonical lock-record digest. */
+  readonly lockRecordDigest: string;
+  /** Deterministic lock-instance identity (PGAP-STORAGE-WRITER-LOCK-INSTANCE-v1). */
+  readonly lockInstanceId: string;
+  /** The lock observation identity bound by the trusted request. */
+  readonly observationId: string;
+  /** Assessment scan-generation and surface-structure tokens (recomputed at the boundary). */
+  readonly generation: string;
+  readonly surfaceGeneration: string;
+  readonly outcome: 'lock-broken' | 'already-completed';
+  /** Recovery time (creation evidence; never a staleness judgment). */
+  readonly createdAt: string;
+}
+
+/** Identity-relevant lock-recovery facts (the deterministic identity tuple). */
+export type LockRecoveryEvidenceIdentityInput = Pick<
+  LockRecoveryEvidenceInput,
+  'storeInstance' | 'evidenceKind' | 'recoveryOperation' | 'lockRecordDigest' | 'lockInstanceId' | 'observationId' | 'outcome'
+>;
+
+/** Deterministic lock-recovery evidence identity (12.3.1; ADR-033 §9). */
+export function computeLockRecoveryEvidenceIdentity(input: LockRecoveryEvidenceIdentityInput): string {
+  const tuple = {
+    storeInstance: input.storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })).sort((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0)),
+    evidenceKind: input.evidenceKind,
+    recoveryOperation: input.recoveryOperation,
+    lockRecordDigest: input.lockRecordDigest,
+    lockInstanceId: input.lockInstanceId,
+    observationId: input.observationId,
+    outcome: input.outcome,
+  };
+  const digest = computeDomainDigest(STORAGE_LOCK_RECOVERY_EVIDENCE_IDENTITY_DOMAIN, JSON.stringify(tuple));
+  return `pgw:r:${digest.slice('sha-256:'.length, 'sha-256:'.length + 32)}`;
+}
+
+/** Lock-recovery evidence payload (bounded; no paths, no nonce). */
+export function lockRecoveryEvidencePayload(input: LockRecoveryEvidenceInput): Readonly<Record<string, unknown>> {
+  return {
+    evidenceKind: input.evidenceKind,
+    recoveryOperation: input.recoveryOperation,
+    targetEntry: 'writer.lock',
+    lockRecordDigest: input.lockRecordDigest,
+    lockInstanceId: input.lockInstanceId,
+    observationId: input.observationId,
+    generation: input.generation,
+    surfaceGeneration: input.surfaceGeneration,
+    outcome: input.outcome,
+    resultingState: { writerLockRemoved: true },
+  };
+}
+
+/**
+ * Pure deterministic lock-recovery evidence construction (12.3.1; LOK-010):
+ * `StoreEvidenceRecord` with `evidenceKind: recovery-evidence`, the exact
+ * `break-writer-lock` operation, the trusted RECOVERY action identity, the
+ * recovery time, and the bounded payload; `referenceDigests` carries the
+ * pre-break lock-record digest. The evidence's own mechanical
+ * `authorized-write` audit event is constructed with the recovery action
+ * identity at the same durability point.
+ */
+export function buildLockRecoveryEvidenceRecord(input: LockRecoveryEvidenceInput): RecoveryEvidenceBuild {
+  if (!isValidDigestSyntax(input.lockRecordDigest)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'lock-record digest must use sha-256:<64-hex> syntax' };
+  }
+  if (!/^pgw:r:[0-9a-f]{32}$/.test(input.lockInstanceId)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'lock-instance identity is not a canonical typed identifier' };
+  }
+  const payload = lockRecoveryEvidencePayload(input);
+  const payloadDigest = computePayloadDigest(payload);
+  const recordId = computeLockRecoveryEvidenceIdentity(input);
+  const envelope: Readonly<Record<string, unknown>> = {
+    recordKind: 'StoreEvidenceRecord',
+    formatVersion: '1.0',
+    recordId,
+    revision: 1,
+    createdAt: input.createdAt,
+    trustedActionId: input.actionIdentity,
+    payload,
+    payloadDigest,
+    referenceDigests: [input.lockRecordDigest],
+    retentionClass: 'indefinite',
+  };
+  const canonical = canonicalEnvelopeBytes(envelope);
+  const audit = buildAuthorizedWriteAuditEvent({
+    storeInstance: input.storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })),
+    primaryClass: 'store-evidence-record',
+    primaryRecordId: recordId,
+    primaryRevision: 1,
+    primaryDigest: canonical.digest,
+    eventKind: 'authorized-write',
+    trustedActionIdentity: input.actionIdentity,
+    primaryCreatedAt: input.createdAt,
+  });
+  if (!audit.ok || audit.event === undefined) {
+    return { ok: false, code: 'ERR-STO-INTERNAL-INVARIANT', message: audit.message ?? 'lock-recovery evidence audit event could not be constructed' };
+  }
+  return {
+    ok: true,
+    record: {
+      recordId,
+      canonicalUtf8: canonical.canonicalUtf8,
+      digest: canonical.digest,
+      createdAt: input.createdAt,
+      auditCanonicalUtf8: audit.event.canonicalUtf8,
+      auditDigest: audit.event.digest,
+      auditEventId: audit.event.recordId,
+    },
+  };
+}
+
+/** Verify existing lock-recovery evidence against the request bindings. */
+export function verifyExistingLockRecoveryEvidence(input: {
+  readonly namespaceRoot: string;
+  readonly serviceUid: number;
+  readonly byteLimit: number;
+  readonly evidenceId: string;
+  readonly recoveryOperation: 'break-writer-lock';
+  readonly lockRecordDigest: string;
+  readonly lockInstanceId: string;
+  readonly observationId: string;
+}): { readonly ok: boolean; readonly matches?: boolean; readonly code?: string; readonly message?: string } {
+  const derived = deriveRecordRelativePath('store-evidence-record', input.evidenceId);
+  if (!derived.ok) {
+    return { ok: false, code: 'ERR-STO-CONTAINMENT-DENIED', message: 'lock-recovery evidence path derivation failed' };
+  }
+  const existing = verifyObjectBytesAt({ path: `${input.namespaceRoot}/${derived.relativePath}`, serviceUid: input.serviceUid, byteLimit: input.byteLimit });
+  if (!existing.ok) {
+    if (existing.code === 'ERR-STO-NOT-FOUND') return { ok: true, matches: false };
+    return { ok: false, code: existing.code, message: existing.message };
+  }
+  const parsed = parsePersistedEnvelope(existing.canonicalUtf8 ?? '', input.byteLimit);
+  if (!parsed.ok || parsed.model === undefined) {
+    return { ok: false, code: 'ERR-STO-MALFORMED', message: 'existing lock-recovery evidence is not a canonical envelope' };
+  }
+  const model = parsed.model as Readonly<Record<string, unknown>>;
+  if (model['recordKind'] !== 'StoreEvidenceRecord') {
+    return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'existing lock-recovery evidence target is not a StoreEvidenceRecord' };
+  }
+  const payload = model['payload'];
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return { ok: false, code: 'ERR-STO-MALFORMED', message: 'existing lock-recovery evidence payload is malformed' };
+  }
+  const p = payload as Readonly<Record<string, unknown>>;
+  const outcome = p['outcome'];
+  const matches =
+    p['evidenceKind'] === 'recovery-evidence' &&
+    p['recoveryOperation'] === input.recoveryOperation &&
+    p['targetEntry'] === 'writer.lock' &&
+    p['lockRecordDigest'] === input.lockRecordDigest &&
+    p['lockInstanceId'] === input.lockInstanceId &&
+    p['observationId'] === input.observationId &&
+    (outcome === 'lock-broken' || outcome === 'already-completed');
+  if (!matches) {
+    return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'existing lock-recovery evidence conflicts with the authorized request' };
   }
   return { ok: true, matches: true };
 }

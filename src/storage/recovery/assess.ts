@@ -43,6 +43,7 @@ import type {
   IndexScanObservation,
   LockFacts,
   LockObservationFinding,
+  LockRecoveryStateFinding,
   LockScanObservation,
   ObjectFinding,
   OrphanTemporaryFinding,
@@ -196,6 +197,7 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   const dispositionStates: DispositionStateFinding[] = [];
   const indexArtifacts: IndexScanObservation[] = [];
   let indexMissing = false;
+  const lockRecoveryStates: LockRecoveryStateFinding[] = [];
   const quarantineObjects: QuarantineScanObservation[] = [];
   const danglingQuarantineEvidence: { readonly evidenceObservationId: string; readonly quarantineId: string; readonly sourceEntry?: string }[] = [];
   const findings: StorageFinding[] = [...finalized.findings, ...association.findings];
@@ -236,14 +238,28 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
         acquisitionTime: lock.lock?.acquisitionTime,
         maxAgeMs: lock.lock?.maxAgeMs,
         bootIdentityPresent: lock.lock?.bootIdentityPresent ?? false,
+        lockRecordDigest: lock.lockRecordDigest,
+        lockInstanceId: lock.lockInstanceId,
       });
+      if (lock.classification === 'recovery-break-guard-present' || lock.classification === 'recovery-break-guard-malformed') {
+        // WP-8-J (12.3.1): a leftover recovery-break guard is a foreign lock
+        // object; external disposition required (never auto-broken).
+        requiresDisposition.push({
+          observationId: lock.id,
+          classification: lock.classification,
+          code: 'ERR-STO-LOCK-UNAVAILABLE',
+          reason: 'leftover recovery-break guard artifact; external disposition required (12.3.1)',
+        });
+        findings.push(finding('ERR-STO-LOCK-UNAVAILABLE', 'recovery-break guard artifact requires external disposition'));
+        continue;
+      }
       requiresDisposition.push({
         observationId: lock.id,
         classification: lock.classification,
         code: lock.code === '' ? 'ERR-STO-LOCK-UNAVAILABLE' : lock.code,
         reason:
           lock.classification === 'writer-lock-present'
-            ? 'persistent writer lock; liveness is undetermined and the lock is never stale by timeout alone (LOK-007/008)'
+            ? 'persistent writer lock; breakable only through an externally adjudicated trusted recovery action (break-writer-lock; storage performs no liveness inference; 12.3.1)'
             : 'lock object is foreign or malformed; control-plane disposition required (LOK-018)',
       });
       findings.push(finding(lock.code === '' ? 'ERR-STO-LOCK-UNAVAILABLE' : lock.code, 'writer lock state requires explicit recovery disposition'));
@@ -543,6 +559,65 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
     });
   }
 
+  // WP-8-J: deterministic lock-recovery state classification (12.3.1;
+  // ADR-033 §14). Derived purely from durable facts: every scanned
+  // lock-recovery evidence record is checked against the CURRENT writer
+  // lock surface. A malformed/incomplete payload is dangling; evidence with
+  // the exact referenced lock still present is a conflicting integrity
+  // inconsistency; evidence with a DIFFERENT current lock present means the
+  // evidence does not authorize that lock (a fresh external adjudication is
+  // required); otherwise the lock recovery is completed. Target absence
+  // without evidence is never labeled completed (ambiguous with
+  // never-broken; the execution reports it as a deterministic fail-closed
+  // result).
+  const currentLock = persistentLockObservations.find((l) => l.classification === 'writer-lock-present');
+  for (const item of obs) {
+    if (item.kind !== 'record' || item.recordClass !== 'store-evidence-record' || item.lockRecoveryEvidenceFacts === undefined) continue;
+    const d = item.lockRecoveryEvidenceFacts;
+    const lockRecordDigest = d.lockRecordDigest;
+    const lockInstanceId = d.lockInstanceId;
+    const outcome = d.outcome;
+    if (d.malformed || lockRecordDigest === undefined || lockInstanceId === undefined || (outcome !== 'lock-broken' && outcome !== 'already-completed')) {
+      lockRecoveryStates.push({
+        lockInstanceId: lockInstanceId ?? '',
+        lockRecordDigest: lockRecordDigest ?? '',
+        state: 'dangling-lock-recovery-evidence',
+        evidenceObservationId: item.id,
+        reason: 'lock-recovery evidence payload is incomplete or outside the closed vocabulary',
+      });
+      findings.push(finding('ERR-STO-MALFORMED', 'malformed or dangling lock-recovery evidence record'));
+      continue;
+    }
+    if (currentLock !== undefined && currentLock.lockRecordDigest === lockRecordDigest && currentLock.lockInstanceId === lockInstanceId) {
+      lockRecoveryStates.push({
+        lockInstanceId,
+        lockRecordDigest,
+        state: 'conflicting-lock-recovery-evidence',
+        evidenceObservationId: item.id,
+        reason: 'lock-recovery evidence is durable while the exact referenced writer lock is still present; integrity inconsistency',
+      });
+      findings.push(finding('ERR-STO-INTEGRITY', 'lock-recovery evidence references a live writer lock; integrity inconsistency'));
+      continue;
+    }
+    if (currentLock !== undefined) {
+      lockRecoveryStates.push({
+        lockInstanceId,
+        lockRecordDigest,
+        state: 'evidence-with-different-lock',
+        evidenceObservationId: item.id,
+        reason: 'lock-recovery evidence references a different lock instance than the current writer lock; it does not authorize breaking the current lock',
+      });
+      continue;
+    }
+    lockRecoveryStates.push({
+      lockInstanceId,
+      lockRecordDigest,
+      state: 'completed-lock-recovery',
+      evidenceObservationId: item.id,
+      reason: 'lock-recovery evidence durable and the referenced writer lock is absent',
+    });
+  }
+
   for (const conflict of finalized.duplicateConflicts) {
     requiresDisposition.push({
       observationId: conflict.observationIds[0] ?? '',
@@ -584,6 +659,7 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   reconstructionStates.sort((a, b) => (a.recordId < b.recordId ? -1 : a.recordId > b.recordId ? 1 : a.state < b.state ? -1 : 1));
   dispositionStates.sort((a, b) => (a.targetDesignation < b.targetDesignation ? -1 : a.targetDesignation > b.targetDesignation ? 1 : a.state < b.state ? -1 : 1));
   indexArtifacts.sort((a, b) => (a.entry < b.entry ? -1 : a.entry > b.entry ? 1 : 0));
+  lockRecoveryStates.sort((a, b) => (a.lockInstanceId < b.lockInstanceId ? -1 : a.lockInstanceId > b.lockInstanceId ? 1 : a.state < b.state ? -1 : 1));
   findings.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
 
   return {
@@ -603,6 +679,7 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
     dispositionStates,
     indexArtifacts,
     indexMissing,
+    lockRecoveryStates,
     findings,
   };
 }

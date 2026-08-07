@@ -18,7 +18,7 @@ export { buildRecoveryPlan } from './plan.js';
 // is re-exported; the plan remains advisory data.
 export { executeRecoveryMutation } from './execute.js';
 export type { RecoveryMutationRequest, RecoveryMutationResult } from '../types.js';
-export { buildQuarantineEvidenceRecord, buildRecoveryEvidenceRecord, computeQuarantineEvidenceIdentity, computeQuarantineTemporaryId, computeRecoveryEvidenceIdentity, isoFromEpochMs, quarantineDestinationDesignation, recoveryEvidencePayload, buildDispositionEvidenceRecord, computeDispositionEvidenceIdentity, verifyExistingDispositionEvidence, dispositionEvidencePayload, STORAGE_QUARANTINE_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN, STORAGE_INDEX_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN } from './evidence.js';
+export { buildQuarantineEvidenceRecord, buildRecoveryEvidenceRecord, computeQuarantineEvidenceIdentity, computeQuarantineTemporaryId, computeRecoveryEvidenceIdentity, isoFromEpochMs, quarantineDestinationDesignation, recoveryEvidencePayload, buildDispositionEvidenceRecord, computeDispositionEvidenceIdentity, verifyExistingDispositionEvidence, dispositionEvidencePayload, STORAGE_QUARANTINE_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN, STORAGE_INDEX_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN, buildLockRecoveryEvidenceRecord, computeLockRecoveryEvidenceIdentity, verifyExistingLockRecoveryEvidence, lockRecoveryEvidencePayload, STORAGE_LOCK_RECOVERY_EVIDENCE_IDENTITY_DOMAIN } from './evidence.js';
 export { executeQuarantineTemporary } from './quarantine.js';
 export { reverifyQuarantineSource, verifyQuarantineObjectDigest, reverifyReconstructionTarget } from './reverify.js';
 export { isPublicationTemporaryName, temporaryObservationId, recordObservationId, auditEventsForRecord, reconstructionEvidenceForTarget, extractReconstructionEvidenceFacts } from './scan.js';
@@ -27,6 +27,11 @@ export { isPublicationTemporaryName, temporaryObservationId, recordObservationId
 // scanner logic; read-only). No capability or mutation primitive is
 // re-exported.
 export { currentTemporaryObservation, currentQuarantineObservation, currentIndexObservation, quarantineObservationId, extractDispositionEvidenceFacts } from './scan.js';
+// WP-8-J: lock-recovery read-side helpers (current writer-lock
+// re-verification, observation identity, evidence-facts extraction). The
+// recovery-break guard and unlink primitives are NOT re-exported (they
+// live in the lock owner only; no public lock-mutation authority exists).
+export { currentLockObservation, lockObservationId, extractLockRecoveryEvidenceFacts } from './scan.js';
 // WP-8-G: the audit-reconstruction operation (16.3): pure derivation and
 // evidence construction plus the exact-record publication composition. The
 // permit creator and verifier are never re-exported.

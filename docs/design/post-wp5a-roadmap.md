@@ -327,7 +327,34 @@ operation naming in advisory plan actions, and exact
 static-guard/global-security boundaries (no generic disposition/deletion
 authority; evidence publication remains exact-permit-bound). The
 contract gained §16.6/DPS-001…007 and its pinned SHA-256 was updated.
-**Not begun**: stale-lock breaking, primary/audit deletion, retention,
+
+**WP-8-J (contract §12.3.1/LOK-019…022 — externally adjudicated lock
+recovery) is complete**: the **human decision (ADR-033) is normative** —
+`break-writer-lock` is permitted ONLY through a genuine trusted recovery
+action that explicitly adjudicates the exact currently observed
+writer-lock instance as breakable; the storage layer performs NO liveness
+inference (no PID existence, process liveness, lock age, timestamps, boot
+identity, heartbeat, lease, or elapsed-time authorization; no subprocess,
+no `/proc`). Lock-break serialization uses the distinct
+`locks/recovery-break.guard` (exclusive create, canonical guard record,
+fsync; never a second general writer lock; leftover guard = external
+disposition); the final removal binds the exact lock-record digest and
+the deterministic lock-instance identity
+(`PGAP-STORAGE-WRITER-LOCK-INSTANCE-v1`), with the post-unlink absence
+check protecting a legitimate new writer lock (old evidence never
+authorizes breaking it); durable `StoreEvidenceRecord` evidence
+(`recovery-evidence`, operation `break-writer-lock`, identity domain
+`PGAP-STORAGE-LOCK-RECOVERY-EVIDENCE-v1`, no nonce/path) with its
+`authorized-write` audit; idempotency per LOK-022 (absent + matching
+evidence → `already-completed`; absent + no evidence → fail closed); a
+fixed 12-stage crash inventory; scanner `lockRecoveryStates`
+(completed / conflicting / evidence-with-different-lock / dangling);
+advisory plan actions naming `break-writer-lock` with explicit external-
+adjudication wording; foreign lock objects are classified, never
+scan-fatal. The mutation lives in the existing lock owner (no new
+fs-bearing module; exact allowlist unchanged). The contract gained
+§12.3.1/LOK-019…022 and its pinned SHA-256 was updated.
+**Not begun**: primary/audit deletion, retention,
 migration, disposition of the remaining adjudication-only classes,
 WP-9
 generation seeding, WP-12 integration. The **implementation report
@@ -337,6 +364,29 @@ WP-8-F/WP-8-G/WP-8-H/WP-8-I implementation review**; **WP-8-F, WP-8-G,
 WP-8-H, and WP-8-I are not closed**; WP-8 implementation remains **not
 closed**; WP-9 and later packages remain **not authorized**. No release,
 publication, installation, or deployment action has occurred for WP-8.
+
+**WP-8-J (contract §12.3.1 — externally adjudicated lock recovery) is
+complete**: the human decision (ADR-033) is normative —
+`break-writer-lock` is permitted ONLY through a genuine trusted recovery
+action that explicitly adjudicates the exact currently observed
+writer-lock instance as breakable; the storage layer performs NO liveness
+inference (no PID/process-liveness/age/timestamp/boot/heartbeat/lease
+authorization; no subprocess, no `/proc`). Lock-break serialization uses
+the distinct recovery-break guard (`locks/recovery-break.guard`;
+exclusive create, canonical record, fsync; never a general writer lock;
+leftover guard = external disposition); removal binds the exact
+lock-record digest and the deterministic lock-instance identity, with
+the post-unlink absence check protecting a legitimate new writer lock
+(old evidence never authorizes breaking it); durable `StoreEvidenceRecord`
+evidence (`recovery-evidence`, `break-writer-lock`, identity domain
+`PGAP-STORAGE-LOCK-RECOVERY-EVIDENCE-v1`, no nonce/path) + its
+`authorized-write` audit; idempotency per LOK-022; a fixed 12-stage
+crash inventory; scanner `lockRecoveryStates`; advisory plan actions
+naming `break-writer-lock` with external-adjudication wording; foreign
+lock objects are classified, never scan-fatal. The mutation lives in the
+existing lock owner (no new fs-bearing module). The contract gained
+§12.3.1/LOK-019…022 and its pinned SHA-256 was updated. **Not begun**:
+primary/audit deletion, retention,
 
 **Normative cross-references:** `project-gateway-scope-and-principles.md`
 (WP-0), ADR-002, ADR-003, ADR-006, ADR-020, ADR-022, ADR-023 (sequencing

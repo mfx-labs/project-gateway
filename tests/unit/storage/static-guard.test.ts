@@ -489,7 +489,7 @@ test('static guard: package exports and dependencies unchanged', () => {
 test('static guard: authoritative contract is byte-identical at the accepted SHA-256', () => {
   const contract = readFileSync(join(REPO, 'docs', 'specs', 'wp-8-local-storage-registry-contract.md'), 'utf8');
   const hash = createHash('sha256').update(contract).digest('hex');
-  assert.equal(hash, 'd369e45ac261d0bdb396c837d7b6ce7efe6f09cf37ff356ef0ca9e651192baa7');
+  assert.equal(hash, '144875db3a77e726b87ef2e390f5fcb905688ac60a2e1f6b3e517f4b369c0b42');
 });
 
 test('static guard: no timers, randomness, or environment dependence in storage modules', () => {
@@ -657,7 +657,7 @@ test('static guard: audit-reconstruction vocabulary is closed and confined (WP-8
   const authenticity = readFileSync(join(STORAGE_SRC, 'capabilities', 'authenticity.ts'), 'utf8');
   assert.equal(
     /RECOVERY_OPERATION_SET = \[/.test(authenticity) && /'orphan-removal'/.test(authenticity) && /'quarantine-temporary'/.test(authenticity) && /'audit-reconstruction'/.test(authenticity) && /'registry-index-rebuild'/.test(authenticity) &&
-      /'dispose-wpr023d-temporary'/.test(authenticity) && /'dispose-quarantined-temporary'/.test(authenticity) && /'dispose-conflicting-index'/.test(authenticity),
+      /'dispose-wpr023d-temporary'/.test(authenticity) && /'dispose-quarantined-temporary'/.test(authenticity) && /'dispose-conflicting-index'/.test(authenticity) && /'break-writer-lock'/.test(authenticity),
     true,
     'the recovery operation set must contain exactly the implemented operations',
   );
@@ -800,6 +800,81 @@ test('static guard: external-disposition vocabulary is closed, class-specific, a
   assert.equal(/unlinkVerifiedTarget|fsyncContainingDirectory/.test(adjudicationFlow), true, 'the disposition flow must use the exact unlink owner');
   const dBranch = adjudicationFlow.slice(adjudicationFlow.indexOf("category === 'dispose-wpr023d-temporary'"), adjudicationFlow.indexOf('// Executable disposition'));
   assert.equal(/unlinkVerifiedTarget|fsyncContainingDirectory/.test(dBranch), false, 'the WPR-023 (d) adjudication branch must never reach the unlink owner');
+});
+
+test('static guard: lock-recovery vocabulary is closed, adjudication-only, and liveness-free (WP-8-J)', () => {
+  const files = collectTsFiles(STORAGE_SRC);
+  // No generic lock-deletion or recovery-administration operation exists
+  // anywhere in src/storage; `break-writer-lock` is the sole lock-recovery
+  // mutation operation.
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    assert.equal(/\bdelete-lock\b|\bclear-locks\b|\bunlock-store\b|\bforce-unlock\b|\bbreak-any-lock\b|\brecovery-admin\b/.test(content), false, `${rel(file)} contains a generic lock-deletion marker`);
+  }
+  // No liveness inference anywhere in src/storage: no process lookup, no
+  // kill/signal API, no /proc access, no heartbeat/lease vocabulary.
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    assert.equal(/\bprocess\s*\.\s*kill\b|\bkillSync\b|['"]\/proc['"]|\/proc\//.test(content), false, `${rel(file)} contains a process-liveness or /proc access marker`);
+    assert.equal(/\bisStale\b|heartbeat|\blease\b/.test(content), false, `${rel(file)} contains a staleness/heartbeat/lease inference marker`);
+  }
+  // The `break-writer-lock` operation literal exists only in its owners
+  // (the brand module, the lock owner, the composition boundary, the
+  // evidence/scanner/plan/types vocabulary).
+  const lockRecoveryOwners = new Set([
+    'src/storage/capabilities/authenticity.ts',
+    'src/storage/locks/lock.ts',
+    'src/storage/recovery/execute.ts',
+    'src/storage/recovery/evidence.ts',
+    'src/storage/recovery/assess.ts',
+    'src/storage/recovery/plan.ts',
+    'src/storage/recovery/scan.ts',
+    'src/storage/recovery/index.ts',
+    'src/storage/publication/publish-record.ts',
+    'src/storage/types.ts',
+  ]);
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    if (content.includes(`'break-writer-lock'`)) {
+      assert.ok(lockRecoveryOwners.has(rel(file)), `${rel(file)} contains the break-writer-lock operation literal outside its owners`);
+    }
+  }
+  // The recovery-break guard and the instance-bound lock removal live ONLY
+  // in the lock owner; the lock-recovery mutation flow reaches them only
+  // through execute.ts; no barrel re-exports them.
+  const lockOwner = readFileSync(join(STORAGE_SRC, 'locks', 'lock.ts'), 'utf8');
+  for (const name of ['acquireRecoveryBreakGuard', 'releaseRecoveryBreakGuard', 'unlinkVerifiedWriterLock', 'RECOVERY_BREAK_GUARD_NAME']) {
+    assert.equal(new RegExp(`export function ${name}|export const ${name}`).test(lockOwner), true, `lock.ts must own ${name}`);
+  }
+  const recoveryIndex = readFileSync(join(STORAGE_SRC, 'recovery', 'index.ts'), 'utf8');
+  assert.equal(/acquireRecoveryBreakGuard|releaseRecoveryBreakGuard|unlinkVerifiedWriterLock/.test(recoveryIndex), false, 'the recovery barrel must never export the lock-mutation primitives');
+  const execute = readFileSync(join(STORAGE_SRC, 'recovery', 'execute.ts'), 'utf8');
+  const lockFlow = execute.slice(execute.indexOf('function executeLockRecoveryMutation'), execute.indexOf('function executeDispositionAdjudication'));
+  assert.equal(/unlinkSync|renameSync|copyFileSync|cpSync|mkdirSync|rmSync|rmdirSync|chmodSync|chownSync/.test(lockFlow), false, 'the lock-recovery flow must not use raw mutation filesystem APIs');
+  assert.equal(/acquireRecoveryBreakGuard|releaseRecoveryBreakGuard|unlinkVerifiedWriterLock/.test(lockFlow), true, 'the lock-recovery flow must use the exact lock-owner primitives');
+  assert.equal(/publishRecoveryBoundRecord/.test(lockFlow), false, 'the lock-recovery flow must never reach the generic publication substrate');
+  assert.equal(/publishRecoveryEvidence/.test(lockFlow), true, 'the lock-recovery flow must publish evidence through the exact-permit evidence pipeline');
+  // The lock-recovery request vocabulary binds no liveness/age/nonce/path
+  // fields: the mutation action type carries only instance facts.
+  const types = readFileSync(join(STORAGE_SRC, 'types.ts'), 'utf8');
+  const actionInterface = types.slice(types.indexOf('export interface RecoveryMutationAction'), types.indexOf('export interface RecoveryMutationRequest'));
+  assert.equal(/\| 'break-writer-lock'/.test(actionInterface), true, 'the action category union must carry the break-writer-lock category');
+  assert.equal(/expectedLockRecordDigest|expectedLockInstanceId|expectedLockObservationId/.test(actionInterface), true, 'the action must bind the lock instance facts');
+  assert.equal(/isStale|expectedPid|expectedProcessStartTime|lockNonce|lockPath/.test(actionInterface), false, 'the action must never accept liveness, PID, nonce, or path fields');
+  // The evidence vocabulary distinguishes lock recovery by operation and
+  // identity domain; evidence never carries a nonce or path.
+  const evidence = readFileSync(join(STORAGE_SRC, 'recovery', 'evidence.ts'), 'utf8');
+  assert.equal(/PGAP-STORAGE-LOCK-RECOVERY-EVIDENCE-v1/.test(evidence), true, 'the lock-recovery evidence identity domain must exist');
+  assert.equal(/lockRecoveryEvidencePayload/.test(evidence), true, 'the lock-recovery evidence payload builder must exist');
+  const payload = evidence.slice(evidence.indexOf('export function lockRecoveryEvidencePayload'), evidence.indexOf('export function buildLockRecoveryEvidenceRecord'));
+  assert.equal(/nonce|path/.test(payload), false, 'the lock-recovery evidence payload must never carry a nonce or path');
+  // The lock owner keeps its exact fs allowlist (no new fs API) and its
+  // D-3 process.pid exception; the lock-recovery primitives add no
+  // liveness API.
+  const lockAllowlist = FS_ALLOWLIST['src/storage/locks/lock.ts'] ?? [];
+  for (const forbidden of ['renameSync', 'copyFileSync', 'cpSync', 'rmSync', 'rmdirSync', 'mkdirSync', 'chmodSync', 'chownSync', 'fchmodSync']) {
+    assert.equal(lockAllowlist.includes(forbidden), false, `lock allowlist must not contain ${forbidden}`);
+  }
 });
 
 /**

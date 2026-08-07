@@ -272,13 +272,14 @@ test('recovery: persistent writer-lock observations are never liveness-assumed',
     assert.equal(lockObs.bootIdentityPresent, false);
     const serialized = JSON.stringify(assessment);
     assert.ok(!serialized.includes(lock.nonce), 'the lock nonce must never be disclosed');
-    // Plan: lock recovery is unsafe and requires explicit recovery authority.
+    // Plan: lock recovery is unsafe and requires explicit external
+    // adjudication through the exact break-writer-lock operation (WP-8-J).
     const plan = result.plan!;
     const lockAction = plan.actions.find((a) => a.category === 'lock-recovery');
     assert.ok(lockAction !== undefined);
     assert.equal(lockAction.safety, 'unsafe');
     assert.equal(lockAction.requiredCapability, 'recovery');
-    assert.equal(lockAction.requiredOperation, 'lock-recovery');
+    assert.equal(lockAction.requiredOperation, 'break-writer-lock');
     assert.equal(lockAction.verifyImmediatelyBeforeMutation, true);
   } finally {
     rmSync(env.dir, { recursive: true, force: true });

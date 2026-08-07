@@ -446,6 +446,11 @@ export const RECOVERY_OPERATION_SET = [
   'dispose-wpr023d-temporary',
   'dispose-quarantined-temporary',
   'dispose-conflicting-index',
+  // WP-8-J: the exact lock-recovery mutation operation (12.3.1/ADR-033).
+  // No generic lock-removal or administrative recovery operation exists;
+  // the trusted recovery action explicitly adjudicates the exact current
+  // lock instance.
+  'break-writer-lock',
 ] as const;
 export type RecoveryOperation = (typeof RECOVERY_OPERATION_SET)[number];
 

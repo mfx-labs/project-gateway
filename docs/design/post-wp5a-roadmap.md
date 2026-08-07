@@ -415,8 +415,13 @@ required** (F1 already resolved by WP-8-L; F2 reconstruction association,
 F3 cross-page snapshot binding, F4 annotation pagination, and cursor
 format versioning corrected at the current HEAD with deterministic
 adversarial tests — see the WP-8-K implementation report correction
-section). **WP-8 closure assurance pending retrospective independent
-review**; WP-8 is not re-closed.
+section). **Retrospective independent rereview of the WP-8-K
+correction returned `WP-8K INDEPENDENT REREVIEW: ACCEPTED AND
+CORRECTION COMMITTED`** (correction commit
+`a654c84d6d2958a5da35c0ef2de8ad8b7869a5ca`); the correction closed
+reconstruction-event association, cross-page snapshot coherence,
+annotation continuation duplication, and the cursor-format/version
+defect; HST-005 normative ordering remains preserved.
 
 **WP-8-L (contract §15.4/RNT-011…020; ADR-035 — retention, legal hold,
 and exact deletion) is implemented**: the first policy-bound deletion
@@ -482,8 +487,14 @@ durable retention-deletion intent evidence as dangling-evidence;
 intent-pending and roll-forward-eligible unreachable), corrected at the
 current HEAD (intent/completion discriminated extraction, exact identity
 re-derivation, restored intent-pending/roll-forward-eligible
-classification, intermediate crash-state tests). WP-8L correction ready
-for independent rereview; WP-8 closure assurance remains pending.**
+classification, intermediate crash-state tests). **Retrospective
+independent rereview of the WP-8-L correction returned `WP-8L
+INDEPENDENT REREVIEW: ACCEPTED AND CORRECTION COMMITTED`**
+(correction commit `1b60a096f9e10df53ccebf9a8f9b38394cae6b8a` — the
+current assurance HEAD); the correction restored exact
+intent/completion discrimination, `intent-pending`,
+`roll-forward-eligible`, and completion-only survivor explanation
+without changing mutation authority or retention execution.**
 
 **WP-8-M (contract §16.7/CSA-016…018; ADR-036 — configuration namespace
 recovery) is implemented**: the exact recovery operation
@@ -544,15 +555,32 @@ is complete** with the verification evidence.
 accepted; committed implementations, reports, tests, and commit history
 are the accepted evidence):
 
-> **Closure-assurance status:** retrospective independent review of the
-> WP-8-K audit-history inspection returned corrections required, which
-> were applied forward at the current HEAD (reconstruction association,
-> cross-page snapshot binding, annotation pagination, cursor format
-> versioning), and retrospective independent review of WP-8-L returned
-> finding L-1 (retention intent evidence misclassified as dangling),
-> corrected at the current HEAD. **WP-8 closure assurance is pending
-> retrospective independent review**; the WP-8 closure decision above is
-> historical and is not re-declared.
+> **Closure-assurance revalidation:** the historical WP-8 closure
+> (commit `db1b41539331d10704f87cf480a49beacacf9168`) predated
+> retrospective independent assurance. Retrospective assurance was
+> required for WP-8-K, WP-8-L, and WP-8-M because implementation and
+> self-review had previously been combined. The retrospective chain is
+> now complete: WP-8-K independent review returned corrections required
+> (correction `a654c84d6d2958a5da35c0ef2de8ad8b7869a5ca`;
+> `WP-8K INDEPENDENT REREVIEW: ACCEPTED AND CORRECTION COMMITTED`);
+> WP-8-L independent review returned finding L-1 (correction
+> `1b60a096f9e10df53ccebf9a8f9b38394cae6b8a` — the current assurance
+> HEAD; `WP-8L INDEPENDENT REREVIEW: ACCEPTED AND CORRECTION
+> COMMITTED`); WP-8-M independent review returned `WP-8-M INDEPENDENT
+> REVIEW: ACCEPTED` with zero substantive findings (two LOW non-blocking
+> fail-closed observations remain: the configuration-recovery byte-exact
+> EEXIST replay path is unreachable and fails closed, and the
+> `interrupted-configuration-publication` scanner vocabulary state is
+> unobservable because real partial prefixes classify as malformed —
+> neither violates an enforceable WP-8 contract property). **No
+> substantive WP-8 assurance finding remains; WP-8 closure is now
+> `ASSURANCE-REVALIDATED`** — the historical closure decision above is
+> historical and is not re-declared. Model: historical closure →
+> retrospective assurance findings → forward corrections → independent
+> rereviews → closure assurance revalidated. Migration remains deferred
+> (DS-13 / §23.2); compaction remains non-MVP/deferred; the remaining
+> adjudication-only states remain intentional; the next work package
+> remains WP-9.
 
 - **WP-8-N configuration migration is DEFERRED** by human decision
   (decision (c) Deferral) under the existing DS-13 / §23.2

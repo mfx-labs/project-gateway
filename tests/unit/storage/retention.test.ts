@@ -32,7 +32,7 @@ import { inspectAuditHistory } from '../../../src/storage/read/index.js';
 import { verifyStoreInstance } from '../../../src/storage/read/read-record.js';
 import { runRecoveryScan, executeRecoveryMutation } from '../../../src/storage/recovery/index.js';
 import { computeScanGeneration, recomputeSurfaceGeneration } from '../../../src/storage/recovery/scan.js';
-import { executeRetentionMutation, computeRetentionHoldStateGeneration, retentionHistoryBindingDigest, computeRetentionRecordIntentIdentity, computeRetentionRecordCompletionIdentity } from '../../../src/storage/retention/index.js';
+import { executeRetentionMutation, computeRetentionHoldStateGeneration, retentionHistoryBindingDigest, computeRetentionRecordIntentIdentity, computeRetentionRecordCompletionIdentity, buildRetentionRecordIntentEvidence, buildRetentionAuditIntentEvidence, buildRetentionRecordCompletionEvidence } from '../../../src/storage/retention/index.js';
 import { createRetentionCapability, createRecoveryCapability, createInitializationCapability } from '../../../src/storage/capabilities/authenticity.js';
 import { buildAuthorizedWriteAuditEvent, buildRecoveryAuditReconstructionEvent } from '../../../src/storage/audit/write-audit.js';
 import { computePayloadDigest, canonicalEnvelopeBytes } from '../../../src/storage/format/envelope.js';
@@ -1377,5 +1377,362 @@ test('retention: a crash at every fixed stage leaves a classifiable state and a 
     } finally {
       rmSync(env.dir, { recursive: true, force: true });
     }
+  }
+});
+
+// ── L-1: recovery scan classifies durable retention-deletion intent ────────
+// evidence as intent-pending / roll-forward-eligible (never dangling) ───────
+
+/** Write one built retention evidence record + its mechanical audit (fixture). */
+function writeRetentionEvidence(env: TestEnv, built: { readonly recordId: string; readonly canonicalUtf8: string; readonly auditCanonicalUtf8: string; readonly auditEventId: string }): void {
+  const derived = deriveRecordRelativePath('store-evidence-record', built.recordId);
+  assert.equal(derived.ok, true);
+  const path = `${env.storeRoot}/${(derived as { readonly ok: true; readonly relativePath: string }).relativePath}`;
+  mkdirSync(path.slice(0, path.lastIndexOf('/')), { recursive: true, mode: 0o700 });
+  writeFileSync(path, built.canonicalUtf8, { mode: 0o600 });
+  chmodSync(path, 0o600);
+  const auditDerived = deriveRecordRelativePath('authoritative-audit-event', built.auditEventId);
+  assert.equal(auditDerived.ok, true);
+  const auditPath = `${env.storeRoot}/${(auditDerived as { readonly ok: true; readonly relativePath: string }).relativePath}`;
+  mkdirSync(auditPath.slice(0, auditPath.lastIndexOf('/')), { recursive: true, mode: 0o700 });
+  writeFileSync(auditPath, built.auditCanonicalUtf8, { mode: 0o600 });
+  chmodSync(auditPath, 0o600);
+}
+
+/** Pure record-delete intent evidence via the committed WP-8L builder (fixture). */
+function recordIntentEvidence(env: TestEnv, facts: RecordDeleteRequestFacts, overrides: Partial<Record<string, unknown>> = {}): { readonly recordId: string; readonly canonicalUtf8: string; readonly auditCanonicalUtf8: string; readonly auditEventId: string; readonly digest: string } {
+  const built = buildRetentionRecordIntentEvidence({
+    storeInstance: env.storeInstance!,
+    actionIdentity: (overrides['actionIdentity'] as string | undefined) ?? RETENTION_ACTION,
+    retentionOperation: 'retention-delete-record',
+    targetRecordClass: 'validation-record',
+    targetRecordId: facts.targetRecordId,
+    targetRecordRevision: facts.targetRevision,
+    targetRecordDigest: facts.targetRecordDigest,
+    policyIdentity: (overrides['policyIdentity'] as string | undefined) ?? POLICY_IDENTITY,
+    policyVersion: (overrides['policyVersion'] as string | undefined) ?? POLICY_VERSION,
+    decisionId: (overrides['decisionId'] as string | undefined) ?? DECISION_ID,
+    holdStateGeneration: (overrides['holdStateGeneration'] as string | undefined) ?? holdGeneration(),
+    holdResult: (overrides['holdResult'] as RetentionHoldResult | undefined) ?? 'clear-current-hold-state',
+    historyDigest: facts.historyDigest,
+    historyStatus: 'complete',
+    generation: 'sha-256:' + 'c'.repeat(64),
+    surfaceGeneration: 'sha-256:' + 'd'.repeat(64),
+    createdAt: '2026-01-01T00:00:01.000Z',
+  });
+  assert.equal(built.ok, true, JSON.stringify(built));
+  return built.record!;
+}
+
+/** Pure record-delete completion evidence via the committed WP-8L builder (fixture). */
+function recordCompletionEvidence(env: TestEnv, facts: RecordDeleteRequestFacts, overrides: Partial<Record<string, unknown>> = {}): { readonly recordId: string; readonly canonicalUtf8: string; readonly auditCanonicalUtf8: string; readonly auditEventId: string; readonly digest: string } {
+  const built = buildRetentionRecordCompletionEvidence({
+    storeInstance: env.storeInstance!,
+    actionIdentity: RETENTION_ACTION,
+    retentionOperation: 'retention-delete-record',
+    intentEvidenceId: (overrides['intentEvidenceId'] as string | undefined) ?? intentIdOf(env, facts),
+    intentEvidenceDigest: (overrides['intentEvidenceDigest'] as string | undefined) ?? 'sha-256:' + '0'.repeat(64),
+    targetRecordClass: 'validation-record',
+    targetRecordId: facts.targetRecordId,
+    targetRecordRevision: facts.targetRevision,
+    targetRecordDigest: (overrides['targetRecordDigest'] as string | undefined) ?? facts.targetRecordDigest,
+    policyIdentity: POLICY_IDENTITY,
+    policyVersion: POLICY_VERSION,
+    decisionId: DECISION_ID,
+    holdStateGeneration: holdGeneration(),
+    holdResult: 'clear-current-hold-state',
+    historyDigest: facts.historyDigest,
+    outcome: (overrides['outcome'] as 'deleted' | 'already-completed' | undefined) ?? 'deleted',
+    generation: 'sha-256:' + 'c'.repeat(64),
+    surfaceGeneration: 'sha-256:' + 'd'.repeat(64),
+    createdAt: '2026-01-02T00:00:01.000Z',
+  });
+  assert.equal(built.ok, true, JSON.stringify(built));
+  return built.record!;
+}
+
+/** Write one raw evidence record with the given payload + its mechanical audit (unrelated-domain fixtures). */
+function writeRawEvidence(env: TestEnv, payload: Readonly<Record<string, unknown>>): void {
+  const recordId = 'pgw:r:' + 'e'.repeat(32);
+  const envelope = { recordKind: 'StoreEvidenceRecord', formatVersion: '1.0', recordId, revision: 1, createdAt: '2026-01-01T00:00:00.000Z', trustedActionId: RETENTION_ACTION, payload, payloadDigest: computePayloadDigest(payload), referenceDigests: [], retentionClass: 'indefinite' };
+  const canonical = canonicalEnvelopeBytes(envelope);
+  const derived = deriveRecordRelativePath('store-evidence-record', recordId);
+  assert.equal(derived.ok, true);
+  const path = `${env.storeRoot}/${(derived as { readonly ok: true; readonly relativePath: string }).relativePath}`;
+  mkdirSync(path.slice(0, path.lastIndexOf('/')), { recursive: true, mode: 0o700 });
+  writeFileSync(path, canonical.canonicalUtf8, { mode: 0o600 });
+  chmodSync(path, 0o600);
+  const audit = buildAuthorizedWriteAuditEvent({ storeInstance: namespaces(env), primaryClass: 'store-evidence-record', primaryRecordId: recordId, primaryRevision: 1, primaryDigest: canonical.digest, eventKind: 'authorized-write', trustedActionIdentity: RETENTION_ACTION, primaryCreatedAt: '2026-01-01T00:00:00.000Z' });
+  assert.equal(audit.ok, true);
+  const auditDerived = deriveRecordRelativePath('authoritative-audit-event', audit.event!.recordId);
+  assert.equal(auditDerived.ok, true);
+  const auditPath = `${env.storeRoot}/${(auditDerived as { readonly ok: true; readonly relativePath: string }).relativePath}`;
+  mkdirSync(auditPath.slice(0, auditPath.lastIndexOf('/')), { recursive: true, mode: 0o700 });
+  writeFileSync(auditPath, audit.event!.canonicalUtf8, { mode: 0o600 });
+  chmodSync(auditPath, 0o600);
+}
+
+test('retention L-1: scanner classifies primary crash intermediate states before rerun (intent-pending → roll-forward-eligible → completed)', () => {
+  const intentStage = RETENTION_CRASH_STAGES.indexOf('before-intent-publication');
+  const unlinkStage = RETENTION_CRASH_STAGES.indexOf('before-target-unlink');
+  const completionStage = RETENTION_CRASH_STAGES.indexOf('before-completion-publication');
+  for (const stage of RETENTION_CRASH_STAGES) {
+    const env = makeStore();
+    try {
+      const { ...facts } = defaultDeleteFacts(env);
+      const stageIndex = RETENTION_CRASH_STAGES.indexOf(stage);
+      crashAt(() => recordDeleteRequest(env, facts), stage);
+      // Intermediate scanner state BEFORE any rerun (§11/§19): the
+      // classification is asserted between the crash and the rerun.
+      const scan = runRecoveryScan({ trustedConfiguration: env.config, trustedInput: env.trustedInput });
+      assert.equal(scan.ok, true, `${stage}: ${JSON.stringify(scan.findings)}`);
+      const states = scan.assessment!.retentionEvidenceStates.filter((s) => s.targetRecordId === RECORD_ID);
+      if (stageIndex <= intentStage) {
+        assert.equal(states.length, 0, `${stage}: no durable intent yet → no retention state`);
+      } else if (stageIndex <= unlinkStage) {
+        assert.equal(states.some((s) => s.state === 'intent-pending'), true, `${stage}: durable intent + target present → intent-pending (${JSON.stringify(states)})`);
+        assert.equal(states.some((s) => s.state === 'dangling-evidence'), false, `${stage}: a valid durable intent is never dangling-evidence`);
+        assert.equal(states.some((s) => s.state === 'roll-forward-eligible'), false, `${stage}: a present target is never roll-forward-eligible`);
+      } else if (stageIndex <= completionStage) {
+        assert.equal(states.some((s) => s.state === 'roll-forward-eligible'), true, `${stage}: durable intent + target absent → roll-forward-eligible (${JSON.stringify(states)})`);
+        assert.equal(states.some((s) => s.state === 'dangling-evidence'), false, `${stage}: a valid durable intent is never dangling-evidence`);
+      } else {
+        assert.equal(states.some((s) => s.state === 'completed'), true, `${stage}: intent + completion durable → completed (${JSON.stringify(states)})`);
+      }
+      // Rerun regression (§12): the existing genuine mutation semantics are
+      // unchanged — the durable intent continues exactly as before.
+      const lockPath = `${env.storeRoot}/locks/writer.lock`;
+      if (stageIndex >= 1) {
+        assert.equal(existsSync(lockPath), true, `${stage}: the crash leaves the writer lock held`);
+        rmSync(lockPath);
+      }
+      const rerun = deleteRecord(env, facts);
+      assert.equal(rerun.ok, true, `${stage}: rerun must complete: ${JSON.stringify(rerun.findings)}`);
+      assert.equal(existsSync(lockPath), false, `${stage}: the lock is released after the rerun`);
+      const after = runRecoveryScan({ trustedConfiguration: env.config, trustedInput: env.trustedInput });
+      assert.equal(after.assessment!.retentionEvidenceStates.some((s) => s.state === 'completed' && s.targetRecordId === RECORD_ID), true, `${stage}: completed classification after the rerun`);
+    } finally {
+      rmSync(env.dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('retention L-1: scanner classifies audit crash intermediate states before rerun (intent-pending → roll-forward-eligible → completed)', () => {
+  const intentStage = RETENTION_CRASH_STAGES.indexOf('before-intent-publication');
+  const unlinkStage = RETENTION_CRASH_STAGES.indexOf('before-target-unlink');
+  const completionStage = RETENTION_CRASH_STAGES.indexOf('before-completion-publication');
+  for (const stage of RETENTION_CRASH_STAGES) {
+    const env = makeStore();
+    try {
+      const { published, ...facts } = defaultDeleteFacts(env);
+      const primary = deleteRecord(env, facts);
+      assert.equal(primary.ok, true, JSON.stringify(primary.findings));
+      const auditFacts = {
+        targetRecordId: published.auditEventId,
+        targetRecordDigest: published.auditDigest,
+        targetRevision: 1,
+        referencedRecordId: RECORD_ID,
+        referencedRecordDigest: published.digest,
+        referencedRecordClass: 'validation-record' as const,
+        primaryDeletionCompletionEvidenceId: primary.completionEvidenceId!,
+      };
+      const stageIndex = RETENTION_CRASH_STAGES.indexOf(stage);
+      crashAt(() => auditDeleteRequest(env, auditFacts), stage);
+      const scan = runRecoveryScan({ trustedConfiguration: env.config, trustedInput: env.trustedInput });
+      assert.equal(scan.ok, true, `${stage}: ${JSON.stringify(scan.findings)}`);
+      const states = scan.assessment!.retentionEvidenceStates.filter((s) => s.targetRecordId === published.auditEventId);
+      if (stageIndex <= intentStage) {
+        assert.equal(states.length, 0, `${stage}: no durable audit intent yet → no retention state`);
+      } else if (stageIndex <= unlinkStage) {
+        assert.equal(states.some((s) => s.state === 'intent-pending'), true, `${stage}: durable audit intent + audit present → intent-pending (${JSON.stringify(states)})`);
+        assert.equal(states.some((s) => s.state === 'dangling-evidence'), false, `${stage}: a valid durable audit intent is never dangling-evidence`);
+      } else if (stageIndex <= completionStage) {
+        assert.equal(states.some((s) => s.state === 'roll-forward-eligible'), true, `${stage}: durable audit intent + audit absent → roll-forward-eligible (${JSON.stringify(states)})`);
+        assert.equal(states.some((s) => s.state === 'dangling-evidence'), false, `${stage}: a valid durable audit intent is never dangling-evidence`);
+      } else {
+        assert.equal(states.some((s) => s.state === 'completed'), true, `${stage}: audit intent + completion → completed (${JSON.stringify(states)})`);
+      }
+      const lockPath = `${env.storeRoot}/locks/writer.lock`;
+      if (stageIndex >= 1) {
+        assert.equal(existsSync(lockPath), true, `${stage}: the crash leaves the writer lock held`);
+        rmSync(lockPath);
+      }
+      const rerun = deleteAudit(env, auditFacts);
+      assert.equal(rerun.ok, true, `${stage}: audit rerun must complete: ${JSON.stringify(rerun.findings)}`);
+      const after = runRecoveryScan({ trustedConfiguration: env.config, trustedInput: env.trustedInput });
+      assert.equal(after.assessment!.retentionEvidenceStates.some((s) => s.state === 'completed' && s.targetRecordId === published.auditEventId), true, `${stage}: completed classification after the audit rerun`);
+    } finally {
+      rmSync(env.dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('retention L-1: conflicting, malformed, and mismatched retention evidence never becomes intent-pending', () => {
+  const env = makeStore();
+  try {
+    const { ...facts } = defaultDeleteFacts(env);
+    // A second conflicting intent for the SAME target (different decision).
+    writeRetentionEvidence(env, recordIntentEvidence(env, facts));
+    writeRetentionEvidence(env, recordIntentEvidence(env, facts, { decisionId: 'wp8l-decision-2' }));
+    let scan = runRecoveryScan({ trustedConfiguration: env.config, trustedInput: env.trustedInput });
+    assert.equal(scan.ok, true, JSON.stringify(scan.findings));
+    let states = scan.assessment!.retentionEvidenceStates;
+    assert.equal(states.some((s) => s.state === 'conflicting' && s.targetRecordId === RECORD_ID), true, `two distinct intents contesting one target are conflicting (${JSON.stringify(states)})`);
+    assert.equal(states.some((s) => s.state === 'intent-pending' || s.state === 'roll-forward-eligible'), false, 'a contested intent set is never intent-pending/roll-forward-eligible');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+  // Valid intent + malformed intent: the malformed claim is dangling and the
+  // set is never silently merged into a clean pending state.
+  const env2 = makeStore();
+  try {
+    const { ...facts } = defaultDeleteFacts(env2);
+    const valid = recordIntentEvidence(env2, facts);
+    writeRetentionEvidence(env2, valid);
+    // A SECOND retention claim with a distinct identity whose payload is
+    // incomplete (history binding dropped): malformed, never merged.
+    const malformed = recordIntentEvidence(env2, facts, { decisionId: 'wp8l-decision-3' });
+    const model = JSON.parse(malformed.canonicalUtf8) as Record<string, unknown>;
+    const p = model['payload'] as Record<string, unknown>;
+    delete p['historyDigest'];
+    model['payloadDigest'] = computePayloadDigest(p);
+    const malformedPath = evidencePath(env2, malformed.recordId);
+    mkdirSync(malformedPath.slice(0, malformedPath.lastIndexOf('/')), { recursive: true, mode: 0o700 });
+    writeFileSync(malformedPath, canonicalEnvelopeBytes(model).canonicalUtf8, { mode: 0o600 });
+    chmodSync(malformedPath, 0o600);
+    const scan = runRecoveryScan({ trustedConfiguration: env2.config, trustedInput: env2.trustedInput });
+    assert.equal(scan.ok, true, JSON.stringify(scan.findings));
+    const states = scan.assessment!.retentionEvidenceStates;
+    assert.equal(states.some((s) => s.state === 'dangling-evidence'), true, `the malformed intent is dangling-evidence (${JSON.stringify(states)})`);
+    assert.equal(states.some((s) => s.state === 'intent-pending' && s.targetRecordId === RECORD_ID), true, 'the valid intent remains intent-pending');
+    // The malformed evidence's audit event was never written; the scan's
+    // missing-audit finding is expected, not a retention state.
+    assert.equal(states.filter((s) => s.targetRecordId === RECORD_ID && s.state === 'conflicting').length, 0);
+  } finally {
+    rmSync(env2.dir, { recursive: true, force: true });
+  }
+});
+
+test('retention L-1: completion without a matching durable intent is dangling, never completed', () => {
+  const env = makeStore();
+  try {
+    const { ...facts } = defaultDeleteFacts(env);
+    // Completion referencing a NONEXISTENT intent identity.
+    writeRetentionEvidence(env, recordCompletionEvidence(env, facts, { intentEvidenceId: 'pgw:r:99990000000000000000000000000099' }));
+    let scan = runRecoveryScan({ trustedConfiguration: env.config, trustedInput: env.trustedInput });
+    assert.equal(scan.ok, true, JSON.stringify(scan.findings));
+    let states = scan.assessment!.retentionEvidenceStates;
+    assert.equal(states.some((s) => s.state === 'dangling-evidence' && s.targetRecordId === RECORD_ID), true, `completion without a matching intent is dangling (${JSON.stringify(states)})`);
+    assert.equal(states.some((s) => s.state === 'completed'), false, 'completion without its intent is never completed');
+    assert.equal(states.some((s) => s.state === 'roll-forward-eligible' || s.state === 'intent-pending'), false);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+  // Completion whose target bindings mismatch the referenced intent
+  // (wrong target digest): dangling, never completed.
+  const env2 = makeStore();
+  try {
+    const { ...facts } = defaultDeleteFacts(env2);
+    writeRetentionEvidence(env2, recordIntentEvidence(env2, facts));
+    const wrongDigest = recordCompletionEvidence(env2, facts, { targetRecordDigest: 'sha-256:' + '9'.repeat(64) });
+    writeRetentionEvidence(env2, wrongDigest);
+    const scan = runRecoveryScan({ trustedConfiguration: env2.config, trustedInput: env2.trustedInput });
+    assert.equal(scan.ok, true, JSON.stringify(scan.findings));
+    const states = scan.assessment!.retentionEvidenceStates;
+    assert.equal(states.some((s) => s.state === 'dangling-evidence' && s.targetRecordId === RECORD_ID), true, `digest-mismatched completion is dangling (${JSON.stringify(states)})`);
+    assert.equal(states.some((s) => s.state === 'completed'), false);
+    assert.equal(states.some((s) => s.state === 'intent-pending'), true, 'the valid intent remains intent-pending on its own');
+  } finally {
+    rmSync(env2.dir, { recursive: true, force: true });
+  }
+  // A record-delete completion paired with an AUDIT-delete intent identity
+  // is a mismatched pair: dangling.
+  const env3 = makeStore();
+  try {
+    const { published, ...facts } = defaultDeleteFacts(env3);
+    // Build the audit intent identity for the primary's audit event so the
+    // completion can reference a real-but-wrong intent.
+    const auditIntent = buildRetentionAuditIntentEvidence({
+      storeInstance: env3.storeInstance!,
+      actionIdentity: RETENTION_ACTION,
+      retentionOperation: 'retention-delete-audit',
+      targetRecordClass: 'authoritative-audit-event',
+      targetRecordId: published.auditEventId,
+      targetRecordRevision: 1,
+      targetRecordDigest: published.auditDigest,
+      referencedRecordId: RECORD_ID,
+      referencedRecordDigest: published.digest,
+      primaryDeletionCompletionEvidenceId: 'pgw:r:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      policyIdentity: POLICY_IDENTITY,
+      policyVersion: POLICY_VERSION,
+      decisionId: DECISION_ID,
+      holdStateGeneration: holdGeneration(),
+      holdResult: 'clear-current-hold-state',
+      generation: 'sha-256:' + 'c'.repeat(64),
+      surfaceGeneration: 'sha-256:' + 'd'.repeat(64),
+      createdAt: '2026-01-01T00:00:01.000Z',
+    });
+    assert.equal(auditIntent.ok, true);
+    writeRetentionEvidence(env3, auditIntent.record!);
+    const mismatch = recordCompletionEvidence(env3, facts, { intentEvidenceId: auditIntent.record!.recordId });
+    writeRetentionEvidence(env3, mismatch);
+    const scan = runRecoveryScan({ trustedConfiguration: env3.config, trustedInput: env3.trustedInput });
+    assert.equal(scan.ok, true, JSON.stringify(scan.findings));
+    const states = scan.assessment!.retentionEvidenceStates;
+    // The audit intent is for the audit event; the record completion for the
+    // primary references it → operation/identity mismatch → dangling.
+    assert.equal(states.some((s) => s.state === 'dangling-evidence' && s.targetRecordId === RECORD_ID), true, `record-completion paired with an audit intent is dangling (${JSON.stringify(states)})`);
+    assert.equal(states.some((s) => s.state === 'completed'), false);
+  } finally {
+    rmSync(env3.dir, { recursive: true, force: true });
+  }
+});
+
+test('retention L-1: wrong retention operation and wrong evidence domain are never retention states', () => {
+  const env = makeStore();
+  try {
+    const { ...facts } = defaultDeleteFacts(env);
+    writeRetentionEvidence(env, recordIntentEvidence(env, facts));
+    // A retention-evidence-kind record with an OUTSIDE operation.
+    writeRawEvidence(env, { evidenceKind: 'retention-evidence', retentionOperation: 'retention-delete-other', targetRecordId: RECORD_ID, targetRecordDigest: facts.targetRecordDigest });
+    // A recovery-domain evidence record (quarantine) for the same target.
+    writeRawEvidence(env, { evidenceKind: 'recovery-evidence', recoveryOperation: 'quarantine-temporary', quarantineId: 'f'.repeat(64), sourceDigest: facts.targetRecordDigest, targetEntry: 'x.tmp' });
+    // Retention evidence for ANOTHER target stays scoped to that target.
+    writeRetentionEvidence(env, recordIntentEvidence(env, { ...facts, targetRecordId: OTHER_RECORD_ID, targetRecordDigest: 'sha-256:' + '8'.repeat(64) }));
+    const scan = runRecoveryScan({ trustedConfiguration: env.config, trustedInput: env.trustedInput });
+    assert.equal(scan.ok, true, JSON.stringify(scan.findings));
+    const states = scan.assessment!.retentionEvidenceStates;
+    // The valid intent for RECORD_ID is intent-pending (target present).
+    assert.equal(states.some((s) => s.state === 'intent-pending' && s.targetRecordId === RECORD_ID), true, JSON.stringify(states));
+    // No ambiguous set: the wrong-operation and wrong-domain records never
+    // produce a retention state at all.
+    assert.equal(states.some((s) => s.state === 'dangling-evidence' && s.targetRecordId === RECORD_ID), false, 'wrong-operation/wrong-domain evidence is not retention dangling either');
+    // The other-target intent is classified only for its own target.
+    assert.equal(states.some((s) => s.targetRecordId === OTHER_RECORD_ID && s.state === 'roll-forward-eligible'), true, 'the other-target intent is classified for its own target only');
+    // The target-present check for the OTHER record: its record does not
+    // exist, so its intent is roll-forward-eligible (target absent).
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('retention L-1: a replaced target with a durable intent is conflicting, never roll-forward-eligible', () => {
+  const env = makeStore();
+  try {
+    const { published, ...facts } = defaultDeleteFacts(env);
+    writeRetentionEvidence(env, recordIntentEvidence(env, facts));
+    // Replace the target record at its exact path with different bytes.
+    const payload = { validated: false, replaced: true };
+    const model = { recordKind: 'ValidationRecord', formatVersion: '1.0', recordId: RECORD_ID, revision: 1, createdAt: '2026-02-01T00:00:00.000Z', trustedActionId: WRITE_ACTION, payload, payloadDigest: computePayloadDigest(payload) };
+    writeFileSync(published.recordPath, canonicalEnvelopeBytes(model).canonicalUtf8, { mode: 0o600 });
+    chmodSync(published.recordPath, 0o600);
+    const scan = runRecoveryScan({ trustedConfiguration: env.config, trustedInput: env.trustedInput });
+    assert.equal(scan.ok, true, JSON.stringify(scan.findings));
+    const states = scan.assessment!.retentionEvidenceStates.filter((s) => s.targetRecordId === RECORD_ID);
+    assert.equal(states.some((s) => s.state === 'conflicting'), true, `a replaced target under a durable intent is conflicting (${JSON.stringify(states)})`);
+    assert.equal(states.some((s) => s.state === 'roll-forward-eligible'), false, 'a replaced target is never clean absence');
+    assert.equal(states.some((s) => s.state === 'intent-pending'), false);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
   }
 });

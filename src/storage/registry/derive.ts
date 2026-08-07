@@ -256,7 +256,9 @@ function retentionCompletionEvidence(
   for (const obs of observations) {
     if (obs.kind !== 'record' || obs.recordClass !== 'store-evidence-record' || obs.retentionEvidenceFacts === undefined) continue;
     const d = obs.retentionEvidenceFacts;
-    if (d.malformed || d.retentionOperation !== 'retention-delete-record') continue;
+    // Only COMPLETION evidence explains an intentional retention survivor
+    // (L-1): durable intents carry no outcome and never explain absence.
+    if (d.malformed || d.kind !== 'completion' || d.retentionOperation !== 'retention-delete-record') continue;
     if (d.targetRecordId === undefined || d.targetRecordDigest === undefined) continue;
     if (d.outcome !== 'deleted' && d.outcome !== 'already-completed') continue;
     const key = `${d.targetRecordId}\u0000${d.targetRecordDigest}`;

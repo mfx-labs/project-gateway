@@ -56,6 +56,8 @@ import type {
   RecordScanObservation,
   RetentionEvidenceStateFinding,
   RetentionSurvivorFinding,
+  AuditScanObservation,
+  ForeignScanObservation,
   RecoveryAssessment,
   ScanFacts,
   ScanObservation,
@@ -64,6 +66,7 @@ import type {
   VerifiedRecordView,
 } from '../types.js';
 import { RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND } from '../audit/write-audit.js';
+import { deriveRecordRelativePath } from '../layout/layout.js';
 import { jcsSerialize } from '../../canonical/jcs.js';
 import { parseRawJson } from '../../json/scanner.js';
 import { isValidDigestSyntax } from '../format/envelope.js';
@@ -675,36 +678,80 @@ export function assessRecovery(
   lockRecoveryStates.sort((a, b) => (a.lockInstanceId < b.lockInstanceId ? -1 : a.lockInstanceId > b.lockInstanceId ? 1 : a.state < b.state ? -1 : 1));
 
   // WP-8-L: deterministic retention-deletion state classification (§15.4;
-  // ADR-035 §9). Derived purely from durable facts: every scanned retention
-  // evidence record is checked against the CURRENT verified target surface
-  // (content-verified record observations). A malformed/incomplete payload
-  // is dangling; completion evidence with the exact target still present is
-  // a conflicting integrity inconsistency; completion evidence with the
-  // target absent is completed; intent evidence with the target present is
-  // intent-pending (in-flight or crashed pre-unlink); intent evidence with
-  // the target absent is roll-forward-eligible (the safe completion
-  // roll-forward state); multiple distinct completions for one target are
-  // conflicting. Absence without intent is never labeled completed.
-  const verifiedTargets = new Map<string, Set<string>>();
-  for (const rec of verifiedDurableRecords) {
-    const digests = verifiedTargets.get(rec.recordId) ?? new Set<string>();
-    digests.add(rec.recordDigest);
-    verifiedTargets.set(rec.recordId, digests);
+  // ADR-035 §9; L-1). Derived purely from durable facts: every scanned
+  // retention evidence record is checked against the CURRENT verified
+  // target surface. Intent evidence (no outcome; discriminated by the
+  // extractor) is never malformed for lacking a completion-only `outcome`:
+  // a durable intent with the exact target present is `intent-pending`, a
+  // durable intent with the target cleanly absent is
+  // `roll-forward-eligible`, and a durable intent with a replaced/tampered
+  // target is `conflicting` (a replacement is never deleted and never
+  // silently roll-forward-eligible). Completion evidence must pair with
+  // the exact durable intent (identity, operation, target bindings, bytes
+  // digest) and the exact target state: live target →
+  // `evidence-with-live-target`, clean absence → `completed`, multiple
+  // distinct completions for one target → `conflicting`. A completion
+  // without a matching durable intent, malformed/incomplete payloads, and
+  // identity-mismatched claims are `dangling-evidence`. Absence without
+  // intent is never labeled completed. The classification is
+  // observational: it mints no authority and enables no mutation.
+  // Exact target-state resolution over the observed surface (§13): the
+  // derived target location decides. No observation at the location is
+  // clean absence; ANY object at the location whose verified envelope
+  // facts do not match the exact identity/digest (replaced, tampered,
+  // wrong-type, malformed) is a conflicting-present state — never clean
+  // absence.
+  const resolvedTargetStates = new Map<string, 'present-exact' | 'present-conflicting' | 'absent'>();
+  const resolveTargetState = (recordClass: string, targetRecordId: string, targetRecordDigest: string): 'present-exact' | 'present-conflicting' | 'absent' => {
+    const key = `${recordClass}\u0000${targetRecordId}\u0000${targetRecordDigest}`;
+    const cached = resolvedTargetStates.get(key);
+    if (cached !== undefined) return cached;
+    const derived = deriveRecordRelativePath(recordClass as RecordClassId, targetRecordId);
+    if (!derived.ok) {
+      // The identity cannot be located: absence cannot be proven.
+      resolvedTargetStates.set(key, 'present-conflicting');
+      return 'present-conflicting';
+    }
+    let found: RecordScanObservation | AuditScanObservation | ForeignScanObservation | undefined;
+    for (const candidate of obs) {
+      if (candidate.kind !== 'record' && candidate.kind !== 'audit-event' && candidate.kind !== 'foreign-object') continue;
+      if ((candidate.recordClass ?? '') !== recordClass || candidate.shard !== derived.shard || candidate.entry !== derived.filename) continue;
+      found = candidate;
+      break;
+    }
+    if (found === undefined) {
+      resolvedTargetStates.set(key, 'absent');
+      return 'absent';
+    }
+    if (found.kind === 'foreign-object') {
+      resolvedTargetStates.set(key, 'present-conflicting');
+      return 'present-conflicting';
+    }
+    const envelope = found.envelope;
+    if (envelope?.recordId === targetRecordId && envelope.recordDigest === targetRecordDigest) {
+      resolvedTargetStates.set(key, 'present-exact');
+      return 'present-exact';
+    }
+    resolvedTargetStates.set(key, 'present-conflicting');
+    return 'present-conflicting';
+  };
+  // Evidence observations by envelope record identity: exact pairing of
+  // completions with their referenced intent and of audit completions with
+  // the referenced primary-deletion completion.
+  const evidenceByRecordId = new Map<string, { readonly observationId: string; readonly facts: NonNullable<RecordScanObservation['retentionEvidenceFacts']>; readonly recordDigest?: string }>();
+  for (const item of obs) {
+    if (item.kind !== 'record' || item.recordClass !== 'store-evidence-record' || item.retentionEvidenceFacts === undefined) continue;
+    if (item.envelope?.recordId === undefined) continue;
+    evidenceByRecordId.set(item.envelope.recordId, { observationId: item.id, facts: item.retentionEvidenceFacts, recordDigest: item.envelope.recordDigest });
   }
   const retentionConflicts = new Map<string, string[]>();
+  const retentionIntents = new Map<string, string[]>();
   for (const item of obs) {
     if (item.kind !== 'record' || item.recordClass !== 'store-evidence-record' || item.retentionEvidenceFacts === undefined) continue;
     const d = item.retentionEvidenceFacts;
     const targetRecordId = d.targetRecordId ?? '';
-    const targetRecordDigest = d.targetRecordDigest ?? '';
     const retentionOperation = d.retentionOperation;
-    if (
-      d.malformed ||
-      retentionOperation === undefined ||
-      targetRecordId === '' ||
-      targetRecordDigest === '' ||
-      (d.outcome !== 'deleted' && d.outcome !== 'already-completed')
-    ) {
+    if (d.malformed || retentionOperation === undefined || d.kind === undefined || targetRecordId === '' || d.targetRecordDigest === undefined) {
       retentionEvidenceStates.push({
         targetRecordId,
         retentionOperation: retentionOperation ?? 'retention-delete-record',
@@ -715,11 +762,59 @@ export function assessRecovery(
       findings.push(finding('ERR-STO-MALFORMED', 'malformed or dangling retention evidence record'));
       continue;
     }
-    const targetDigests = verifiedTargets.get(targetRecordId);
-    const targetPresent = targetDigests !== undefined && targetDigests.has(targetRecordDigest);
-    const isCompletion = d.intentEvidenceId !== undefined && d.intentEvidenceId !== '';
-    if (isCompletion) {
-      if (targetPresent) {
+    if (d.kind === 'completion') {
+      const targetState = resolveTargetState(d.targetRecordClass ?? '', targetRecordId, d.targetRecordDigest);
+      // Exact pairing with the durable intent the completion binds (L-1
+      // §9): identity, operation, target class/id/revision/digest,
+      // audit-flow referenced bindings, and the intent's bytes digest.
+      const intent = evidenceByRecordId.get(d.intentEvidenceId ?? '');
+      const paired =
+        intent !== undefined &&
+        !intent.facts.malformed &&
+        intent.facts.kind === 'intent' &&
+        intent.facts.retentionOperation === retentionOperation &&
+        intent.facts.targetRecordId === targetRecordId &&
+        intent.facts.targetRecordRevision === d.targetRecordRevision &&
+        intent.facts.targetRecordDigest === d.targetRecordDigest &&
+        (d.referencedRecordId === undefined || intent.facts.referencedRecordId === d.referencedRecordId) &&
+        (d.referencedRecordDigest === undefined || intent.facts.referencedRecordDigest === d.referencedRecordDigest) &&
+        (d.primaryDeletionCompletionEvidenceId === undefined || intent.facts.primaryDeletionCompletionEvidenceId === d.primaryDeletionCompletionEvidenceId) &&
+        (intent.recordDigest === d.intentEvidenceDigest);
+      if (!paired) {
+        retentionEvidenceStates.push({
+          targetRecordId,
+          retentionOperation,
+          state: 'dangling-evidence',
+          evidenceObservationIds: [item.id],
+          reason: 'retention deletion completion evidence does not pair with a matching durable intent',
+        });
+        findings.push(finding('ERR-STO-MALFORMED', 'retention completion evidence without a matching durable deletion intent'));
+        continue;
+      }
+      if (retentionOperation === 'retention-delete-audit') {
+        // The audit flow additionally requires the exact referenced
+        // primary-deletion completion to be durable (RNT-015).
+        const primaryCompletion = evidenceByRecordId.get(d.primaryDeletionCompletionEvidenceId ?? '');
+        const primaryOk =
+          primaryCompletion !== undefined &&
+          !primaryCompletion.facts.malformed &&
+          primaryCompletion.facts.kind === 'completion' &&
+          primaryCompletion.facts.retentionOperation === 'retention-delete-record' &&
+          primaryCompletion.facts.targetRecordId === d.referencedRecordId &&
+          primaryCompletion.facts.targetRecordDigest === d.referencedRecordDigest;
+        if (!primaryOk) {
+          retentionEvidenceStates.push({
+            targetRecordId,
+            retentionOperation,
+            state: 'dangling-evidence',
+            evidenceObservationIds: [item.id],
+            reason: 'audit deletion completion evidence references no durable matching primary deletion completion',
+          });
+          findings.push(finding('ERR-STO-MALFORMED', 'audit deletion completion without the referenced primary deletion completion'));
+          continue;
+        }
+      }
+      if (targetState !== 'absent') {
         retentionEvidenceStates.push({
           targetRecordId,
           retentionOperation,
@@ -735,16 +830,12 @@ export function assessRecovery(
       retentionConflicts.set(targetRecordId, conflicts);
       continue;
     }
-    // Intent evidence (no completion binding).
-    retentionEvidenceStates.push({
-      targetRecordId,
-      retentionOperation,
-      state: targetPresent ? 'intent-pending' : 'roll-forward-eligible',
-      evidenceObservationIds: [item.id],
-      reason: targetPresent
-        ? 'durable deletion intent with the exact target still present; pre-unlink or crashed in-flight state'
-        : 'durable deletion intent with the exact target absent; safe completion roll-forward state',
-    });
+    // Intent evidence (no completion binding; no outcome; L-1). Collected
+    // per target: a contested intent set is classified `conflicting` as a
+    // whole, never as per-intent pending states.
+    const intents = retentionIntents.get(targetRecordId) ?? [];
+    intents.push(item.id);
+    retentionIntents.set(targetRecordId, intents);
   }
   for (const [targetRecordId, evidenceIds] of retentionConflicts) {
     if (evidenceIds.length > 1) {
@@ -764,6 +855,41 @@ export function assessRecovery(
         reason: 'matching retention deletion intent and completion are durable and the target is absent',
       });
     }
+  }
+  for (const [targetRecordId, intentIds] of retentionIntents) {
+    const item = obs.find((o) => o.kind === 'record' && o.recordClass === 'store-evidence-record' && o.id === intentIds[0]);
+    const d = item !== undefined && item.kind === 'record' ? item.retentionEvidenceFacts : undefined;
+    const retentionOperation = d?.retentionOperation ?? 'retention-delete-record';
+    if (intentIds.length > 1) {
+      retentionEvidenceStates.push({
+        targetRecordId,
+        retentionOperation,
+        state: 'conflicting',
+        evidenceObservationIds: [...intentIds],
+        reason: 'multiple distinct retention deletion intents contest the same target',
+      });
+      continue;
+    }
+    // Single durable intent: classify against the CURRENT exact target
+    // state (intent-pending / roll-forward-eligible / conflicting).
+    const targetState = resolveTargetState(d?.targetRecordClass ?? '', targetRecordId, d?.targetRecordDigest ?? '');
+    const targetPresent = targetState === 'present-exact';
+    const targetConflicting = targetState === 'present-conflicting';
+    retentionEvidenceStates.push({
+      targetRecordId,
+      retentionOperation,
+      state: targetConflicting
+        ? 'conflicting'
+        : targetPresent
+          ? 'intent-pending'
+          : 'roll-forward-eligible',
+      evidenceObservationIds: [...intentIds],
+      reason: targetConflicting
+        ? 'durable deletion intent exists but the target identity/digest changed; the replacement is never deleted'
+        : targetPresent
+          ? 'durable deletion intent with the exact target still present; pre-unlink or crashed in-flight state'
+          : 'durable deletion intent with the exact target absent; safe completion roll-forward state',
+    });
   }
   retentionEvidenceStates.sort((a, b) => (a.targetRecordId < b.targetRecordId ? -1 : a.targetRecordId > b.targetRecordId ? 1 : a.state < b.state ? -1 : 1));
   retentionSurvivors.sort((a, b) => (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0));

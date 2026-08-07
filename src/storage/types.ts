@@ -797,6 +797,8 @@ export interface RecordScanObservation extends ScanObservationBase {
   };
   /** WP-8-L: retention deletion evidence payload facts (§15.4/ADR-035). */
   readonly retentionEvidenceFacts?: {
+    /** Discriminator: durable deletion intent (no outcome) vs deletion completion (outcome + exact intent binding). */
+    readonly kind?: 'intent' | 'completion';
     readonly retentionOperation?: 'retention-delete-record' | 'retention-delete-audit';
     readonly targetRecordClass?: string;
     readonly targetRecordId?: string;
@@ -804,8 +806,16 @@ export interface RecordScanObservation extends ScanObservationBase {
     readonly targetRecordDigest?: string;
     readonly referencedRecordId?: string;
     readonly referencedRecordDigest?: string;
+    /** Audit flow only: the exact primary-deletion completion evidence the audit deletion is bound to. */
+    readonly primaryDeletionCompletionEvidenceId?: string;
+    /** Completion only: the exact durable intent evidence identity this completion binds. */
     readonly intentEvidenceId?: string;
+    /** Completion only: canonical bytes digest of the bound durable intent evidence. */
+    readonly intentEvidenceDigest?: string;
     readonly holdStateGeneration?: string;
+    /** Record flow only: the history-binding digest the intent/completion was adjudicated against. */
+    readonly historyDigest?: string;
+    /** Completion only: closed completion outcome (`deleted` | `already-completed`). */
     readonly outcome?: string;
     /** True when the payload claims a retention operation but the facts are incomplete/invalid. */
     readonly malformed: boolean;

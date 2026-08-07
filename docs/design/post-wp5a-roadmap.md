@@ -476,7 +476,14 @@ is complete** with the verification evidence; the **next gate is the
 WP-8-F…WP-8-L implementation review**; **WP-8-F…WP-8-K are not closed**;
 WP-8 implementation remains **not closed**; WP-9 and later packages
 remain **not authorized**. No release, publication, installation, or
-deployment action has occurred for WP-8.
+deployment action has occurred for WP-8. **Retrospective independent
+review of WP-8-L returned finding L-1 (recovery scan misclassifies
+durable retention-deletion intent evidence as dangling-evidence;
+intent-pending and roll-forward-eligible unreachable), corrected at the
+current HEAD (intent/completion discriminated extraction, exact identity
+re-derivation, restored intent-pending/roll-forward-eligible
+classification, intermediate crash-state tests). WP-8L correction ready
+for independent rereview; WP-8 closure assurance remains pending.**
 
 **WP-8-M (contract §16.7/CSA-016…018; ADR-036 — configuration namespace
 recovery) is implemented**: the exact recovery operation
@@ -541,9 +548,11 @@ are the accepted evidence):
 > WP-8-K audit-history inspection returned corrections required, which
 > were applied forward at the current HEAD (reconstruction association,
 > cross-page snapshot binding, annotation pagination, cursor format
-> versioning). **WP-8 closure assurance is pending retrospective
-> independent review**; the WP-8 closure decision above is historical and
-> is not re-declared.
+> versioning), and retrospective independent review of WP-8-L returned
+> finding L-1 (retention intent evidence misclassified as dangling),
+> corrected at the current HEAD. **WP-8 closure assurance is pending
+> retrospective independent review**; the WP-8 closure decision above is
+> historical and is not re-declared.
 
 - **WP-8-N configuration migration is DEFERRED** by human decision
   (decision (c) Deferral) under the existing DS-13 / §23.2

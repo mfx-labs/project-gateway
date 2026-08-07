@@ -1139,6 +1139,21 @@ test('static guard: retention deletion vocabulary is closed, separate from recov
       assert.equal(name === 'createRetentionCapability' || name === 'createTrustedRetentionRequest' || name === 'createRetentionActionProvenance', false, `${rel(file)} re-exports a retention creator`);
     }
   }
+  // L-1: the scanner classification is observational only — the recovery
+  // scan/assessment and the registry derivation never import retention
+  // authority or mutation owners (no capability, provenance, publication,
+  // lock, or unlink machinery), and scan.ts verifies retention evidence
+  // identities ONLY through the committed pure deterministic derivations.
+  for (const f of ['src/storage/recovery/scan.ts', 'src/storage/recovery/assess.ts', 'src/storage/registry/derive.ts']) {
+    const content = readFileSync(join(REPO, f), 'utf8');
+    for (const marker of ['createRetentionCapability', 'createTrustedRetentionRequest', 'createRetentionActionProvenance', 'publishRetentionEvidence', 'publishRetentionBoundRecord', 'acquireWriterLock', 'unlinkVerifiedRecordObject', 'executeRetentionMutation']) {
+      assert.equal(content.includes(marker), false, `${f} must not import the retention authority/mutation marker ${marker}`);
+    }
+  }
+  const scannerSource = readFileSync(join(REPO, 'src/storage/recovery/scan.ts'), 'utf8');
+  for (const derivation of ['computeRetentionRecordIntentIdentity', 'computeRetentionAuditIntentIdentity', 'computeRetentionRecordCompletionIdentity', 'computeRetentionAuditCompletionIdentity']) {
+    assert.equal(scannerSource.includes(derivation), true, `scan.ts must verify retention evidence identities through ${derivation}`);
+  }
 });
 
 /**

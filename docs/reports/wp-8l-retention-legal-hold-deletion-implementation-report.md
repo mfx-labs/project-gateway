@@ -308,7 +308,112 @@ is reported in §14.
 - Static guard: 28/28; global security: 15/15.
 - `git diff --check` clean.
 
-## 15. Remaining WP-8 Work
+## 15. Correction Section — Independent Review Finding L-1
+
+Retrospective independent review of the WP-8-L implementation returned
+finding **L-1 — Recovery scan misclassifies durable retention-deletion
+intent evidence as dangling-evidence; intent-pending and
+roll-forward-eligible are unreachable.** This section records the
+finding, the root cause, and the correction. The correction is applied
+forward from current HEAD; no historical commit was rewritten.
+
+### Root cause (confirmed)
+
+Retention intent evidence legitimately carries NO `outcome` field;
+`extractRetentionEvidenceFacts` rejected evidence unless
+`typeof outcome === "string"`, and the downstream retention
+classification additionally required `outcome === "deleted" ||
+"already-completed"` before reaching the intent-state logic. Genuine
+durable intent evidence was therefore classified as malformed/dangling,
+making `intent-pending` and `roll-forward-eligible` unreachable. The
+evidence producer was not changed; the scanner now understands the
+committed retention evidence model.
+
+### Intent/completion extraction model (corrected)
+
+`extractRetentionEvidenceFacts` now models retention evidence as a
+discriminated union over the ACTUAL committed payload shapes:
+
+- **`kind: 'intent'`** — durable deletion intent. No `outcome` is
+  required or accepted; every intent-required fact is verified
+  (operation, target class/identity/revision/digest, trusted policy
+  identity/version, decision identity, hold-state generation, hold
+  result, history binding for the record flow, referenced primary
+  completion binding for the audit flow), and the envelope identity MUST
+  equal the deterministic intent identity re-derived over those facts
+  plus the verified store instance (the committed WP-8L derivations).
+  Missing a required intent field stays malformed.
+- **`kind: 'completion'`** — deletion completion. Requires the exact
+  completion facts: closed outcome (`deleted` / `already-completed`;
+  unknown outcomes fail closed), the exact bound intent identity and
+  intent bytes digest, and the per-operation bindings; the envelope
+  identity MUST equal the deterministic completion identity.
+
+### Restored scanner state behavior (assess.ts)
+
+- Intent + target present (exact digest) → `intent-pending` (never
+  `dangling-evidence`).
+- Intent + target cleanly absent → `roll-forward-eligible`; a
+  replaced/tampered/wrong-type object at the target location is
+  `conflicting`, never clean absence (§13 semantics: absence is proven
+  only by the derived target location having no observation).
+- Completion + target present → `evidence-with-live-target`; completion
+  + clean absence → `completed`; multiple distinct completions for one
+  target → `conflicting`.
+- Completion without a matching durable intent (missing intent, wrong
+  operation, wrong target bindings, wrong intent bytes digest, record
+  completion paired with an audit intent) → `dangling-evidence`;
+  audit-deletion completion without the referenced primary-deletion
+  completion → `dangling-evidence`.
+- Multiple distinct intents for one target → `conflicting` (never a
+  merged pending state). Malformed/identity-mismatched claims →
+  `dangling-evidence`. The record flow resolves target presence on the
+  records surface; the audit flow resolves it on the audit-event
+  surface (`pgw:l:` target identities). The classification is purely
+  observational: it mints no authority and enables no mutation.
+
+### Record vs audit coverage and pairing
+
+Both WP-8L flows are corrected and probed: primary record deletion
+intent/completion and audit deletion intent/completion. Pairing is by
+exact normative identities/bindings — target id/revision/digest,
+operation, intent identity + bytes digest, referenced primary
+completion — never loose target-ID-only matching.
+
+### Intermediate crash-state tests (the coverage gap that let L-1 escape)
+
+New tests assert the scanner state BETWEEN the crash and any rerun, for
+every fixed crash stage and both target classes:
+
+- primary: durable intent + target present → `intent-pending`;
+  durable intent + target absent (post-unlink stages) →
+  `roll-forward-eligible`; intent + completion → `completed`;
+- audit: the same three states over the audit-event target;
+- then the existing genuine retention execution is rerun and the
+  existing behavior is confirmed unchanged (matching intent continues,
+  hold/history/policy requirements remain enforced, completion becomes
+  durable, `completed` follows, writer-lock semantics unchanged).
+
+Additional deterministic tests cover conflicting intents, valid +
+malformed intent sets, completion without matching intent, wrong target
+digest, wrong retention operation, wrong evidence domain, unrelated
+evidence exclusion (recovery/quarantine/other-target), and the replaced-
+target conflict state.
+
+### Mutation-boundary preservation
+
+No retention execution code changed. The correction touches only the
+read-only scanner/extractor (`recovery/scan.ts`), the observational
+assessment (`recovery/assess.ts`), and the registry survivor lookup
+(`registry/derive.ts`); retention authority, legal-hold semantics,
+history binding, exact unlink, intent-before-unlink ordering, completion
+publication, roll-forward mutation semantics, WP-8K history, and WP-8M
+configuration recovery are unchanged. Static guards prove the scanner
+classification remains observational (no retention authority/mutation
+imports; identity verification only through the committed pure
+derivations).
+
+## 16. Remaining WP-8 Work
 
 Compaction; migration; configuration-namespace recovery; disposition of
 the remaining adjudication-only classes; lifecycle approval decisions;

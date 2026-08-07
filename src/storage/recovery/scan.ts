@@ -114,6 +114,12 @@ import { classifyCandidate, extractEnvelopeFacts, type CandidateFacts } from '..
 import { parseRegistryIndex, computeRegistryIndexRoots, REGISTRY_INDEX_MODEL_VERSION, REGISTRY_INDEX_MAX_ENTRIES, REGISTRY_INDEX_FILENAME_RE, validateRegistryIndexSelfConsistency, type ParsedRegistryIndex } from '../registry/index-model.js';
 import { parseLockRecordFacts } from './assess.js';
 import { LOCK_RECORD_MAX_BYTES, RECOVERY_BREAK_GUARD_NAME, LOCK_GUARD_VERSION, computeWriterLockInstanceIdentity } from '../locks/lock.js';
+import {
+  computeRetentionRecordIntentIdentity,
+  computeRetentionAuditIntentIdentity,
+  computeRetentionRecordCompletionIdentity,
+  computeRetentionAuditCompletionIdentity,
+} from '../retention/evidence.js';
 import type {
   AuditAssociationFacts,
   AuditScanObservation,
@@ -126,6 +132,7 @@ import type {
   RecordClassId,
   RecordObservationFacts,
   RecordScanObservation,
+  RetentionHoldResult,
   ScanCursor,
   ScanHooks,
   ScanMode,
@@ -257,82 +264,217 @@ export function extractReconstructionEvidenceFacts(raw: string): {
   }
 }
 /**
- * WP-8-L retention-deletion evidence payload facts (§15.4/ADR-035):
+ * WP-8-L retention-deletion evidence payload facts (§15.4/ADR-035; L-1):
  * extracted from one canonical store-evidence-record whose payload declares
  * a `retention-delete-record` or `retention-delete-audit` retention
- * operation. `retention` is true for every retention evidence claim;
- * `malformed` is true when the claimed facts are incomplete or the outcome
- * is outside the closed vocabulary; otherwise `facts` carries the bound
- * facts. Pure.
+ * operation. The extractor models the ACTUAL committed evidence model as a
+ * discriminated union:
+ * - `kind: 'intent'` — durable deletion intent evidence. It legitimately
+ *   carries NO `outcome`; every intent-required fact is verified
+ *   (operation, target class/identity/revision/digest, trusted retention
+ *   policy/hold bindings, history binding for the record flow, and the
+ *   audit-flow referenced primary completion binding), and the envelope
+ *   identity MUST equal the deterministic intent identity re-derived over
+ *   those facts + the verified store instance.
+ * - `kind: 'completion'` — deletion completion evidence. It requires the
+ *   exact completion facts: closed outcome (`deleted` /
+ *   `already-completed`), the exact bound intent identity and digest, and
+ *   the per-operation bindings; the envelope identity MUST equal the
+ *   deterministic completion identity.
+ * A claim failing its kind's required facts, or whose identity does not
+ * match the committed derivation, is `malformed` — never a valid intent
+ * and never a valid completion. `retention` is true for every retention
+ * evidence claim; `malformed` is true when the claim is invalid;
+ * otherwise `facts` carries the bound facts. Pure.
  */
-export function extractRetentionEvidenceFacts(raw: string): {
+export function extractRetentionEvidenceFacts(raw: string, storeInstance: VerifiedStoreInstance): {
   readonly retention?: boolean;
   readonly malformed?: boolean;
   readonly facts?: {
+    readonly kind: 'intent' | 'completion';
     readonly retentionOperation: 'retention-delete-record' | 'retention-delete-audit';
-    readonly targetRecordClass?: string;
+    readonly targetRecordClass: string;
     readonly targetRecordId: string;
-    readonly targetRecordRevision?: number;
+    readonly targetRecordRevision: number;
     readonly targetRecordDigest: string;
     readonly referencedRecordId?: string;
     readonly referencedRecordDigest?: string;
+    readonly primaryDeletionCompletionEvidenceId?: string;
     readonly intentEvidenceId?: string;
-    readonly holdStateGeneration?: string;
-    readonly outcome: string;
+    readonly intentEvidenceDigest?: string;
+    readonly holdStateGeneration: string;
+    readonly historyDigest?: string;
+    readonly outcome?: string;
   };
 } {
+  const RETENTION_HOLD_RESULTS: readonly string[] = ['active-hold', 'unknown-hold-state', 'stale-hold-decision', 'clear-current-hold-state'];
   try {
     const model = parseRawJson(raw, 1024 * 1024).model;
     if (typeof model !== 'object' || model === null || Array.isArray(model)) return {};
-    const payload = (model as Readonly<Record<string, unknown>>)['payload'];
+    const envelope = model as Readonly<Record<string, unknown>>;
+    const payload = envelope['payload'];
     if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return {};
     const p = payload as Readonly<Record<string, unknown>>;
     if (p['evidenceKind'] !== 'retention-evidence') return {};
     const retentionOperation = p['retentionOperation'];
-    const targetRecordId = p['targetRecordId'];
-    const targetRecordDigest = p['targetRecordDigest'];
-    const outcome = p['outcome'];
     if (retentionOperation !== 'retention-delete-record' && retentionOperation !== 'retention-delete-audit') return {};
-    if (
-      typeof targetRecordId !== 'string' ||
-      typeof targetRecordDigest !== 'string' ||
-      (outcome !== 'deleted' && outcome !== 'already-completed' && outcome !== undefined)
-    ) {
-      return { retention: true, malformed: true };
-    }
+    const isAudit = retentionOperation === 'retention-delete-audit';
+    const declaredRecordId = envelope['recordId'];
+    const targetRecordClass = p['targetRecordClass'];
+    const targetRecordId = p['targetRecordId'];
+    const targetRecordRevision = p['targetRecordRevision'];
+    const targetRecordDigest = p['targetRecordDigest'];
     const referencedRecordId = p['referencedRecordId'];
     const referencedRecordDigest = p['referencedRecordDigest'];
+    const primaryDeletionCompletionEvidenceId = p['primaryDeletionCompletionEvidenceId'];
     const intentEvidenceId = p['intentEvidenceId'];
+    const intentEvidenceDigest = p['intentEvidenceDigest'];
+    const policyIdentity = p['policyIdentity'];
+    const policyVersion = p['policyVersion'];
+    const decisionId = p['decisionId'];
     const holdStateGeneration = p['holdStateGeneration'];
-    const targetRecordRevision = p['targetRecordRevision'];
-    const targetRecordClass = p['targetRecordClass'];
-    if (typeof outcome !== 'string') {
-      return { retention: true, malformed: true };
+    const holdResult = p['holdResult'];
+    const historyDigest = p['historyDigest'];
+    const historyStatus = p['historyStatus'];
+    const outcome = p['outcome'];
+    const isCanonicalRecordId = (v: unknown): v is string => typeof v === 'string' && /^pgw:r:[0-9a-f]{32}$/.test(v);
+    // Retention targets are primary records (`pgw:r:`) or audit events
+    // (`pgw:l:` — the audit-deletion target is the audit event identity).
+    const isCanonicalTargetId = (v: unknown): v is string => typeof v === 'string' && /^pgw:[rl]:[0-9a-f]{32}$/.test(v);
+    const isDigest = (v: unknown): v is string => typeof v === 'string' && isValidDigestSyntax(v);
+    const malformed = (): { readonly retention: true; readonly malformed: true } => ({ retention: true, malformed: true });
+    // The normative discriminator: completion evidence binds the exact
+    // durable intent (`intentEvidenceId`); intent evidence never carries it
+    // and never carries a completion outcome (L-1).
+    if (typeof intentEvidenceId === 'string') {
+      // ── Completion claim ──
+      if (!isCanonicalTargetId(targetRecordId) || !isDigest(targetRecordDigest) || typeof targetRecordClass !== 'string') return malformed();
+      if (typeof targetRecordRevision !== 'number' || !Number.isSafeInteger(targetRecordRevision) || targetRecordRevision < 1) return malformed();
+      if (typeof policyIdentity !== 'string' || typeof policyVersion !== 'string' || typeof decisionId !== 'string' || typeof holdStateGeneration !== 'string') return malformed();
+      if (typeof holdResult !== 'string' || !RETENTION_HOLD_RESULTS.includes(holdResult)) return malformed();
+      if (!isCanonicalRecordId(intentEvidenceId) || !isDigest(intentEvidenceDigest)) return malformed();
+      // Completion outcomes stay closed; unknown outcomes fail closed.
+      if (outcome !== 'deleted' && outcome !== 'already-completed') return malformed();
+      if (typeof declaredRecordId !== 'string') return malformed();
+      let expected: string;
+      let auditFacts: { readonly referencedRecordId: string; readonly referencedRecordDigest: string; readonly primaryDeletionCompletionEvidenceId: string } | undefined;
+      let recordFacts: { readonly historyDigest: string } | undefined;
+      if (isAudit) {
+        if (!isCanonicalRecordId(referencedRecordId) || !isDigest(referencedRecordDigest) || !isCanonicalRecordId(primaryDeletionCompletionEvidenceId)) return malformed();
+        auditFacts = { referencedRecordId, referencedRecordDigest, primaryDeletionCompletionEvidenceId };
+        expected = computeRetentionAuditCompletionIdentity({
+          storeInstance,
+          retentionOperation: 'retention-delete-audit',
+          intentEvidenceId,
+          targetRecordClass: 'authoritative-audit-event',
+          targetRecordId,
+          targetRecordRevision,
+          targetRecordDigest,
+          outcome,
+        });
+      } else {
+        if (!isDigest(historyDigest)) return malformed();
+        recordFacts = { historyDigest };
+        expected = computeRetentionRecordCompletionIdentity({
+          storeInstance,
+          retentionOperation: 'retention-delete-record',
+          intentEvidenceId,
+          targetRecordClass,
+          targetRecordId,
+          targetRecordRevision,
+          targetRecordDigest,
+          outcome,
+        });
+      }
+      // Exact completion identity/domain: the envelope identity must equal
+      // the deterministic derivation over the declared facts.
+      if (expected !== declaredRecordId) return malformed();
+      return {
+        retention: true,
+        facts: {
+          kind: 'completion',
+          retentionOperation,
+          targetRecordClass,
+          targetRecordId,
+          targetRecordRevision,
+          targetRecordDigest,
+          ...(auditFacts ?? {}),
+          intentEvidenceId,
+          intentEvidenceDigest,
+          holdStateGeneration,
+          ...(recordFacts ?? {}),
+          outcome,
+        },
+      };
     }
-    const facts: {
-      readonly retentionOperation: 'retention-delete-record' | 'retention-delete-audit';
-      readonly targetRecordClass?: string;
-      readonly targetRecordId: string;
-      readonly targetRecordRevision?: number;
-      readonly targetRecordDigest: string;
-      readonly referencedRecordId?: string;
-      readonly referencedRecordDigest?: string;
-      readonly intentEvidenceId?: string;
-      readonly holdStateGeneration?: string;
-      readonly outcome: string;
-    } = {
-      retentionOperation,
-      targetRecordId,
-      targetRecordDigest,
-      ...(typeof targetRecordClass === 'string' ? { targetRecordClass } : {}),
-      ...(typeof targetRecordRevision === 'number' ? { targetRecordRevision } : {}),
-      ...(typeof referencedRecordId === 'string' ? { referencedRecordId } : {}),
-      ...(typeof referencedRecordDigest === 'string' ? { referencedRecordDigest } : {}),
-      ...(typeof intentEvidenceId === 'string' ? { intentEvidenceId } : {}),
-      ...(typeof holdStateGeneration === 'string' ? { holdStateGeneration } : {}),
-      outcome,
+    // ── Intent claim (L-1: no `outcome` required; every intent-required
+    // fact must still verify — a missing required intent field stays
+    // malformed) ──
+    if (!isCanonicalTargetId(targetRecordId) || !isDigest(targetRecordDigest) || typeof targetRecordClass !== 'string') return malformed();
+    if (typeof targetRecordRevision !== 'number' || !Number.isSafeInteger(targetRecordRevision) || targetRecordRevision < 1) return malformed();
+    if (typeof policyIdentity !== 'string' || typeof policyVersion !== 'string' || typeof decisionId !== 'string' || typeof holdStateGeneration !== 'string') return malformed();
+    if (typeof holdResult !== 'string' || !RETENTION_HOLD_RESULTS.includes(holdResult)) return malformed();
+    // An intent never carries a completion outcome or an intent binding.
+    if (outcome !== undefined || intentEvidenceDigest !== undefined) return malformed();
+    if (typeof declaredRecordId !== 'string') return malformed();
+    let expectedIntent: string;
+    let intentAuditFacts: { readonly referencedRecordId: string; readonly referencedRecordDigest: string; readonly primaryDeletionCompletionEvidenceId: string } | undefined;
+    let intentRecordFacts: { readonly historyDigest: string } | undefined;
+    if (isAudit) {
+      if (!isCanonicalRecordId(referencedRecordId) || !isDigest(referencedRecordDigest) || !isCanonicalRecordId(primaryDeletionCompletionEvidenceId)) return malformed();
+      intentAuditFacts = { referencedRecordId, referencedRecordDigest, primaryDeletionCompletionEvidenceId };
+      expectedIntent = computeRetentionAuditIntentIdentity({
+        storeInstance,
+        retentionOperation: 'retention-delete-audit',
+        targetRecordClass: 'authoritative-audit-event',
+        targetRecordId,
+        targetRecordRevision,
+        targetRecordDigest,
+        referencedRecordId,
+        referencedRecordDigest,
+        primaryDeletionCompletionEvidenceId,
+        policyIdentity,
+        policyVersion,
+        decisionId,
+        holdStateGeneration,
+        holdResult: holdResult as RetentionHoldResult,
+      });
+    } else {
+      if (!isDigest(historyDigest) || typeof historyStatus !== 'string') return malformed();
+      intentRecordFacts = { historyDigest };
+      expectedIntent = computeRetentionRecordIntentIdentity({
+        storeInstance,
+        retentionOperation: 'retention-delete-record',
+        targetRecordClass,
+        targetRecordId,
+        targetRecordRevision,
+        targetRecordDigest,
+        policyIdentity,
+        policyVersion,
+        decisionId,
+        holdStateGeneration,
+        holdResult: holdResult as RetentionHoldResult,
+        historyDigest,
+        historyStatus,
+      });
+    }
+    // Exact intent identity/domain: the envelope identity must equal the
+    // deterministic derivation over the declared facts.
+    if (expectedIntent !== declaredRecordId) return malformed();
+    return {
+      retention: true,
+      facts: {
+        kind: 'intent',
+        retentionOperation,
+        targetRecordClass,
+        targetRecordId,
+        targetRecordRevision,
+        targetRecordDigest,
+        ...(intentAuditFacts ?? {}),
+        holdStateGeneration,
+        ...(intentRecordFacts ?? {}),
+      },
     };
-    return { retention: true, facts };
   } catch {
     return {};
   }
@@ -1886,6 +2028,7 @@ function scanRecordEntry(input: {
   readonly recordClass: RecordClassId;
   readonly serviceUid: number;
   readonly recordBytes: number;
+  readonly storeInstance: VerifiedStoreInstance;
   readonly bounds: { readonly entryLimit: number; readonly byteLimit: number; readonly failClosed: boolean };
   readonly state: { readonly scannedBytes: number };
 }): { readonly observation?: ScanObservation; readonly stop?: 'truncated' | 'failed'; readonly code?: string; readonly message?: string } {
@@ -1968,8 +2111,11 @@ function scanRecordEntry(input: {
             },
           };
         }
-        // WP-8-L: retention deletion evidence facts (§15.4/ADR-035).
-        const rtFacts = extractRetentionEvidenceFacts(bytes.toString('utf8'));
+        // WP-8-L: retention deletion evidence facts (§15.4/ADR-035; L-1).
+        // The exact deterministic intent/completion identity is re-derived
+        // over the payload facts + the verified store instance and must
+        // equal the envelope identity.
+        const rtFacts = extractRetentionEvidenceFacts(bytes.toString('utf8'), input.storeInstance);
         if (rtFacts.retention === true) {
           return {
             observation: {
@@ -3018,6 +3164,7 @@ export function scanStoreSnapshot(input: StoreScanInput): StoreScanResult {
           recordClass,
           serviceUid,
           recordBytes,
+          storeInstance: input.capability.binding.storeInstance,
           bounds,
           state: { scannedBytes },
         });

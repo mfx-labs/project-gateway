@@ -45,11 +45,12 @@ import { runRegistrySnapshotScan } from '../registry/compose.js';
 import { buildRegistryIndex, parseRegistryIndex, registryIndexManifest, REGISTRY_INDEX_MAX_ENTRIES } from '../registry/index-model.js';
 import { probeRegistryEntrySet, readRegistryIndexFile, compareManifestAgainstProbe } from '../registry/index-store.js';
 import { publishRegistryIndex } from './index-rebuild.js';
-import { computeScanGeneration, recordObservationId, auditEventsForRecord, reconstructionEvidenceForTarget, temporaryObservationId, recomputeSurfaceGeneration, isPublicationTemporaryName } from './scan.js';
+import { computeScanGeneration, recordObservationId, auditEventsForRecord, reconstructionEvidenceForTarget, temporaryObservationId, quarantineObservationId, indexObservationId, currentTemporaryObservation, currentQuarantineObservation, currentIndexObservation, recomputeSurfaceGeneration, isPublicationTemporaryName } from './scan.js';
 import { reverifyOrphanTwin, reverifyQuarantineSource, reverifyTwinOnly, reverifyReconstructionTarget } from './reverify.js';
 import { removeOrphanTemporary } from './cleanup.js';
 import { executeQuarantineTemporary } from './quarantine.js';
-import { buildQuarantineEvidenceRecord, buildRecoveryEvidenceRecord, computeQuarantineEvidenceIdentity, computeQuarantineTemporaryId, publishRecoveryEvidence, verifyExistingRecoveryEvidence, isoFromEpochMs } from './evidence.js';
+import { buildQuarantineEvidenceRecord, buildRecoveryEvidenceRecord, computeQuarantineEvidenceIdentity, computeQuarantineTemporaryId, publishRecoveryEvidence, verifyExistingRecoveryEvidence, isoFromEpochMs, buildDispositionEvidenceRecord, computeDispositionEvidenceIdentity, verifyExistingDispositionEvidence } from './evidence.js';
+import { unlinkVerifiedTarget, fsyncContainingDirectory } from './disposition.js';
 import { buildRecoveryAuditReconstructionEvent, AUTHORIZED_WRITE_EVENT_KIND, RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND } from '../audit/write-audit.js';
 import {
   buildAuditReconstructionEvidenceRecord,
@@ -62,7 +63,7 @@ import { acquireWriterLock, releaseWriterLock } from '../locks/lock.js';
 import { deriveRecordRelativePath } from '../layout/layout.js';
 import { isValidDigestSyntax } from '../format/envelope.js';
 import { RECORD_CLASS_BY_ID } from '../format/taxonomy.js';
-import type { RecoveryMutationRequest, RecoveryMutationResult, RecordClassId, StorageFinding } from '../types.js';
+import type { RecoveryMutationRequest, RecoveryMutationResult, RecordClassId, StorageFinding, VerifiedStoreInstance } from '../types.js';
 
 const NO_STATE = { retryable: false, recoveryRequired: false, primaryStateChanged: 'no' as const, durabilityPointReached: 'no' as const, auditChanged: 'no' as const, verifyBeforeRetry: false };
 
@@ -91,7 +92,7 @@ function validateAction(input: RecoveryMutationRequest): { readonly ok: boolean;
   if (typeof action !== 'object' || action === null) {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery action is malformed' };
   }
-  if (action.category !== 'orphan-removal' && action.category !== 'quarantine-temporary' && action.category !== 'audit-reconstruction' && action.category !== 'registry-index-rebuild') {
+  if (action.category !== 'orphan-removal' && action.category !== 'quarantine-temporary' && action.category !== 'audit-reconstruction' && action.category !== 'registry-index-rebuild' && action.category !== 'dispose-wpr023d-temporary' && action.category !== 'dispose-quarantined-temporary' && action.category !== 'dispose-conflicting-index') {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery action category is outside the supported vocabulary; no generic quarantine authority exists' };
   }
   if (action.category === 'audit-reconstruction') {
@@ -139,6 +140,96 @@ function validateAction(input: RecoveryMutationRequest): { readonly ok: boolean;
     }
     if (typeof action.expectedRegistrySurfaceGeneration !== 'string' || !isValidDigestSyntax(action.expectedRegistrySurfaceGeneration)) {
       return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected registry surface generation is malformed' };
+    }
+    return { ok: true };
+  }
+  // WP-8-I external-disposition categories: narrow structured adjudication
+  // actions binding only closed identifiers (surface, entry, shard,
+  // observation/finding ids, exact classification/code, type/digest where
+  // available, generation/surface tokens). Never a path, descriptor,
+  // callback, fs function, plan action, or lock nonce.
+  if (action.category === 'dispose-wpr023d-temporary') {
+    if (typeof action.targetEntry !== 'string' || !isPublicationTemporaryName(action.targetEntry)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'target entry is not a publication temporary designation' };
+    }
+    if (action.expectedDispositionClassification !== 'temporary-other') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'disposition classification is outside the WPR-023 (d) vocabulary' };
+    }
+    if (action.expectedCode !== 'ERR-STO-FTYPE-UNSUPPORTED' && action.expectedCode !== 'ERR-STO-PERM-DENIED' && action.expectedCode !== 'ERR-STO-INTEGRITY') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected observation code is outside the WPR-023 (d) vocabulary' };
+    }
+    if (action.expectedEntryType !== 'regular' && action.expectedEntryType !== 'symlink' && action.expectedEntryType !== 'special' && action.expectedEntryType !== 'directory') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected entry type is outside the closed vocabulary' };
+    }
+    if (!Array.isArray(action.expectedObservationIds) || action.expectedObservationIds.length !== 1 || typeof action.expectedObservationIds[0] !== 'string') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected observation evidence identifiers are malformed' };
+    }
+    if (typeof action.expectedDispositionFindingId !== 'string' || action.expectedDispositionFindingId.length === 0) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected disposition finding identifier is malformed' };
+    }
+    if (typeof action.expectedGeneration !== 'string' || !isValidDigestSyntax(action.expectedGeneration)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected scan generation is malformed' };
+    }
+    if (typeof action.expectedSurfaceGeneration !== 'string' || !isValidDigestSyntax(action.expectedSurfaceGeneration)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected surface generation is malformed' };
+    }
+    return { ok: true };
+  }
+  if (action.category === 'dispose-quarantined-temporary') {
+    if (typeof action.targetEntry !== 'string' || action.targetEntry.length === 0 || action.targetEntry.includes('/') || action.targetEntry === '.' || action.targetEntry === '..' || action.targetEntry === 'temporary') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'target entry is not a quarantine entry designation' };
+    }
+    if (typeof action.targetShard !== 'string' || (action.targetShard !== '' && !/^[0-9a-f]{4}$/.test(action.targetShard))) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'target shard is not a closed quarantine shard designation' };
+    }
+    const quarantineDispositionClassifications: readonly string[] = ['quarantine-malformed', 'foreign-entry', 'quarantine-conflict', 'unexpected-hard-link', 'wrong-type', 'wrong-uid-or-mode'];
+    if (action.expectedDispositionClassification === undefined || !quarantineDispositionClassifications.includes(action.expectedDispositionClassification)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'disposition classification is outside the quarantine-object disposition vocabulary' };
+    }
+    if (typeof action.expectedCode !== 'string' || action.expectedCode.length === 0) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected observation code is malformed' };
+    }
+    if (action.expectedContentDigest !== undefined && !isValidDigestSyntax(action.expectedContentDigest)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected content digest is malformed' };
+    }
+    if (!Array.isArray(action.expectedObservationIds) || action.expectedObservationIds.length !== 1 || typeof action.expectedObservationIds[0] !== 'string') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected observation evidence identifiers are malformed' };
+    }
+    if (typeof action.expectedDispositionFindingId !== 'string' || action.expectedDispositionFindingId.length === 0) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected disposition finding identifier is malformed' };
+    }
+    if (typeof action.expectedGeneration !== 'string' || !isValidDigestSyntax(action.expectedGeneration)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected scan generation is malformed' };
+    }
+    if (typeof action.expectedSurfaceGeneration !== 'string' || !isValidDigestSyntax(action.expectedSurfaceGeneration)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected surface generation is malformed' };
+    }
+    return { ok: true };
+  }
+  if (action.category === 'dispose-conflicting-index') {
+    if (typeof action.targetEntry !== 'string' || !/^[0-9a-f]{32}\.idx$/.test(action.targetEntry)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'target entry is not a registry-index artifact designation' };
+    }
+    if (typeof action.targetShard !== 'string' || !/^[0-9a-f]{4}$/.test(action.targetShard)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'target shard is not a 4-hex index shard designation' };
+    }
+    if (action.expectedDispositionClassification !== 'index-conflicting') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'disposition classification is outside the conflicting-index vocabulary' };
+    }
+    if (action.expectedCode !== 'ERR-STO-INTEGRITY') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected observation code is outside the conflicting-index vocabulary' };
+    }
+    if (!Array.isArray(action.expectedObservationIds) || action.expectedObservationIds.length !== 1 || typeof action.expectedObservationIds[0] !== 'string') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected observation evidence identifiers are malformed' };
+    }
+    if (typeof action.expectedDispositionFindingId !== 'string' || action.expectedDispositionFindingId.length === 0) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected disposition finding identifier is malformed' };
+    }
+    if (typeof action.expectedGeneration !== 'string' || !isValidDigestSyntax(action.expectedGeneration)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected scan generation is malformed' };
+    }
+    if (typeof action.expectedSurfaceGeneration !== 'string' || !isValidDigestSyntax(action.expectedSurfaceGeneration)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected surface generation is malformed' };
     }
     return { ok: true };
   }
@@ -1112,9 +1203,528 @@ function executeRegistryIndexRebuildMutation(
 }
 
 /**
+ * WP-8-I external-disposition adjudication foundation (contract §16.5
+ * "disposition required"; WP-8-H conflicting-index disposition; WP-8-G
+ * evidence model — none defines a disposition MUTATION primitive). This
+ * flow is the complete authority/request/re-verification foundation that a
+ * future contract-authorized disposition mutation will extend: genuine
+ * trusted input, store revalidation, generation/surface recomputation,
+ * single-writer lock, current-surface re-enumeration and classification
+ * recomputation with the committed scanner logic, and a deterministic
+ * `disposition-required` result. NO mutation is performed: no unlink, no
+ * rename, no overwrite, no byte copy, no evidence publication — the
+ * contract defines no disposition primitive for any supported class.
+ *
+ * States (deterministic): target present with the exact expected
+ * classification → `disposition-required`; target absent → fail closed
+ * (nothing was disposed, so no roll-forward); classification changed,
+ * identity/type/digest changed, or conflicting evidence → fail closed;
+ * repeated execution is idempotent. The target is left byte-identical.
+ */
+function executeDispositionAdjudication(
+  request: RecoveryMutationRequest,
+  action: RecoveryMutationRequest['action'] & { category: 'dispose-wpr023d-temporary' | 'dispose-quarantined-temporary' | 'dispose-conflicting-index' },
+  hooks: NonNullable<RecoveryMutationRequest['hooks']>,
+): RecoveryMutationResult {
+  const targetEntry = action.targetEntry as string;
+  const targetShard = action.targetShard as string | undefined;
+  const expectedClassification = action.expectedDispositionClassification as string;
+  const expectedCode = action.expectedCode as string;
+  if (typeof targetEntry !== 'string' || typeof expectedClassification !== 'string' || typeof expectedCode !== 'string') {
+    return failResult('ERR-STO-REQ-INVALID', 'external-disposition request is missing a required target binding');
+  }
+  const inputResult = createTrustedRecoveryRequest(
+    request.trustedConfiguration,
+    request.recoveryActionProvenance,
+    { locator: request.locator, serviceUid: request.serviceUid, forbiddenRoots: request.forbiddenRoots, limitProfile: request.limitProfile },
+  );
+  if (!inputResult.ok || inputResult.request === undefined) {
+    const code = inputResult.reason === 'not-genuine-configuration' || inputResult.reason === 'not-genuine-action-provenance' || inputResult.reason === 'configuration-identity-mismatch'
+      ? 'ERR-STO-CONFIG-UNAVAILABLE'
+      : 'ERR-STO-REQ-INVALID';
+    return failResult(code, inputResult.message ?? 'trusted recovery request could not be established');
+  }
+  const store = verifyStoreInstance({
+    locator: request.locator,
+    serviceUid: request.serviceUid,
+    forbiddenRoots: request.forbiddenRoots,
+    configurationIdentity: (request.trustedConfiguration as { readonly identity: string }).identity,
+    configurationVersion: (request.trustedConfiguration as { readonly configurationVersion: string }).configurationVersion,
+    limitProfile: request.limitProfile,
+  });
+  if (!store.ok || store.storeInstance === undefined) {
+    return failResult(store.code ?? 'ERR-STO-INTEGRITY', store.message ?? 'store revalidation failed');
+  }
+  const storeInstance = store.storeInstance;
+  const recoveryCapability = createRecoveryCapability({ trustedRecoveryRequest: inputResult.request, storeInstance });
+  if (recoveryCapability === undefined) {
+    return failResult('ERR-STO-REQ-INVALID', 'recovery capability could not be issued');
+  }
+  let capability: RecoveryCapability | undefined = recoveryCapability;
+  try {
+    const profile = storeInstance.limitProfile;
+    const recomputedGeneration = computeScanGeneration({
+      storeInstance,
+      mode: 'recovery',
+      entryLimit: profile['recoveryScanEntries'] ?? 1024 * 1024,
+      byteLimit: profile['totalScanBytes'] ?? 4 * 1024 * 1024 * 1024,
+      failClosed: true,
+    });
+    if (recomputedGeneration !== action.expectedGeneration) {
+      return failResult('ERR-STO-REQ-INVALID', 'assessment scan generation does not match the current store and limits');
+    }
+    const storeRoot = `${storeInstance.parentIdentity.canonicalPath}/store-v1`;
+    const surface = recomputeSurfaceGeneration({ namespaceRoot: storeRoot, serviceUid: request.serviceUid, mode: 'recovery' });
+    if (!surface.ok || surface.generation === undefined) {
+      return failResult(surface.code ?? 'ERR-STO-IO-FAILURE', surface.message ?? 'surface structure could not be re-read');
+    }
+    if (surface.generation !== action.expectedSurfaceGeneration) {
+      return failResult('ERR-STO-ROOT-IDENTITY-CHANGED', 'store structure changed since the recovery assessment');
+    }
+    const bound = capability.assertExpected({
+      storeInstance,
+      configurationIdentity: storeInstance.configurationIdentity,
+      serviceUid: request.serviceUid,
+      limitProfile: storeInstance.limitProfile,
+    });
+    if (!bound.ok) {
+      return failResult('ERR-STO-REQ-INVALID', 'recovery capability binding mismatch');
+    }
+    hooks.stage?.('before-lock-acquisition');
+    const locksDir = `${storeRoot}/locks`;
+    const lockPath = `${locksDir}/writer.lock`;
+    const lockWaitMs = profile['lockWait'] ?? 5000;
+    const acquired = acquireWriterLock({
+      capability,
+      operation: action.category,
+      lockPath,
+      locksDirPath: locksDir,
+      storeInstance: storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })),
+      actionIdentity: inputResult.request.actionIdentity,
+      lockWaitMs,
+      timeSource: request.timeSource,
+      hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+    });
+    if (!acquired.ok || acquired.record === undefined) {
+      return failResult(acquired.code ?? 'ERR-STO-LOCK-UNAVAILABLE', acquired.message ?? 'writer lock could not be acquired');
+    }
+    const lockRecord = acquired.record;
+    hooks.stage?.('after-lock-acquisition');
+    const release = (): RecoveryMutationResult => {
+      hooks.stage?.('before-lock-release');
+      const released = releaseWriterLock({
+        capability,
+        operation: action.category,
+        lockPath,
+        locksDirPath: locksDir,
+        expected: { nonce: lockRecord.nonce, storeInstance: storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })) },
+        timeSource: request.timeSource,
+        hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+      });
+      if (!released.ok) {
+        return failResult('ERR-STO-RECOVERY-FAILED', 'lock release failed; the lock remains for recovery');
+      }
+      return { ok: true };
+    };
+    const failClosed = (code: string, message: string): RecoveryMutationResult => {
+      const released = release();
+      if (!released.ok) return released;
+      return failResult(code, message);
+    };
+    const temporaryBytes = profile['temporaryBytes'] ?? 64 * 1024 * 1024;
+    const recordBytes = profile['recordBytes'] ?? 1024 * 1024;
+    const totalScanBytes = profile['totalScanBytes'] ?? 4 * 1024 * 1024 * 1024;
+    const recoveryScanEntries = profile['recoveryScanEntries'] ?? 1024 * 1024;
+    const indexBytes = profile['indexBytes'] ?? 64 * 1024 * 1024;
+    const surfaceGeneration = surface.generation as string;
+
+    // Current-surface re-enumeration + classification recomputation with
+    // the committed scanner logic (WP-8-I §4.7–4.10).
+    let classification: string;
+    let code: string;
+    // Descriptor facts (dev/ino/nlink) from the immediate re-verification,
+    // used by the pre-unlink identity recheck (ADR-032 §3.12).
+    let verifiedDescriptor: { readonly dev: number; readonly ino: number; readonly nlink: number } | undefined;
+    let currentDigest: string | undefined;
+    if (action.category === 'dispose-wpr023d-temporary') {
+      const current = currentTemporaryObservation({
+        namespaceRoot: storeRoot,
+        serviceUid: request.serviceUid,
+        temporaryBytes,
+        recordBytes,
+        byteLimit: totalScanBytes,
+        entry: targetEntry,
+      });
+      if (!current.ok || current.observation === undefined) {
+        return failClosed(current.code ?? 'ERR-STO-INTEGRITY', current.message ?? 'target temporary could not be re-verified');
+      }
+      classification = current.observation.classification;
+      code = current.observation.code;
+      const expectedEntryType = action.expectedEntryType as 'regular' | 'symlink' | 'special' | 'directory' | undefined;
+      if (current.entryType !== expectedEntryType) {
+        return failClosed('ERR-STO-INTEGRITY', 'target entry type changed since the recovery assessment');
+      }
+    } else if (action.category === 'dispose-quarantined-temporary') {
+      const current = currentQuarantineObservation({
+        namespaceRoot: storeRoot,
+        serviceUid: request.serviceUid,
+        temporaryBytes,
+        recordBytes,
+        storeInstance,
+        byteLimit: totalScanBytes,
+        tmpEntryLimit: recoveryScanEntries,
+        shard: targetShard ?? '',
+        entry: targetEntry,
+      });
+      if (!current.ok) {
+        // Target absent: the executable operations resolve the
+        // already-completed state from the durable disposition evidence
+        // (ADR-032 §8); the WPR-023 (d) adjudication and the
+        // adjudication-only subclasses fail closed (nothing was disposed).
+        if (current.code === 'ERR-STO-NOT-FOUND') {
+          const resolved = resolveAbsentTarget(storeInstance, action, recomputedEvidenceId(storeInstance, action, expectedClassification));
+          if (resolved !== undefined) {
+            if (!resolved.ok) return failClosed(resolved.code, resolved.message);
+            const released = release();
+            if (!released.ok) return released;
+            return { ok: true, outcome: 'already-completed', evidenceId: resolved.evidenceId };
+          }
+        }
+        return failClosed(current.code ?? 'ERR-STO-INTEGRITY', current.message ?? 'target quarantine object could not be re-verified');
+      }
+      if (current.observation === undefined) {
+        return failClosed('ERR-STO-INTEGRITY', 'target quarantine object re-verification produced no observation');
+      }
+      classification = current.observation.classification;
+      code = current.observation.code;
+      currentDigest = current.observation.contentDigest;
+      if (current.observation.stat !== undefined) {
+        verifiedDescriptor = { dev: current.observation.stat.dev, ino: current.observation.stat.ino, nlink: current.observation.stat.nlink };
+      }
+    } else {
+      const current = currentIndexObservation({
+        namespaceRoot: storeRoot,
+        serviceUid: request.serviceUid,
+        indexByteLimit: indexBytes,
+        shard: targetShard ?? '',
+        entry: targetEntry,
+      });
+      if (!current.ok) {
+        if (current.code === 'ERR-STO-NOT-FOUND') {
+          const resolved = resolveAbsentTarget(storeInstance, action, recomputedEvidenceId(storeInstance, action, expectedClassification));
+          if (resolved !== undefined) {
+            if (!resolved.ok) return failClosed(resolved.code, resolved.message);
+            const released = release();
+            if (!released.ok) return released;
+            return { ok: true, outcome: 'already-completed', evidenceId: resolved.evidenceId };
+          }
+        }
+        return failClosed(current.code ?? 'ERR-STO-INTEGRITY', current.message ?? 'target registry-index artifact could not be re-verified');
+      }
+      if (current.facts === undefined) {
+        return failClosed('ERR-STO-INTEGRITY', 'target registry-index artifact re-verification produced no facts');
+      }
+      if (current.facts.indexId !== undefined && current.facts.indexId !== targetEntry.slice(0, 32)) {
+        return failClosed('ERR-STO-INTEGRITY', 'target registry-index identity changed since the recovery assessment');
+      }
+      classification = current.facts.classification;
+      code = current.facts.code;
+      currentDigest = current.facts.digest;
+      if (current.facts.descriptor !== undefined) {
+        verifiedDescriptor = { dev: current.facts.descriptor.dev, ino: current.facts.descriptor.ino, nlink: current.facts.descriptor.nlink };
+      }
+    }
+    hooks.stage?.('after-target-verification');
+
+    // Exact classification and code (WP-8-I §4.9/4.10): the target must
+    // still require exactly the externally authorized disposition.
+    if (classification !== expectedClassification || code !== expectedCode) {
+      return failClosed('ERR-STO-INTEGRITY', 'target classification changed since the recovery assessment; fail closed');
+    }
+    hooks.stage?.('after-classification-recomputation');
+
+    // WPR-023 (d) remains ADJUDICATION-ONLY (ADR-032 §A/§6): no unlink, no
+    // quarantine transition, no rename/copy/overwrite, no evidence.
+    if (action.category === 'dispose-wpr023d-temporary') {
+      const beforeSuccess = capability.assertExpected({
+        storeInstance,
+        configurationIdentity: storeInstance.configurationIdentity,
+        serviceUid: request.serviceUid,
+        limitProfile: storeInstance.limitProfile,
+      });
+      if (!beforeSuccess.ok) {
+        const released = release();
+        if (!released.ok) return released;
+        return failResult('ERR-STO-DURABILITY', 'capability invalidated before the disposition verdict');
+      }
+      const rootRevalidated = revalidateParentIdentity(storeInstance.parentIdentity, request.serviceUid);
+      if (!rootRevalidated.ok) {
+        const released = release();
+        if (!released.ok) return released;
+        return failResult(rootRevalidated.code ?? 'ERR-STO-ROOT-IDENTITY-CHANGED', rootRevalidated.message ?? 'trusted parent identity changed');
+      }
+      const released = release();
+      if (!released.ok) return released;
+      return { ok: true, outcome: 'disposition-required' };
+    }
+
+    // Executable disposition (ADR-032 §B/§C): the exact eligible subclasses
+    // only. Quarantine: malformed/foreign/conflict regular files with exact
+    // UID/mode/nlink/digest bindings. Index: the exact conflicting derived
+    // artifact with exact UID/mode/nlink/digest bindings.
+    const boundDigest = action.expectedContentDigest;
+    if (boundDigest !== undefined && currentDigest !== undefined && boundDigest !== currentDigest) {
+      return failClosed('ERR-STO-INTEGRITY', 'target content digest changed since the recovery assessment; fail closed');
+    }
+    if (boundDigest !== undefined && currentDigest === undefined) {
+      return failClosed('ERR-STO-INTEGRITY', 'target is no longer a readable policy-compliant object; fail closed');
+    }
+    // Exact eligible subclass (ADR-032 §B/§C): regular file, exact
+    // UID/mode (verified by the committed scanner reads), `nlink === 1`,
+    // size within the bound (verified by the committed scanner reads), and
+    // the exact content digest bound to the request.
+    const descriptorOk = verifiedDescriptor !== undefined && verifiedDescriptor.nlink === 1;
+    const executable =
+      action.category === 'dispose-quarantined-temporary'
+        ? (classification === 'quarantine-malformed' || classification === 'foreign-entry' || classification === 'quarantine-conflict') &&
+          descriptorOk &&
+          boundDigest !== undefined &&
+          currentDigest !== undefined
+        : descriptorOk && boundDigest !== undefined && currentDigest !== undefined;
+    if (!executable) {
+      // Adjudication-only subclasses (wrong-type, wrong-uid-or-mode,
+      // unexpected-hard-link; non-regular or non-readable objects; digest
+      // not bound): deterministic disposition-required, no mutation.
+      const beforeSuccess = capability.assertExpected({
+        storeInstance,
+        configurationIdentity: storeInstance.configurationIdentity,
+        serviceUid: request.serviceUid,
+        limitProfile: storeInstance.limitProfile,
+      });
+      if (!beforeSuccess.ok) {
+        const released = release();
+        if (!released.ok) return released;
+        return failResult('ERR-STO-DURABILITY', 'capability invalidated before the disposition verdict');
+      }
+      const rootRevalidated = revalidateParentIdentity(storeInstance.parentIdentity, request.serviceUid);
+      if (!rootRevalidated.ok) {
+        const released = release();
+        if (!released.ok) return released;
+        return failResult(rootRevalidated.code ?? 'ERR-STO-ROOT-IDENTITY-CHANGED', rootRevalidated.message ?? 'trusted parent identity changed');
+      }
+      const released = release();
+      if (!released.ok) return released;
+      return { ok: true, outcome: 'disposition-required' };
+    }
+
+    // Evidence-state check BEFORE the unlink (ADR-032 §8): matching or
+    // conflicting disposition evidence with a live target fails closed as
+    // an integrity inconsistency; no repair-by-guessing.
+    const expectedObservationId = (action.expectedObservationIds as readonly string[] | undefined)?.[0] ?? '';
+    const evidenceId = recomputedEvidenceId(storeInstance, action, expectedClassification);
+    const existingEvidence = verifyExistingDispositionEvidence({
+      namespaceRoot: storeRoot,
+      serviceUid: request.serviceUid,
+      byteLimit: recordBytes,
+      evidenceId,
+      recoveryOperation: action.category === 'dispose-quarantined-temporary' ? 'dispose-quarantined-temporary' : 'dispose-conflicting-index',
+      targetEntry,
+      ...(action.category === 'dispose-quarantined-temporary' ? { targetShard: targetShard ?? '' } : { targetIndexId: targetEntry.slice(0, 32) }),
+      targetClassification: expectedClassification,
+      targetDigest: boundDigest!,
+      observationId: expectedObservationId,
+    });
+    if (!existingEvidence.ok) {
+      return failClosed(existingEvidence.code ?? 'ERR-STO-INTEGRITY', existingEvidence.message ?? 'existing disposition evidence could not be verified');
+    }
+    if (existingEvidence.matches) {
+      return failClosed('ERR-STO-INTEGRITY', 'disposition evidence exists while the target is still present; integrity inconsistency');
+    }
+
+    // Exact unlink primitive: internally derived target path, descriptor
+    // identity recheck, unlink exactly one name, absence verification.
+    const targetPath =
+      action.category === 'dispose-quarantined-temporary'
+        ? `${storeRoot}/quarantine/temporary/${targetShard ?? ''}/${targetEntry}`
+        : `${storeRoot}/index/registry-index/${targetShard ?? ''}/${targetEntry}`;
+    const directoryPath = targetPath.slice(0, targetPath.lastIndexOf('/'));
+    hooks.stage?.('before-unlink');
+    const unlinked = unlinkVerifiedTarget({
+      targetPath,
+      serviceUid: request.serviceUid,
+      expected: verifiedDescriptor!,
+    });
+    if (!unlinked.ok) {
+      return failClosed(unlinked.code ?? 'ERR-STO-RECOVERY-FAILED', unlinked.message ?? 'disposition unlink failed');
+    }
+    hooks.stage?.('after-unlink');
+    hooks.stage?.('before-directory-fsync');
+    const synced = fsyncContainingDirectory({ directoryPath, serviceUid: request.serviceUid });
+    if (!synced.ok) {
+      return failClosed(synced.code ?? 'ERR-STO-DURABILITY', synced.message ?? 'containing directory fsync failed after unlink');
+    }
+    hooks.stage?.('after-directory-fsync');
+
+    // Durable recovery evidence (ADR-032 §7): StoreEvidenceRecord with the
+    // EXISTING recovery-evidence kind, the exact disposition operation, and
+    // the per-operation domain-separated identity; published through the
+    // WP-8F exact-record permit pipeline followed by the evidence's
+    // mechanical authorized-write audit.
+    const evidenceBuilt = buildDispositionEvidenceRecord({
+      storeInstance,
+      actionIdentity: inputResult.request!.actionIdentity,
+      evidenceKind: 'recovery-evidence',
+      recoveryOperation: action.category === 'dispose-quarantined-temporary' ? 'dispose-quarantined-temporary' : 'dispose-conflicting-index',
+      targetEntry,
+      ...(action.category === 'dispose-quarantined-temporary' ? { targetShard: targetShard ?? '' } : { targetIndexId: targetEntry.slice(0, 32) }),
+      targetClassification: expectedClassification,
+      targetDigest: boundDigest!,
+      observationId: expectedObservationId,
+      generation: recomputedGeneration,
+      surfaceGeneration,
+      outcome: 'disposed',
+      createdAt: isoFromEpochMs(request.timeSource.now()),
+    });
+    if (!evidenceBuilt.ok || evidenceBuilt.record === undefined) {
+      return failClosed(evidenceBuilt.code ?? 'ERR-STO-INTERNAL-INVARIANT', evidenceBuilt.message ?? 'disposition evidence could not be constructed');
+    }
+    const evidenceDerived = deriveRecordRelativePath('store-evidence-record', evidenceBuilt.record.recordId);
+    const evidenceAuditDerived = deriveRecordRelativePath('authoritative-audit-event', evidenceBuilt.record.auditEventId);
+    if (!evidenceDerived.ok || !evidenceAuditDerived.ok) {
+      return failClosed('ERR-STO-CONTAINMENT-DENIED', 'disposition evidence path derivation failed');
+    }
+    hooks.stage?.('before-evidence-publication');
+    const evidencePublished = publishRecoveryEvidence({
+      capability,
+      storeInstance,
+      namespaceRoot: storeRoot,
+      serviceUid: request.serviceUid,
+      byteLimit: recordBytes,
+      record: evidenceBuilt.record,
+      operation: action.category === 'dispose-quarantined-temporary' ? 'dispose-quarantined-temporary' : 'dispose-conflicting-index',
+      hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+    });
+    if (!evidencePublished.ok) {
+      return failClosed(evidencePublished.code ?? 'ERR-STO-RECOVERY-FAILED', evidencePublished.message ?? 'disposition evidence is not durable');
+    }
+    hooks.stage?.('after-evidence-publication');
+    hooks.stage?.('after-evidence-audit-publication');
+    // Verify every required durability point (§3.20): evidence, evidence
+    // audit, and the target's absence.
+    const evidencePoint = verifyObjectBytesAt({ path: `${storeRoot}/${evidenceDerived.relativePath}`, serviceUid: request.serviceUid, byteLimit: recordBytes });
+    if (!evidencePoint.ok || evidencePoint.digest !== evidenceBuilt.record.digest) {
+      return failClosed('ERR-STO-DURABILITY', 'disposition evidence durability point is not verified');
+    }
+    const evidenceAuditPoint = verifyObjectBytesAt({ path: `${storeRoot}/${evidenceAuditDerived.relativePath}`, serviceUid: request.serviceUid, byteLimit: recordBytes });
+    if (!evidenceAuditPoint.ok || evidenceAuditPoint.digest !== evidenceBuilt.record.auditDigest) {
+      return failClosed('ERR-STO-DURABILITY', 'disposition evidence audit durability point is not verified');
+    }
+    const targetGone = verifyObjectBytesAt({ path: targetPath, serviceUid: request.serviceUid, byteLimit: recordBytes });
+    if (targetGone.ok) {
+      return failClosed('ERR-STO-INTEGRITY', 'target reappeared after disposition; fail closed');
+    }
+    if (targetGone.code !== 'ERR-STO-NOT-FOUND') {
+      return failClosed(targetGone.code ?? 'ERR-STO-INTEGRITY', targetGone.message ?? 'target absence could not be verified after disposition');
+    }
+    const beforeSuccess = capability.assertExpected({
+      storeInstance,
+      configurationIdentity: storeInstance.configurationIdentity,
+      serviceUid: request.serviceUid,
+      limitProfile: storeInstance.limitProfile,
+    });
+    if (!beforeSuccess.ok) {
+      const released = release();
+      if (!released.ok) return released;
+      return failResult('ERR-STO-DURABILITY', 'capability invalidated before acknowledgement; disposition is durable');
+    }
+    const rootRevalidated = revalidateParentIdentity(storeInstance.parentIdentity, request.serviceUid);
+    if (!rootRevalidated.ok) {
+      const released = release();
+      if (!released.ok) return released;
+      return failResult(rootRevalidated.code ?? 'ERR-STO-ROOT-IDENTITY-CHANGED', rootRevalidated.message ?? 'trusted parent identity changed');
+    }
+    const released = release();
+    if (!released.ok) return released;
+    return { ok: true, outcome: 'disposed', evidenceId: evidenceBuilt.record.recordId };
+  } finally {
+    capability?.dispose();
+  }
+}
+
+/** Deterministic disposition-evidence identity for the request bindings (ADR-032 §7/§8). */
+function recomputedEvidenceId(
+  storeInstance: VerifiedStoreInstance,
+  action: RecoveryMutationRequest['action'] & { category: 'dispose-wpr023d-temporary' | 'dispose-quarantined-temporary' | 'dispose-conflicting-index' },
+  expectedClassification: string,
+): string {
+  const targetEntry = action.targetEntry as string;
+  const targetShard = action.targetShard as string | undefined;
+  return computeDispositionEvidenceIdentity({
+    storeInstance,
+    evidenceKind: 'recovery-evidence',
+    recoveryOperation: action.category === 'dispose-quarantined-temporary' ? 'dispose-quarantined-temporary' : 'dispose-conflicting-index',
+    targetEntry,
+    ...(action.category === 'dispose-quarantined-temporary' ? { targetShard: targetShard ?? '' } : { targetIndexId: targetEntry.slice(0, 32) }),
+    targetClassification: expectedClassification,
+    targetDigest: (action.expectedContentDigest as string) ?? '',
+    observationId: (action.expectedObservationIds as readonly string[] | undefined)?.[0] ?? '',
+    outcome: 'disposed',
+  });
+}
+
+/**
+ * Target-absent resolution for the executable disposition operations
+ * (ADR-032 §8): TARGET ABSENT + MATCHING EVIDENCE → `already-completed`;
+ * TARGET ABSENT + NO EVIDENCE → fail closed (nothing was disposed, no
+ * inference); CONFLICTING EVIDENCE → fail closed. Returns undefined when
+ * the request is not an executable-eligible disposition (adjudication-only
+ * subclasses have no evidence model and fail closed as NOT-FOUND). The
+ * caller releases the writer lock around the returned decision.
+ */
+function resolveAbsentTarget(
+  storeInstance: VerifiedStoreInstance,
+  action: RecoveryMutationRequest['action'] & { category: 'dispose-wpr023d-temporary' | 'dispose-quarantined-temporary' | 'dispose-conflicting-index' },
+  evidenceId: string,
+): { readonly ok: true; readonly evidenceId: string } | { readonly ok: false; readonly code: string; readonly message: string } | undefined {
+  if (action.category === 'dispose-wpr023d-temporary') return undefined;
+  const expectedClassification = action.expectedDispositionClassification as string;
+  if (action.category === 'dispose-quarantined-temporary') {
+    if (expectedClassification !== 'quarantine-malformed' && expectedClassification !== 'foreign-entry' && expectedClassification !== 'quarantine-conflict') {
+      return undefined;
+    }
+  }
+  const boundDigest = action.expectedContentDigest;
+  if (boundDigest === undefined) return undefined;
+  const targetEntry = action.targetEntry as string;
+  const targetShard = action.targetShard as string | undefined;
+  const verified = verifyExistingDispositionEvidence({
+    namespaceRoot: `${storeInstance.parentIdentity.canonicalPath}/store-v1`,
+    serviceUid: storeInstance.serviceUid,
+    byteLimit: storeInstance.limitProfile['recordBytes'] ?? 1024 * 1024,
+    evidenceId,
+    recoveryOperation: action.category === 'dispose-quarantined-temporary' ? 'dispose-quarantined-temporary' : 'dispose-conflicting-index',
+    targetEntry,
+    ...(action.category === 'dispose-quarantined-temporary' ? { targetShard: targetShard ?? '' } : { targetIndexId: targetEntry.slice(0, 32) }),
+    targetClassification: expectedClassification,
+    targetDigest: boundDigest,
+    observationId: (action.expectedObservationIds as readonly string[] | undefined)?.[0] ?? '',
+  });
+  if (!verified.ok) {
+    return { ok: false, code: verified.code ?? 'ERR-STO-INTEGRITY', message: verified.message ?? 'existing disposition evidence conflicts with the authorized request' };
+  }
+  if (verified.matches) {
+    return { ok: true, evidenceId };
+  }
+  return { ok: false, code: 'ERR-STO-NOT-FOUND', message: 'target is absent and no matching disposition evidence exists; fail closed (no inference)' };
+}
+
+/**
  * Execute one authorized recovery mutation. `orphan-removal`,
- * `quarantine-temporary`, `audit-reconstruction`, and
- * `registry-index-rebuild` are executable in this slice; every other
+ * `quarantine-temporary`, `audit-reconstruction`, `registry-index-rebuild`,
+ * the executable disposition operations (`dispose-quarantined-temporary`
+ * for its eligible regular-file subclasses, `dispose-conflicting-index`
+ * for the exact conflicting artifact), and the adjudication-only
+ * `dispose-wpr023d-temporary` are executable in this slice; every other
  * category fails closed.
  */
 export function executeRecoveryMutation(request: RecoveryMutationRequest): RecoveryMutationResult {
@@ -1125,6 +1735,33 @@ export function executeRecoveryMutation(request: RecoveryMutationRequest): Recov
   const hooks = request.hooks ?? {};
   if (request.action.category === 'registry-index-rebuild') {
     return executeRegistryIndexRebuildMutation(request, request.action as RecoveryMutationRequest['action'] & { category: 'registry-index-rebuild' }, hooks);
+  }
+  if (
+    request.action.category === 'dispose-wpr023d-temporary' ||
+    request.action.category === 'dispose-quarantined-temporary' ||
+    request.action.category === 'dispose-conflicting-index'
+  ) {
+    // The expected observation evidence and the expected disposition
+    // finding must match the deterministic observation identity of the
+    // committed scanner at the target's surface designation.
+    const targetEntry = request.action.targetEntry as string;
+    const targetShard = request.action.targetShard as string | undefined;
+    let recomputedObservationId: string;
+    if (request.action.category === 'dispose-wpr023d-temporary') {
+      recomputedObservationId = temporaryObservationId(targetEntry);
+    } else if (request.action.category === 'dispose-quarantined-temporary') {
+      recomputedObservationId = quarantineObservationId(targetShard ?? '', targetEntry);
+    } else {
+      recomputedObservationId = indexObservationId(targetShard ?? '', targetEntry);
+    }
+    if (request.action.expectedObservationIds?.[0] !== recomputedObservationId || request.action.expectedDispositionFindingId !== recomputedObservationId) {
+      return failResult('ERR-STO-REQ-INVALID', 'expected observation or disposition finding does not match the scanned target object');
+    }
+    return executeDispositionAdjudication(
+      request,
+      request.action as RecoveryMutationRequest['action'] & { category: 'dispose-wpr023d-temporary' | 'dispose-quarantined-temporary' | 'dispose-conflicting-index' },
+      hooks,
+    );
   }
   if (request.action.category === 'audit-reconstruction') {
     // The expected observation evidence and the expected missing-audit

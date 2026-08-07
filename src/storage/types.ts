@@ -606,6 +606,18 @@ export interface RecordScanObservation extends ScanObservationBase {
     /** True when the payload claims audit-reconstruction but the facts are incomplete/invalid. */
     readonly malformed: boolean;
   };
+  /** WP-8-I: disposition evidence payload facts (store-evidence-record class only). */
+  readonly dispositionEvidenceFacts?: {
+    readonly recoveryOperation?: string;
+    readonly targetEntry?: string;
+    readonly targetShard?: string;
+    readonly targetIndexId?: string;
+    readonly targetDigest?: string;
+    readonly observationId?: string;
+    readonly outcome?: string;
+    /** True when the payload claims an executable disposition operation but the facts are incomplete/invalid. */
+    readonly malformed: boolean;
+  };
 }
 
 export interface AuditScanObservation extends ScanObservationBase {
@@ -897,6 +909,22 @@ export interface ReconstructionCandidateFinding {
 }
 
 /** WP-8-G: one deterministic reconstruction-state classification (16.3; §11). */
+/** WP-8-I: one deterministic disposition-state classification (ADR-032; §10). */
+export interface DispositionStateFinding {
+  /** Logical target designation (quarantine entry or index artifact identity). */
+  readonly targetDesignation: string;
+  readonly state:
+    /** Disposition evidence durable and the referenced target is absent from the current surface. */
+    | 'completed-disposition'
+    /** Disposition evidence durable but the referenced target is still present (evidence-with-live-target integrity inconsistency). */
+    | 'conflicting-disposition-evidence'
+    /** Disposition evidence whose payload facts are incomplete or outside the closed vocabulary. */
+    | 'dangling-disposition-evidence';
+  readonly evidenceObservationId: string;
+  readonly recoveryOperation: string;
+  readonly reason: string;
+}
+
 export interface ReconstructionStateFinding {
   /** Target record identity (the durable primary the state refers to). */
   readonly recordId: string;
@@ -940,6 +968,8 @@ export interface RecoveryAssessment {
   readonly danglingQuarantineEvidence: readonly { readonly evidenceObservationId: string; readonly quarantineId: string; readonly sourceEntry?: string }[];
   /** WP-8-G: deterministic audit-reconstruction state classifications (16.3; §11). */
   readonly reconstructionStates: readonly ReconstructionStateFinding[];
+  /** WP-8-I: deterministic disposition state classifications (ADR-032; §10). */
+  readonly dispositionStates: readonly DispositionStateFinding[];
   /** WP-8-H: scanned registry-index artifacts (recovery mode only; §11). */
   readonly indexArtifacts: readonly IndexScanObservation[];
   /** WP-8-H: true when no registry-index family exists (rebuild candidate). */
@@ -961,12 +991,22 @@ export type RecoveryActionSafety = 'safe' | 'unsafe' | 'requires-external-dispos
 export interface RecoveryPlanAction {
   readonly actionId: string;
   readonly targetLogicalIdentity: string;
-  readonly targetKind: 'primary-record' | 'audit-event' | 'temporary-object' | 'lock-object' | 'foreign-object' | 'index-object';
+  readonly targetKind: 'primary-record' | 'audit-event' | 'temporary-object' | 'lock-object' | 'foreign-object' | 'quarantine-object' | 'index-object';
   readonly category: RecoveryActionCategory;
   readonly observedEvidence: readonly string[];
   readonly reason: string;
   readonly requiredCapability: 'recovery' | 'control-plane';
-  readonly requiredOperation: 'quarantine' | 'orphan-removal' | 'audit-reconstruction' | 'registry-index-rebuild' | 'lock-recovery' | 'disposition';
+  readonly requiredOperation:
+    | 'quarantine'
+    | 'orphan-removal'
+    | 'audit-reconstruction'
+    | 'registry-index-rebuild'
+    | 'lock-recovery'
+    | 'disposition'
+    // WP-8-I: exact externally authorized disposition operations (ADR-032; §11).
+    | 'dispose-wpr023d-temporary'
+    | 'dispose-quarantined-temporary'
+    | 'dispose-conflicting-index';
   readonly verifyImmediatelyBeforeMutation: boolean;
   readonly safety: RecoveryActionSafety;
 }
@@ -1097,7 +1137,17 @@ export type RecoveryMutationStage =
   | 'before-index-publication'
   | 'after-index-publication'
   | 'before-directory-durability'
-  | 'after-directory-durability';
+  | 'after-directory-durability'
+  // WP-8-I external-disposition adjudication stages (fixed inventory; §11).
+  // The foundation performs NO mutation (no contract-defined primitive
+  // exists), so the inventory covers authentication, re-verification, and
+  // classification only — no mutation/fsync/evidence stages.
+  | 'after-classification-recomputation'
+  // WP-8-I executable-disposition stages (fixed inventory; §9): the exact
+  // unlink-with-evidence sequence for the eligible quarantine and
+  // conflicting-index subclasses.
+  | 'before-unlink'
+  | 'after-unlink';
 
 /** Test-only crash/fsync injection hooks (same pattern as `PublicationHooks`). */
 export interface RecoveryMutationHooks {
@@ -1109,8 +1159,22 @@ export interface RecoveryMutationHooks {
 
 /** Narrow structured recovery-mutation action (never a plan action, never a path). */
 export interface RecoveryMutationAction {
-  /** Closed category vocabulary: exactly the implemented recovery operations; no generic `quarantine` exists. */
-  readonly category: 'orphan-removal' | 'quarantine-temporary' | 'audit-reconstruction' | 'registry-index-rebuild';
+  /**
+   * Closed category vocabulary: exactly the implemented recovery operations;
+   * no generic `quarantine` or generic disposition operation exists. The
+   * three `dispose-*` categories are the externally authorized disposition
+   * vocabulary (WP-8-I): in this slice every execution is the non-mutating
+   * adjudication foundation returning `disposition-required` (the contract
+   * defines no disposition mutation primitive).
+   */
+  readonly category:
+    | 'orphan-removal'
+    | 'quarantine-temporary'
+    | 'audit-reconstruction'
+    | 'registry-index-rebuild'
+    | 'dispose-wpr023d-temporary'
+    | 'dispose-quarantined-temporary'
+    | 'dispose-conflicting-index';
   /** Orphan-removal/quarantine-temporary only: deterministic entry designation (temporary name; never a path). */
   readonly targetEntry?: string;
   /** Orphan-removal only: verified durable publication sharing the temporary's inode (WPR-023 (a)). */
@@ -1145,6 +1209,18 @@ export interface RecoveryMutationAction {
   readonly expectedRegistryGeneration?: string;
   /** Registry-index-rebuild only: registry-mode surface-structure token of the assessment snapshot. */
   readonly expectedRegistrySurfaceGeneration?: string;
+  /** Disposition only: target shard designation (4-hex for shard-level entries; empty for parent-level foreign entries). */
+  readonly targetShard?: string;
+  /** Disposition only: exact current recovery classification of the target (closed per operation). */
+  readonly expectedDispositionClassification?: string;
+  /** Disposition only: exact observation code of the target classification. */
+  readonly expectedCode?: string;
+  /** Disposition only (WPR-023 (d)): exact current entry type (regular | symlink | special | directory). */
+  readonly expectedEntryType?: 'regular' | 'symlink' | 'special' | 'directory';
+  /** Disposition only (quarantine classes where available): exact content digest of the target object. */
+  readonly expectedContentDigest?: string;
+  /** Disposition only: the assessment's requires-external-disposition finding id (equals the object observation id). */
+  readonly expectedDispositionFindingId?: string;
 }
 
 /** Authorized recovery-mutation request (WP-8-F composition boundary). */
@@ -1170,8 +1246,8 @@ export interface RecoveryMutationRequest {
 /** Recovery-mutation result (advisory data; no capability, path, or nonce). */
 export interface RecoveryMutationResult {
   readonly ok: boolean;
-  /** `removed` (orphan removed), `quarantined` (temporary quarantined), `reconstructed` (audit reconstructed), `rebuilt` (index published), `already-completed`: no work needed. */
-  readonly outcome?: 'removed' | 'quarantined' | 'reconstructed' | 'rebuilt' | 'already-completed';
+  /** `removed` (orphan removed), `quarantined` (temporary quarantined), `reconstructed` (audit reconstructed), `rebuilt` (index published), `disposed` (eligible disposition target unlinked with evidence), `disposition-required` (externally authorized disposition adjudicated; no mutation performed), `already-completed`: no work needed. */
+  readonly outcome?: 'removed' | 'quarantined' | 'reconstructed' | 'rebuilt' | 'disposed' | 'disposition-required' | 'already-completed';
   /** Deterministic evidence record identity when evidence is durable. */
   readonly evidenceId?: string;
   /** WP-8-H: deterministic registry-index identity when an index is published/current. */

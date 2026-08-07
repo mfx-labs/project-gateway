@@ -233,7 +233,7 @@ test('recovery: orphan temporaries classify per WPR-023 (a)-(d)', () => {
     assert.equal(quarantines.length, 3);
     assert.equal(quarantines.filter((a) => a.safety === 'safe').length, 2);
     assert.ok(plan.actions.some((a) => a.category === 'disposition' && a.safety === 'requires-external-disposition'));
-    assert.ok(quarantines.some((a) => a.safety === 'requires-external-disposition' && a.requiredOperation === 'disposition'));
+    assert.ok(quarantines.some((a) => a.safety === 'requires-external-disposition' && a.requiredOperation === 'dispose-wpr023d-temporary'));
     // Every action carries the full required shape (the missing-index
     // rebuild action has no observation evidence by construction; WP-8-H).
     for (const action of plan.actions) {

@@ -434,8 +434,33 @@ export function isGenuineVerifyCapability(value: unknown): value is VerifyCapabi
 // the set only when implemented. The capability NEVER derives from a
 // RecoveryPlan, assessment, cursor, observation, path, or caller boolean.
 
-export const RECOVERY_OPERATION_SET = ['orphan-removal', 'quarantine-temporary', 'audit-reconstruction', 'registry-index-rebuild'] as const;
+export const RECOVERY_OPERATION_SET = [
+  'orphan-removal',
+  'quarantine-temporary',
+  'audit-reconstruction',
+  'registry-index-rebuild',
+  // WP-8-I: the externally authorized disposition vocabulary (class-specific;
+  // no generic disposition operation exists). In this slice every
+  // disposition execution is the non-mutating adjudication foundation
+  // (the contract defines no disposition mutation primitive).
+  'dispose-wpr023d-temporary',
+  'dispose-quarantined-temporary',
+  'dispose-conflicting-index',
+] as const;
 export type RecoveryOperation = (typeof RECOVERY_OPERATION_SET)[number];
+
+/**
+ * WP-8-I disposition operation subset (adjudication vocabulary; §2). Only
+ * these class-specific operations exist; no generic disposition,
+ * deletion, repair, administration, or cleanup operation exists and fails
+ * every verifier.
+ */
+export const RECOVERY_DISPOSITION_OPERATIONS = [
+  'dispose-wpr023d-temporary',
+  'dispose-quarantined-temporary',
+  'dispose-conflicting-index',
+] as const;
+export type RecoveryDispositionOperation = (typeof RECOVERY_DISPOSITION_OPERATIONS)[number];
 
 /** Recovery-capability binding (mutation-capable; CAP-001/API-003). */
 export interface RecoveryCapabilityBinding {

@@ -38,6 +38,7 @@
 import type {
   AuditEventView,
   DispositionFinding,
+  DispositionStateFinding,
   IncompletePublicationFinding,
   IndexScanObservation,
   LockFacts,
@@ -192,6 +193,7 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   const requiresDisposition: DispositionFinding[] = [];
   const reconstructionCandidates: ReconstructionCandidateFinding[] = [];
   const reconstructionStates: ReconstructionStateFinding[] = [];
+  const dispositionStates: DispositionStateFinding[] = [];
   const indexArtifacts: IndexScanObservation[] = [];
   let indexMissing = false;
   const quarantineObjects: QuarantineScanObservation[] = [];
@@ -311,6 +313,17 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
       findings.push(finding('ERR-STO-MALFORMED', 'registry-index artifact is malformed or unsupported; rebuild candidate'));
     } else if (index.classification === 'index-conflicting') {
       findings.push(finding('ERR-STO-INTEGRITY', 'conflicting registry-index artifact; disposition required'));
+      // WP-8-I: the conflicting index artifact is an explicit
+      // requires-external-disposition state (rebuild collides with the
+      // conflicting file; WP-8-H §7). The disposition execution primitive
+      // still requires external authority.
+      requiresDisposition.push({
+        observationId: index.id,
+        classification: index.classification,
+        code: index.code === '' ? 'ERR-STO-INTEGRITY' : index.code,
+        recordId: index.indexId,
+        reason: 'conflicting registry-index artifact at the derived identity; disposition required (rebuild collides)',
+      });
     } else if (index.classification === 'foreign-entry' || index.classification === 'index-wrong-type' || index.classification === 'index-wrong-uid-or-mode') {
       findings.push(finding('ERR-STO-MALFORMED', 'registry-index artifact violates the index surface policy'));
     }
@@ -465,6 +478,71 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   }
   for (const state of reconstructionByTarget.values()) reconstructionStates.push(state);
 
+  // WP-8-I: deterministic disposition-state classification (ADR-032; §10).
+  // Derived purely from durable facts: every scanned disposition-evidence
+  // record is checked against the CURRENT target surface. Evidence with
+  // malformed/incomplete facts is dangling; evidence whose referenced
+  // target is still present is conflicting (evidence-with-live-target
+  // integrity inconsistency); otherwise the disposition is completed. For
+  // the index case, a present artifact at the referenced identity that is
+  // no longer conflicting is the normal post-rebuild coexistence
+  // (completed). A target absent with no evidence is not derivable as an
+  // interrupted state from one snapshot (ambiguous with never-disposed);
+  // the execution reports it as a deterministic fail-closed result.
+  const quarantineByDesignation = new Map(quarantineObjects.map((q) => [`${q.shard}\u0000${q.entry}`, q]));
+  for (const item of obs) {
+    if (item.kind !== 'record' || item.recordClass !== 'store-evidence-record' || item.dispositionEvidenceFacts === undefined) continue;
+    const d = item.dispositionEvidenceFacts;
+    const recoveryOperation = d.recoveryOperation;
+    const targetEntry = d.targetEntry;
+    const targetShard = d.targetShard;
+    const targetIndexId = d.targetIndexId;
+    if (
+      d.malformed ||
+      (recoveryOperation !== 'dispose-quarantined-temporary' && recoveryOperation !== 'dispose-conflicting-index') ||
+      targetEntry === undefined ||
+      (recoveryOperation === 'dispose-quarantined-temporary' ? targetShard === undefined : targetIndexId === undefined)
+    ) {
+      dispositionStates.push({
+        targetDesignation: targetEntry ?? '',
+        state: 'dangling-disposition-evidence',
+        evidenceObservationId: item.id,
+        recoveryOperation: recoveryOperation ?? '',
+        reason: 'disposition evidence payload is incomplete or outside the closed vocabulary',
+      });
+      findings.push(finding('ERR-STO-MALFORMED', 'malformed or dangling disposition evidence record'));
+      continue;
+    }
+    const designation = recoveryOperation === 'dispose-quarantined-temporary' ? `${targetShard}\u0000${targetEntry}` : targetIndexId ?? '';
+    let targetPresent: boolean;
+    if (recoveryOperation === 'dispose-quarantined-temporary') {
+      targetPresent = quarantineByDesignation.has(designation);
+    } else {
+      const artifact = indexArtifacts.find((a) => a.indexId === designation);
+      // A present artifact that is no longer conflicting is the normal
+      // post-rebuild coexistence (completed disposition).
+      targetPresent = artifact !== undefined && artifact.classification === 'index-conflicting';
+    }
+    if (targetPresent) {
+      dispositionStates.push({
+        targetDesignation: designation,
+        state: 'conflicting-disposition-evidence',
+        evidenceObservationId: item.id,
+        recoveryOperation,
+        reason: 'disposition evidence is durable but the referenced target is still present; integrity inconsistency',
+      });
+      findings.push(finding('ERR-STO-INTEGRITY', 'disposition evidence references a live target; integrity inconsistency'));
+      continue;
+    }
+    dispositionStates.push({
+      targetDesignation: designation,
+      state: 'completed-disposition',
+      evidenceObservationId: item.id,
+      recoveryOperation,
+      reason: 'disposition evidence durable and the referenced target is absent',
+    });
+  }
+
   for (const conflict of finalized.duplicateConflicts) {
     requiresDisposition.push({
       observationId: conflict.observationIds[0] ?? '',
@@ -504,6 +582,7 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   requiresDisposition.sort((a, b) => (a.observationId < b.observationId ? -1 : 1));
   reconstructionCandidates.sort((a, b) => (a.recordId < b.recordId ? -1 : 1));
   reconstructionStates.sort((a, b) => (a.recordId < b.recordId ? -1 : a.recordId > b.recordId ? 1 : a.state < b.state ? -1 : 1));
+  dispositionStates.sort((a, b) => (a.targetDesignation < b.targetDesignation ? -1 : a.targetDesignation > b.targetDesignation ? 1 : a.state < b.state ? -1 : 1));
   indexArtifacts.sort((a, b) => (a.entry < b.entry ? -1 : a.entry > b.entry ? 1 : 0));
   findings.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
 
@@ -521,6 +600,7 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
     quarantineObjects,
     danglingQuarantineEvidence,
     reconstructionStates,
+    dispositionStates,
     indexArtifacts,
     indexMissing,
     findings,

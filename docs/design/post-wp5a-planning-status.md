@@ -236,7 +236,35 @@ disposition, WP-9, and WP-12 remain out of scope. The **implementation
 report
 (`docs/reports/wp-8h-persistent-registry-index-implementation-report.md`)
 is complete**; **WP-8-F, WP-8-G, and WP-8-H are not yet closed** —
-implementation review pending; WP-8 implementation is **not closed**.
+implementation review pending. **WP-8-I (authorized external disposition;
+ADR-032; contract §16.6/DPS-001…007) is complete**: the human contract
+decision is implemented — `dispose-wpr023d-temporary` remains
+ADJUDICATION-ONLY (deterministic `disposition-required`, no mutation, no
+evidence); `dispose-quarantined-temporary` is executable ONLY for
+`quarantine-malformed`/`foreign-entry`/`quarantine-conflict` regular
+files with exact UID/mode/size/nlink/digest/observation bindings (all
+other quarantine states stay adjudication-only); `dispose-conflicting-index`
+is executable only for the exact regular-file conflicting artifact at
+the deterministic derived index identity (stale/current/unrelated
+malformed/foreign index objects, directories, symlinks, and recursive
+`index/` deletion prohibited; no auto-rebuild). Executable disposition
+uses the exact unlink-plus-directory-fsync primitive (one new fs-bearing
+owner), durable `StoreEvidenceRecord` evidence with the existing
+`recovery-evidence` kind and per-operation domain-separated identities,
+the full re-verification/mutation sequence under the single-writer lock,
+the idempotency table (already-completed only with matching evidence;
+all conflicting/absent/changed states fail closed), a fixed 12-stage
+executable crash inventory plus the 5-stage WPR-023 (d) inventory,
+scanner `dispositionStates` classification, exact operation naming in
+advisory plan actions, and exact static-guard/global-security boundaries
+(no generic disposition/deletion authority; no new evidence kind). The
+contract gained §16.6/DPS-001…007 and its pinned SHA-256 was updated.
+Stale-lock breaking, deletion, retention, migration, disposition of the
+remaining adjudication-only classes, WP-9, and WP-12 remain out of
+scope. The **implementation report
+(`docs/reports/wp-8i-authorized-external-disposition-implementation-report.md`)
+is complete**; **WP-8-F, WP-8-G, WP-8-H, and WP-8-I are not yet closed**
+— implementation review pending; WP-8 implementation is **not closed**.
 WP-9 and later
 packages are **not authorized**. No push, release, publication,
 installation, or deployment has occurred. Each disposition

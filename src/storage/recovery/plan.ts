@@ -88,9 +88,9 @@ export function buildRecoveryPlan(assessment: RecoveryAssessment): RecoveryPlan 
         targetKind: 'temporary-object',
         category: 'quarantine',
         observedEvidence: [orphan.observationId],
-        reason: 'temporary object outside the closed WPR-023 categories; quarantine after disposition (WPR-023 (d), CSA-015)',
+        reason: 'temporary object outside the closed WPR-023 categories; ADJUDICATION-ONLY, no executable storage mutation (WPR-023 (d), CSA-015, ADR-032)',
         requiredCapability: 'control-plane',
-        requiredOperation: 'disposition',
+        requiredOperation: 'dispose-wpr023d-temporary',
         verifyImmediatelyBeforeMutation: true,
         safety: 'requires-external-disposition',
       });
@@ -135,9 +135,33 @@ export function buildRecoveryPlan(assessment: RecoveryAssessment): RecoveryPlan 
       safety: 'safe',
     });
   }
+  // WP-8-I (ADR-032 §11): quarantine-object disposition actions name the
+  // exact executable operation; the classification is bound per object.
+  const QUARANTINE_DISPOSITION_CLASSES: readonly string[] = ['quarantine-malformed', 'foreign-entry', 'quarantine-conflict', 'unexpected-hard-link', 'wrong-type', 'wrong-uid-or-mode'];
+  const quarantineDispositionIds = new Set<string>();
+  for (const q of assessment.quarantineObjects) {
+    if (!QUARANTINE_DISPOSITION_CLASSES.includes(q.classification)) continue;
+    quarantineDispositionIds.add(q.id);
+    specs.push({
+      targetLogicalIdentity: `${q.shard !== '' ? `${q.shard}/` : ''}${q.entry}`,
+      targetKind: 'quarantine-object',
+      category: 'disposition',
+      observedEvidence: [q.id],
+      reason: `${q.classification} quarantine object; externally authorized disposition (${q.classification === 'quarantine-malformed' || q.classification === 'foreign-entry' || q.classification === 'quarantine-conflict' ? 'executable for policy-compliant regular files' : 'adjudication-only subclass'})`,
+      requiredCapability: 'control-plane',
+      requiredOperation: 'dispose-quarantined-temporary',
+      verifyImmediatelyBeforeMutation: true,
+      safety: 'requires-external-disposition',
+    });
+  }
   for (const item of assessment.requiresDisposition) {
+    // Quarantine-originated entries already produced their exact action
+    // above; skip them to avoid duplicates.
+    if (quarantineDispositionIds.has(item.observationId)) continue;
     const dispositionKinds: readonly string[] = ['wrong-type', 'wrong-uid-or-mode', 'unexpected-hard-link', 'foreign-entry', 'duplicate-conflicting-identity', 'dangling-audit', 'writer-lock-present', 'writer-lock-foreign', 'writer-lock-malformed', 'temporary-other'];
     if (!dispositionKinds.includes(item.classification)) continue;
+    // WP-8-I: WPR-023 (d) names its exact adjudication-only operation.
+    const requiredOperation = item.classification === 'temporary-other' ? ('dispose-wpr023d-temporary' as const) : ('disposition' as const);
     specs.push({
       targetLogicalIdentity: item.recordId ?? `object:${item.observationId}`,
       targetKind: 'primary-record',
@@ -145,7 +169,7 @@ export function buildRecoveryPlan(assessment: RecoveryAssessment): RecoveryPlan 
       observedEvidence: [item.observationId],
       reason: item.reason,
       requiredCapability: 'control-plane',
-      requiredOperation: 'disposition',
+      requiredOperation,
       verifyImmediatelyBeforeMutation: true,
       safety: 'requires-external-disposition',
     });
@@ -189,9 +213,9 @@ export function buildRecoveryPlan(assessment: RecoveryAssessment): RecoveryPlan 
         targetKind: 'index-object',
         category: 'disposition',
         observedEvidence: [index.id],
-        reason: 'conflicting registry-index artifact at the derived identity; rebuild is blocked and disposition is required',
+        reason: 'conflicting registry-index artifact at the derived identity; rebuild is blocked and externally authorized disposition is required (exact conflicting artifact only)',
         requiredCapability: 'control-plane',
-        requiredOperation: 'disposition',
+        requiredOperation: 'dispose-conflicting-index',
         verifyImmediatelyBeforeMutation: true,
         safety: 'requires-external-disposition',
       });

@@ -666,6 +666,106 @@ scope (16.4).
 - **QRN-006.** Quarantine idempotency and crash states follow 16.5
   exactly; conflicting destinations and evidence fail closed.
 
+**16.6 Externally authorized disposition (WP-8-I; ADR-032).** Recovery
+objects classified by the recovery assessment as requiring external
+disposition are NEVER mutated by scanner classification or recovery-plan
+data alone: disposition mutation requires an explicitly authorized
+recovery capability bound to the exact store, namespace, configuration,
+recovery action identity, and one of the exact class-specific disposition
+operations. The disposition vocabulary is closed:
+`dispose-wpr023d-temporary` (adjudication-only), `dispose-quarantined-temporary`,
+and `dispose-conflicting-index`; no generic disposition, deletion, or
+repair operation exists.
+
+**WPR-023 (d) (adjudication-only).** A WPR-023 (d) temporary is NEVER
+mutated in the MVP: the storage layer immediately re-verifies the target,
+confirms the current WPR-023 (d) classification, returns the
+deterministic `disposition-required` result, and leaves the object
+untouched. No unlink, quarantine transition, rename, copy, overwrite,
+chmod/chown repair, or recovery evidence is produced because no storage
+mutation occurred.
+
+**Quarantine-object disposition (executable subclasses).**
+`dispose-quarantined-temporary` may unlink exactly one already-quarantined
+object ONLY when, immediately before mutation, its current classification
+is one of `quarantine-malformed`, `foreign-entry`, or
+`quarantine-conflict` AND it is a regular file with the exact expected
+service UID, exact quarantine-file mode, size within the applicable
+bound, `nlink === 1`, descriptor-bound no-follow verified, with the exact
+content/object digest and observation/finding evidence bound to the
+trusted request. A malformed or foreign filename may still be externally
+disposable only when its exact entry designation was obtained through the
+current scanner and rebound by the trusted request; arbitrary caller
+strings are never filesystem operands. The following states remain
+ADJUDICATION-ONLY and MUST NOT be unlinked: `wrong-type`,
+`wrong-uid-or-mode`, `unexpected-hard-link`, directories, symlinks,
+sockets, FIFOs, devices, any target whose identity or classification is
+uncertain, valid quarantine objects, missing-evidence quarantine states,
+and interrupted-link states.
+
+**Conflicting-index disposition (exact artifact only).**
+`dispose-conflicting-index` may unlink exactly one regular-file
+`index-conflicting` artifact occupying the exact deterministic derived
+index identity, provided: the authoritative records/audits remain
+independently readable; the current classification is exactly
+`index-conflicting`; the target is a regular file with exact UID/mode,
+bounded size, `nlink === 1`, and the exact digest/identity bound to the
+request; the current authoritative index identity is re-derived; and the
+target still occupies exactly that derived identity. The operation MUST
+NOT delete stale historical indexes, current-valid indexes, malformed
+indexes at unrelated names, foreign index entries, directories, symlinks,
+or anything recursively under `index/`. Disposition does not
+automatically trigger an index rebuild.
+
+**Mutation primitive.** Every executable disposition mutation uses
+exactly: descriptor-bound source-name → verified-inode recheck, unlink of
+exactly that one name, absence verification, fsync of the exact
+containing directory, then durable recovery evidence and its
+`authorized-write` audit before success. No rename, byte copy, recursive
+removal, directory deletion, chmod/chown repair, metadata repair, unlink
+of another name, or plan-derived mutation exists.
+
+**Evidence.** Disposition mutations reuse the existing
+`StoreEvidenceRecord` with `evidenceKind: recovery-evidence`; the exact
+disposition operation distinguishes the mutation. No new evidence kind is
+introduced. The evidence identity is domain-separated per operation and
+never contains paths.
+
+**Idempotency.** Target present with the exact classification and no
+evidence → unlink and publish evidence; target absent with matching
+evidence → `already-completed`; target absent without evidence → fail
+closed (no inference); target present with matching evidence → fail
+closed as an integrity inconsistency; classification, digest, or inode
+changed → fail closed; conflicting evidence → fail closed. No
+repair-by-guessing.
+
+### Disposition requirements
+
+- **DPS-001.** Disposition mutation requires the exact class-specific
+  recovery operation; no generic disposition or deletion authority exists.
+- **DPS-002.** WPR-023 (d) temporaries are adjudication-only in the MVP;
+  no storage mutation and no evidence is produced for them.
+- **DPS-003.** Quarantine disposition unlinks only the three eligible
+  regular-file classifications with exact UID/mode/size/nlink/digest/
+  observation bindings; the adjudication-only states of 16.6 are never
+  unlinked.
+- **DPS-004.** Conflicting-index disposition unlinks only the exact
+  conflicting derived index artifact; stale, current-valid, unrelated
+  malformed, and foreign index objects, directories, symlinks, and
+  recursive `index/` deletion are prohibited.
+- **DPS-005.** Disposition mutation uses the exact unlink-plus-
+  directory-fsync primitive; rename, copy, recursive removal, directory
+  deletion, and chmod/chown repair are prohibited.
+- **DPS-006.** Every disposition mutation publishes durable
+  `StoreEvidenceRecord` evidence (`recovery-evidence`, exact operation)
+  and its `authorized-write` audit before success; `dispose-wpr023d-temporary`
+  never publishes evidence.
+- **DPS-007.** Disposition idempotency and crash behavior follow 16.6:
+  `already-completed` only with matching evidence;
+  target-absent-without-evidence, evidence-with-live-target, changed
+  classification/digest/inode, and conflicting evidence fail closed; no
+  repair-by-guessing; stale locks are never automatically broken.
+
 ### Crash-safety requirements
 
 - **CSA-001.** A crash before publication MUST leave no visible partial record; temporary files MUST be quarantined with `quarantine-evidence` or removed at recovery.

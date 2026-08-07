@@ -291,6 +291,53 @@ WP-8-H are not closed**; WP-8 implementation remains **not closed**;
 WP-9 and later packages remain **not authorized**. No release,
 publication, installation, or deployment action has occurred for WP-8.
 
+**WP-8-I (contract §16.6/§29 phase 4 — authorized external disposition)
+is complete**: WP-8-H remains at the same commit `d3a0f22` (subject
+`feat: add WP-8-H persistent registry index`); the **human contract
+decision (ADR-032; contract §16.6/DPS-001…007) is implemented**: the
+three class-specific disposition operations **`dispose-wpr023d-temporary`**
+(ADJUDICATION-ONLY in the MVP: immediate re-verification, deterministic
+`disposition-required`, no mutation, no evidence — preservation is the
+default when durable facts cannot justify destruction),
+**`dispose-quarantined-temporary`** (executable ONLY for the
+`quarantine-malformed`/`foreign-entry`/`quarantine-conflict` regular
+files with exact UID/mode/size/nlink/digest/observation bindings; the
+wrong-type/wrong-UID-mode/unexpected-hard-link/valid/missing-evidence/
+interrupted-link/directory/symlink/special states remain
+adjudication-only), and **`dispose-conflicting-index`** (executable only
+for the exact regular-file conflicting artifact at the deterministic
+derived index identity; stale/current/unrelated-malformed/foreign index
+objects, directories, symlinks, and recursive `index/` deletion are
+prohibited; disposition never auto-triggers a rebuild). Executable
+disposition uses the exact unlink-plus-directory-fsync primitive
+(one new fs-bearing owner, `recovery/disposition.ts`), durable
+`StoreEvidenceRecord` evidence with the EXISTING `recovery-evidence`
+kind (no new evidence kind) and per-operation domain-separated
+identities (`PGAP-STORAGE-QUARANTINE-DISPOSITION-EVIDENCE-v1`,
+`PGAP-STORAGE-INDEX-DISPOSITION-EVIDENCE-v1`), the full 22-step
+re-verification/mutation sequence under the single-writer lock, the §8
+idempotency table (already-completed only with matching evidence;
+target-absent-without-evidence, evidence-with-live-target, changed
+classification/digest/inode, and conflicting evidence fail closed; no
+repair-by-guessing), a fixed 12-stage executable crash inventory
+(exercised for quarantine and index) alongside the 5-stage WPR-023 (d)
+adjudication inventory, scanner `dispositionStates` classification
+(completed / conflicting / dangling disposition evidence), exact
+operation naming in advisory plan actions, and exact
+static-guard/global-security boundaries (no generic disposition/deletion
+authority; evidence publication remains exact-permit-bound). The
+contract gained §16.6/DPS-001…007 and its pinned SHA-256 was updated.
+**Not begun**: stale-lock breaking, primary/audit deletion, retention,
+migration, disposition of the remaining adjudication-only classes,
+WP-9
+generation seeding, WP-12 integration. The **implementation report
+(`docs/reports/wp-8i-authorized-external-disposition-implementation-report.md`)
+is complete** with the verification evidence; the **next gate is the
+WP-8-F/WP-8-G/WP-8-H/WP-8-I implementation review**; **WP-8-F, WP-8-G,
+WP-8-H, and WP-8-I are not closed**; WP-8 implementation remains **not
+closed**; WP-9 and later packages remain **not authorized**. No release,
+publication, installation, or deployment action has occurred for WP-8.
+
 **Normative cross-references:** `project-gateway-scope-and-principles.md`
 (WP-0), ADR-002, ADR-003, ADR-006, ADR-020, ADR-022, ADR-023 (sequencing
 decision), ADR-024 (trusted configuration ownership), ADR-025 (capability

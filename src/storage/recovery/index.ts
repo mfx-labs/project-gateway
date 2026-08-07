@@ -18,10 +18,15 @@ export { buildRecoveryPlan } from './plan.js';
 // is re-exported; the plan remains advisory data.
 export { executeRecoveryMutation } from './execute.js';
 export type { RecoveryMutationRequest, RecoveryMutationResult } from '../types.js';
-export { buildQuarantineEvidenceRecord, buildRecoveryEvidenceRecord, computeQuarantineEvidenceIdentity, computeQuarantineTemporaryId, computeRecoveryEvidenceIdentity, isoFromEpochMs, quarantineDestinationDesignation, recoveryEvidencePayload } from './evidence.js';
+export { buildQuarantineEvidenceRecord, buildRecoveryEvidenceRecord, computeQuarantineEvidenceIdentity, computeQuarantineTemporaryId, computeRecoveryEvidenceIdentity, isoFromEpochMs, quarantineDestinationDesignation, recoveryEvidencePayload, buildDispositionEvidenceRecord, computeDispositionEvidenceIdentity, verifyExistingDispositionEvidence, dispositionEvidencePayload, STORAGE_QUARANTINE_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN, STORAGE_INDEX_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN } from './evidence.js';
 export { executeQuarantineTemporary } from './quarantine.js';
 export { reverifyQuarantineSource, verifyQuarantineObjectDigest, reverifyReconstructionTarget } from './reverify.js';
 export { isPublicationTemporaryName, temporaryObservationId, recordObservationId, auditEventsForRecord, reconstructionEvidenceForTarget, extractReconstructionEvidenceFacts } from './scan.js';
+// WP-8-I: the external-disposition adjudication foundation re-verification
+// helpers (current-state single-entry classification with the committed
+// scanner logic; read-only). No capability or mutation primitive is
+// re-exported.
+export { currentTemporaryObservation, currentQuarantineObservation, currentIndexObservation, quarantineObservationId, extractDispositionEvidenceFacts } from './scan.js';
 // WP-8-G: the audit-reconstruction operation (16.3): pure derivation and
 // evidence construction plus the exact-record publication composition. The
 // permit creator and verifier are never re-exported.
@@ -35,6 +40,7 @@ export {
   STORAGE_AUDIT_RECONSTRUCTION_EVIDENCE_IDENTITY_DOMAIN,
 } from './reconstruct.js';
 export type { RecoveryEvidenceInput, RecoveryEvidenceBuild } from './evidence.js';
+export type { DispositionEvidenceInput, DispositionEvidenceIdentityInput } from './evidence.js';
 export type { AuditReconstructionEvidenceInput, AuditReconstructionOutcome, ReconstructedAuditPublishResult } from './reconstruct.js';
 export { buildRecoveryAuditReconstructionEvent, RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND } from '../audit/write-audit.js';
 // WP-8-H: the registry-index rebuild operation (ADR-031): the exact

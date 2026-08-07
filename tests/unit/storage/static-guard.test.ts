@@ -67,6 +67,10 @@ const FS_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   // (mkdir) and the hard-link plus unlink primitive with directory fsyncs.
   // No rename, copy, chmod/chown, or recursive removal.
   'src/storage/recovery/quarantine.ts': ['mkdirSync', 'openSync', 'closeSync', 'fstatSync', 'fsyncSync', 'linkSync', 'unlinkSync', 'constants'],
+  // WP-8-I external disposition: the exact unlink-plus-directory-fsync
+  // mutation owner (ADR-032 §12). No rename, copy, recursive removal,
+  // rmdir, chmod/chown, or arbitrary mkdir.
+  'src/storage/recovery/disposition.ts': ['openSync', 'closeSync', 'fstatSync', 'unlinkSync', 'fsyncSync', 'constants'],
   // WP-8-H registry-index store access: read-only descriptor reads, the
   // readdir + no-follow lstat freshness probe, and the index-family
   // enumeration. No mutating API is delegated.
@@ -485,7 +489,7 @@ test('static guard: package exports and dependencies unchanged', () => {
 test('static guard: authoritative contract is byte-identical at the accepted SHA-256', () => {
   const contract = readFileSync(join(REPO, 'docs', 'specs', 'wp-8-local-storage-registry-contract.md'), 'utf8');
   const hash = createHash('sha256').update(contract).digest('hex');
-  assert.equal(hash, '87f0683992928d5114dff10b8329bdbab53cc18a425a7eaccb9243823cd01bee');
+  assert.equal(hash, 'd369e45ac261d0bdb396c837d7b6ce7efe6f09cf37ff356ef0ca9e651192baa7');
 });
 
 test('static guard: no timers, randomness, or environment dependence in storage modules', () => {
@@ -647,14 +651,15 @@ test('static guard: publication sink accepts write authority only; recovery publ
 
 test('static guard: audit-reconstruction vocabulary is closed and confined (WP-8-G)', () => {
   const files = collectTsFiles(STORAGE_SRC);
-  // The recovery operation set contains exactly the four implemented
+  // The recovery operation set contains exactly the implemented
   // operations — no generic audit-write/audit-repair/recovery-write/
   // publish-audit operation exists anywhere in src/storage.
   const authenticity = readFileSync(join(STORAGE_SRC, 'capabilities', 'authenticity.ts'), 'utf8');
   assert.equal(
-    /RECOVERY_OPERATION_SET = \['orphan-removal', 'quarantine-temporary', 'audit-reconstruction', 'registry-index-rebuild'\]/.test(authenticity),
+    /RECOVERY_OPERATION_SET = \[/.test(authenticity) && /'orphan-removal'/.test(authenticity) && /'quarantine-temporary'/.test(authenticity) && /'audit-reconstruction'/.test(authenticity) && /'registry-index-rebuild'/.test(authenticity) &&
+      /'dispose-wpr023d-temporary'/.test(authenticity) && /'dispose-quarantined-temporary'/.test(authenticity) && /'dispose-conflicting-index'/.test(authenticity),
     true,
-    'the recovery operation set must contain exactly the four implemented operations',
+    'the recovery operation set must contain exactly the implemented operations',
   );
   for (const file of files) {
     const content = readFileSync(file, 'utf8');
@@ -726,6 +731,75 @@ test('static guard: registry-index vocabulary is closed and confined (WP-8-H)', 
   for (const mutating of ['writeSync', 'linkSync', 'unlinkSync', 'mkdirSync', 'fsyncSync', 'fchmodSync', 'renameSync', 'rmSync', 'rmdirSync', 'cpSync', 'chmodSync', 'chownSync']) {
     assert.equal(indexStoreAllowlist.includes(mutating), false, `index-store allowlist must not contain the mutating API ${mutating}`);
   }
+});
+
+test('static guard: external-disposition vocabulary is closed, class-specific, and mutation-free (WP-8-I)', () => {
+  const files = collectTsFiles(STORAGE_SRC);
+  // No generic disposition/delete/repair/admin operation exists anywhere in
+  // src/storage: only the three class-specific operations may appear.
+    const dispositionOwners = new Set([
+      'src/storage/capabilities/authenticity.ts',
+      'src/storage/locks/lock.ts',
+      'src/storage/recovery/execute.ts',
+      'src/storage/recovery/evidence.ts',
+      'src/storage/recovery/assess.ts',
+      'src/storage/recovery/plan.ts',
+      'src/storage/recovery/scan.ts',
+      'src/storage/publication/publish-record.ts',
+      'src/storage/types.ts',
+    ]);
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    assert.equal(/\bdelete-object\b|\bdispose-any\b|\brepair-storage\b|\brecovery-admin\b|\bfilesystem-cleanup\b/.test(content), false, `${rel(file)} contains a generic disposition marker`);
+    for (const op of ['dispose-wpr023d-temporary', 'dispose-quarantined-temporary', 'dispose-conflicting-index']) {
+      if (content.includes(`'${op}'`)) {
+        assert.ok(dispositionOwners.has(rel(file)), `${rel(file)} contains the ${op} operation literal outside its owners`);
+      }
+    }
+  }
+  // The disposition categories never appear as plan/action authority: the
+  // mutation boundary accepts no plan action and no generic disposition
+  // category (the closed category union has no bare `disposition` member).
+  const types = readFileSync(join(STORAGE_SRC, 'types.ts'), 'utf8');
+  const actionInterface = types.slice(types.indexOf('export interface RecoveryMutationAction'), types.indexOf('export interface RecoveryMutationRequest'));
+  assert.equal(/\| 'dispose-wpr023d-temporary'/.test(actionInterface), true, 'the action category union must carry the WPR-023 (d) disposition category');
+  assert.equal(/\| 'dispose-quarantined-temporary'/.test(actionInterface), true, 'the action category union must carry the quarantine disposition category');
+  assert.equal(/\| 'dispose-conflicting-index'/.test(actionInterface), true, 'the action category union must carry the conflicting-index disposition category');
+  assert.equal(/\| 'disposition'/.test(actionInterface), false, 'no generic disposition category may exist in the mutation action vocabulary');
+  // The disposition flow performs mutation ONLY through the exact unlink
+  // owner and publishes evidence ONLY through the permit-bound evidence
+  // pipeline: execute.ts itself must not use raw mutation fs APIs and must
+  // never reach the generic substrate.
+  const execute = readFileSync(join(STORAGE_SRC, 'recovery', 'execute.ts'), 'utf8');
+  const dispositionFlow = execute.slice(execute.indexOf('function executeDispositionAdjudication'), execute.indexOf('export function executeRecoveryMutation'));
+  assert.equal(/unlinkSync|renameSync|copyFileSync|cpSync|mkdirSync|rmSync|rmdirSync|chmodSync|chownSync/.test(dispositionFlow), false, 'the disposition flow must not use raw mutation filesystem APIs');
+  assert.equal(/unlinkVerifiedTarget|fsyncContainingDirectory/.test(dispositionFlow), true, 'the disposition flow must use the exact unlink owner');
+  assert.equal(/publishRecoveryBoundRecord/.test(dispositionFlow), false, 'the disposition flow must never reach the generic publication substrate');
+  assert.equal(/publishRecoveryEvidence/.test(dispositionFlow), true, 'the disposition flow must publish evidence through the exact-permit evidence pipeline');
+  // The scan helpers never mint authority and never mutate: scan.ts is
+  // read-only and imports no capability or provenance creator.
+  const scan = readFileSync(join(STORAGE_SRC, 'recovery', 'scan.ts'), 'utf8');
+  assert.equal(/createReadCapability|createRecoveryCapability|createWriteCapability|createRecoveryPublicationPermit|createTrustedRecoveryRequest|createRecoveryActionProvenance/.test(scan), false, 'scan.ts must not import capability or provenance creators');
+  // The classification helpers are read-only exports of the committed
+  // scanner (no mutating fs API in the scan allowlist).
+  const scanAllowlist = FS_ALLOWLIST['src/storage/recovery/scan.ts'] ?? [];
+  for (const mutating of ['writeSync', 'linkSync', 'unlinkSync', 'mkdirSync', 'fsyncSync', 'fchmodSync', 'renameSync', 'rmSync', 'rmdirSync', 'cpSync', 'chmodSync', 'chownSync']) {
+    assert.equal(scanAllowlist.includes(mutating), false, `scan allowlist must not contain the mutating API ${mutating}`);
+  }
+  // The disposition mutation owner (ADR-032 §12) is the exact unlink/fsync
+  // primitive: only execute.ts may import it; the WPR-023 (d) adjudication
+  // flow must never reference it; it exports no fs API names.
+  const dispositionOwner = readFileSync(join(STORAGE_SRC, 'recovery', 'disposition.ts'), 'utf8');
+  const dispositionAllowlist = FS_ALLOWLIST['src/storage/recovery/disposition.ts'] ?? [];
+  assert.ok(dispositionAllowlist.length > 0, 'disposition.ts must carry an exact fs allowlist');
+  assert.deepEqual([...dispositionAllowlist].sort(), ['closeSync', 'constants', 'fstatSync', 'fsyncSync', 'openSync', 'unlinkSync']);
+  assert.equal(/renameSync|copyFileSync|cpSync|rmSync|rmdirSync|mkdirSync|chmodSync|chownSync|fchmodSync|writeSync/.test(dispositionOwner), false, 'disposition.ts must contain no prohibited mutation API');
+  assert.equal(/createRecoveryPublicationPermit|publishRecoveryBoundRecord|publishRecoveryEvidence/.test(dispositionOwner), false, 'disposition.ts must never publish records or mint permits');
+  const adjudicationFlow = execute.slice(execute.indexOf('function executeDispositionAdjudication'), execute.indexOf('export function executeRecoveryMutation'));
+  // The WPR-023 (d) adjudication branch never reaches the unlink owner.
+  assert.equal(/unlinkVerifiedTarget|fsyncContainingDirectory/.test(adjudicationFlow), true, 'the disposition flow must use the exact unlink owner');
+  const dBranch = adjudicationFlow.slice(adjudicationFlow.indexOf("category === 'dispose-wpr023d-temporary'"), adjudicationFlow.indexOf('// Executable disposition'));
+  assert.equal(/unlinkVerifiedTarget|fsyncContainingDirectory/.test(dBranch), false, 'the WPR-023 (d) adjudication branch must never reach the unlink owner');
 });
 
 /**

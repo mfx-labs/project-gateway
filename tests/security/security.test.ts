@@ -61,6 +61,9 @@ const STORAGE_FS_DELEGATED_MODULES: ReadonlySet<string> = new Set([
   'storage/recovery/reverify.js',
   'storage/recovery/cleanup.js',
   'storage/recovery/quarantine.js',
+  // WP-8-I: the exact external-disposition mutation owner (unlink + fsync;
+  // ADR-032 §12).
+  'storage/recovery/disposition.js',
   // WP-8-H: the exact registry-index store access (read-only probe and
   // reads); the pure index model and the index-rebuild builder remain under
   // this blanket no-I/O assertion.
@@ -214,6 +217,7 @@ test('security: storage fs-module delegation is exact and fail-closed', () => {
     'dist/storage/recovery/reverify.js',
     'dist/storage/recovery/cleanup.js',
     'dist/storage/recovery/quarantine.js',
+    'dist/storage/recovery/disposition.js',
     'dist/storage/registry/index-store.js',
   ];
   for (const path of accepted) {

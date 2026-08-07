@@ -64,6 +64,9 @@ export function isoFromEpochMs(ms: number): string {
 export const STORAGE_RECOVERY_EVIDENCE_IDENTITY_DOMAIN = 'PGAP-STORAGE-RECOVERY-EVIDENCE-IDENTITY-v1\u0000';
 /** Domain-separated quarantine-temporary identity domain (ADR-030; §16.5). */
 export const STORAGE_QUARANTINE_TEMPORARY_ID_DOMAIN = 'PGAP-STORAGE-QUARANTINE-TEMPORARY-v1\u0000';
+/** WP-8-I disposition evidence identity domains (ADR-032; §7). */
+export const STORAGE_QUARANTINE_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN = 'PGAP-STORAGE-QUARANTINE-DISPOSITION-EVIDENCE-v1\u0000';
+export const STORAGE_INDEX_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN = 'PGAP-STORAGE-INDEX-DISPOSITION-EVIDENCE-v1\u0000';
 
 export interface QuarantineTemporaryIdInput {
   readonly storeInstance: VerifiedStoreInstance;
@@ -92,7 +95,7 @@ export function quarantineDestinationDesignation(quarantineId: string): string {
 }
 
 /** Recovery operations that produce evidence in this slice. */
-export type RecoveryEvidenceOperation = 'orphan-removal' | 'quarantine-temporary' | 'audit-reconstruction';
+export type RecoveryEvidenceOperation = 'orphan-removal' | 'quarantine-temporary' | 'audit-reconstruction' | 'dispose-quarantined-temporary' | 'dispose-conflicting-index';
 
 /** Evidence outcome vocabulary (closed; the fact recorded, never a decision). */
 export type RecoveryEvidenceOutcome = 'orphan-removed' | 'already-completed';
@@ -425,6 +428,205 @@ export function verifyExistingQuarantineEvidence(input: {
     (p['outcome'] === 'quarantined' || p['outcome'] === 'already-completed');
   if (!matches) {
     return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'existing quarantine evidence conflicts with the authorized request' };
+  }
+  return { ok: true, matches: true };
+}
+
+/**
+ * WP-8-I disposition evidence (ADR-032; §7): deterministic `StoreEvidenceRecord`
+ * with the EXISTING `recovery-evidence` evidence kind (no new evidence kind;
+ * TAX-013 closed), distinguished by the exact disposition recovery operation
+ * and a per-operation domain-separated identity. Produced ONLY by the two
+ * executable disposition mutations (eligible quarantine regular files and
+ * the exact conflicting index artifact); `dispose-wpr023d-temporary` is
+ * adjudication-only and never emits evidence.
+ */
+export interface DispositionEvidenceInput {
+  readonly storeInstance: VerifiedStoreInstance;
+  /** Trusted RECOVERY action identity (from the genuine provenance). */
+  readonly actionIdentity: string;
+  readonly evidenceKind: 'recovery-evidence';
+  readonly recoveryOperation: 'dispose-quarantined-temporary' | 'dispose-conflicting-index';
+  /** Logical entry designation (quarantine entry name or index artifact filename; never a path). */
+  readonly targetEntry: string;
+  /** Quarantine disposition only: the 4-hex shard designation (empty for parent-level entries). */
+  readonly targetShard?: string;
+  /** Index disposition only: the 32-hex index artifact identity. */
+  readonly targetIndexId?: string;
+  /** Pre-disposition recovery classification (exact). */
+  readonly targetClassification: string;
+  /** Pre-disposition object digest (content digest; index record digest). */
+  readonly targetDigest: string;
+  /** The object observation/finding evidence id bound by the request. */
+  readonly observationId: string;
+  /** Assessment scan-generation and surface-structure tokens (recomputed at the boundary). */
+  readonly generation: string;
+  readonly surfaceGeneration: string;
+  readonly outcome: 'disposed' | 'already-completed';
+  /** Recovery time (creation evidence; never the original operation time). */
+  readonly createdAt: string;
+}
+
+/** Identity-relevant disposition facts (the deterministic identity tuple; §7). */
+export type DispositionEvidenceIdentityInput = Pick<
+  DispositionEvidenceInput,
+  'storeInstance' | 'evidenceKind' | 'recoveryOperation' | 'targetEntry' | 'targetShard' | 'targetIndexId' | 'targetClassification' | 'targetDigest' | 'observationId' | 'outcome'
+>;
+
+/** Deterministic disposition-evidence identity (per-operation domain; §7). */
+export function computeDispositionEvidenceIdentity(input: DispositionEvidenceIdentityInput): string {
+  const domain =
+    input.recoveryOperation === 'dispose-quarantined-temporary'
+      ? STORAGE_QUARANTINE_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN
+      : STORAGE_INDEX_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN;
+  const tuple = {
+    storeInstance: input.storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })).sort((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0)),
+    evidenceKind: input.evidenceKind,
+    recoveryOperation: input.recoveryOperation,
+    targetEntry: input.targetEntry,
+    targetShard: input.targetShard ?? null,
+    targetIndexId: input.targetIndexId ?? null,
+    targetClassification: input.targetClassification,
+    targetDigest: input.targetDigest,
+    observationId: input.observationId,
+    outcome: input.outcome,
+  };
+  const digest = computeDomainDigest(domain, JSON.stringify(tuple));
+  return `pgw:r:${digest.slice('sha-256:'.length, 'sha-256:'.length + 32)}`;
+}
+
+/** Disposition evidence payload (bounded; no paths, no nonces). */
+export function dispositionEvidencePayload(input: DispositionEvidenceInput): Readonly<Record<string, unknown>> {
+  return {
+    evidenceKind: input.evidenceKind,
+    recoveryOperation: input.recoveryOperation,
+    targetSurface: input.recoveryOperation === 'dispose-quarantined-temporary' ? 'quarantine' : 'index',
+    targetEntry: input.targetEntry,
+    ...(input.targetShard !== undefined ? { targetShard: input.targetShard } : {}),
+    ...(input.targetIndexId !== undefined ? { targetIndexId: input.targetIndexId } : {}),
+    targetClassification: input.targetClassification,
+    targetDigest: input.targetDigest,
+    observationId: input.observationId,
+    generation: input.generation,
+    surfaceGeneration: input.surfaceGeneration,
+    outcome: input.outcome,
+    resultingState: { targetRemoved: true },
+  };
+}
+
+/**
+ * Pure deterministic disposition-evidence record construction (6.3; ADR-032
+ * §7): `StoreEvidenceRecord` with `evidenceKind: recovery-evidence`, the
+ * exact disposition operation, the trusted RECOVERY action identity, the
+ * recovery time, and the bounded payload; `referenceDigests` carries the
+ * pre-disposition target digest. The evidence's own mechanical
+ * `authorized-write` audit event is constructed with the recovery action
+ * identity at the same durability point.
+ */
+export function buildDispositionEvidenceRecord(input: DispositionEvidenceInput): RecoveryEvidenceBuild {
+  if (!isValidDigestSyntax(input.targetDigest)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'target digest must use sha-256:<64-hex> syntax' };
+  }
+  if (input.recoveryOperation !== 'dispose-quarantined-temporary' && input.recoveryOperation !== 'dispose-conflicting-index') {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'disposition evidence requires an executable disposition operation' };
+  }
+  const payload = dispositionEvidencePayload(input);
+  const payloadDigest = computePayloadDigest(payload);
+  const recordId = computeDispositionEvidenceIdentity(input);
+  const envelope: Readonly<Record<string, unknown>> = {
+    recordKind: 'StoreEvidenceRecord',
+    formatVersion: '1.0',
+    recordId,
+    revision: 1,
+    createdAt: input.createdAt,
+    trustedActionId: input.actionIdentity,
+    payload,
+    payloadDigest,
+    referenceDigests: [input.targetDigest],
+    retentionClass: 'indefinite',
+  };
+  const canonical = canonicalEnvelopeBytes(envelope);
+  const audit = buildAuthorizedWriteAuditEvent({
+    storeInstance: input.storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })),
+    primaryClass: 'store-evidence-record',
+    primaryRecordId: recordId,
+    primaryRevision: 1,
+    primaryDigest: canonical.digest,
+    eventKind: 'authorized-write',
+    trustedActionIdentity: input.actionIdentity,
+    primaryCreatedAt: input.createdAt,
+  });
+  if (!audit.ok || audit.event === undefined) {
+    return { ok: false, code: 'ERR-STO-INTERNAL-INVARIANT', message: audit.message ?? 'disposition evidence audit event could not be constructed' };
+  }
+  return {
+    ok: true,
+    record: {
+      recordId,
+      canonicalUtf8: canonical.canonicalUtf8,
+      digest: canonical.digest,
+      createdAt: input.createdAt,
+      auditCanonicalUtf8: audit.event.canonicalUtf8,
+      auditDigest: audit.event.digest,
+      auditEventId: audit.event.recordId,
+    },
+  };
+}
+
+/**
+ * Verify an existing disposition-evidence record at its deterministic
+ * derived path against the factual binding (recovery time and recovery
+ * action identity are creation evidence, not binding facts). Any factual
+ * mismatch fails closed as conflicting evidence.
+ */
+export function verifyExistingDispositionEvidence(input: {
+  readonly namespaceRoot: string;
+  readonly serviceUid: number;
+  readonly byteLimit: number;
+  readonly evidenceId: string;
+  readonly recoveryOperation: 'dispose-quarantined-temporary' | 'dispose-conflicting-index';
+  readonly targetEntry: string;
+  readonly targetShard?: string;
+  readonly targetIndexId?: string;
+  readonly targetClassification: string;
+  readonly targetDigest: string;
+  readonly observationId: string;
+}): { readonly ok: boolean; readonly matches?: boolean; readonly code?: string; readonly message?: string } {
+  const derived = deriveRecordRelativePath('store-evidence-record', input.evidenceId);
+  if (!derived.ok) {
+    return { ok: false, code: 'ERR-STO-CONTAINMENT-DENIED', message: 'disposition evidence path derivation failed' };
+  }
+  const existing = verifyObjectBytesAt({ path: `${input.namespaceRoot}/${derived.relativePath}`, serviceUid: input.serviceUid, byteLimit: input.byteLimit });
+  if (!existing.ok) {
+    if (existing.code === 'ERR-STO-NOT-FOUND') return { ok: true, matches: false };
+    return { ok: false, code: existing.code, message: existing.message };
+  }
+  const parsed = parsePersistedEnvelope(existing.canonicalUtf8 ?? '', input.byteLimit);
+  if (!parsed.ok || parsed.model === undefined) {
+    return { ok: false, code: 'ERR-STO-MALFORMED', message: 'existing disposition evidence is not a canonical envelope' };
+  }
+  const model = parsed.model as Readonly<Record<string, unknown>>;
+  if (model['recordKind'] !== 'StoreEvidenceRecord') {
+    return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'existing disposition evidence target is not a StoreEvidenceRecord' };
+  }
+  const payload = model['payload'];
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return { ok: false, code: 'ERR-STO-MALFORMED', message: 'existing disposition evidence payload is malformed' };
+  }
+  const p = payload as Readonly<Record<string, unknown>>;
+  const outcome = p['outcome'];
+  const matches =
+    p['evidenceKind'] === 'recovery-evidence' &&
+    p['recoveryOperation'] === input.recoveryOperation &&
+    p['targetEntry'] === input.targetEntry &&
+    (input.targetShard === undefined || p['targetShard'] === input.targetShard) &&
+    (input.targetIndexId === undefined || p['targetIndexId'] === input.targetIndexId) &&
+    p['targetClassification'] === input.targetClassification &&
+    p['targetDigest'] === input.targetDigest &&
+    p['observationId'] === input.observationId &&
+    (outcome === 'disposed' || outcome === 'already-completed');
+  if (!matches) {
+    return { ok: false, code: 'ERR-STO-INTEGRITY', message: 'existing disposition evidence conflicts with the authorized request' };
   }
   return { ok: true, matches: true };
 }

@@ -406,9 +406,36 @@ configuration-namespace recovery of non-metadata objects, migration,
 compaction, WP-9, and WP-12 remain out of scope. The **implementation
 report
 (`docs/reports/wp-8m-configuration-namespace-recovery-implementation-report.md`)
-is complete**; **WP-8-F, WP-8-G, WP-8-H, WP-8-I, WP-8-J, WP-8-K, WP-8-L,
-and WP-8-M are not yet closed**
-— implementation review pending; WP-8 implementation is **not closed**.
+is complete** with the verification evidence.
+
+**WP-8 CLOSED** — implementation through WP-8-M accepted; committed
+implementations, reports, tests, and commit history are the accepted
+evidence.
+
+- **WP-8-N configuration migration DEFERRED** (human decision (c)
+  Deferral) under DS-13 / §23.2 (DCS-002): the live configuration
+  transition primitive is intentionally undefined;
+  `ConfigurationSnapshotRecord` production deferred with it; WP-8M
+  same-version configuration recovery complete and unchanged. No
+  contract clause makes DS-13 resolution a WP-8 closure prerequisite —
+  **not a blocker**.
+- **Compaction DEFERRED / NON-MVP**: no normative WP-8 MVP completion
+  rule requires it; the contract prohibits silent compaction of
+  indefinite-retention classes (TAX-009, RNT-002) but mandates no
+  compaction capability.
+- **Remaining adjudication-only classes** (wrong-type/wrong-UID-mode/
+  unexpected-hard-link quarantine objects, foreign objects, tamper-class
+  records, dangling audits, leftover recovery-break guards):
+  **INTENTIONALLY ADJUDICATION-ONLY — not blockers**; contract-defined
+  external-disposition boundaries (WPR-023, LOK-020, §16.7); no
+  automatic-mutation obligation; deletion authority not broadened.
+- **Lifecycle approval decisions**: later-owned by WP-12 (TAU-009 —
+  maintenance procedures never invent lifecycle decisions).
+- **Later packages**: WP-9 generation seeding rides with WP-9; WP-12
+  integration later-owned.
+- **Earliest next work package: WP-9 (MCP inspection surface)** —
+  prerequisites WP-7 and WP-4 satisfied; inspection-only.
+
 WP-9 and later
 packages are **not authorized**. No push, release, publication,
 installation, or deployment has occurred. Each disposition

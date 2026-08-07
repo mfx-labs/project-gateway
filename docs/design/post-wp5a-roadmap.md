@@ -525,10 +525,45 @@ producer exists; recovery never invents configuration records),
 configuration-namespace recovery of non-metadata objects, WP-9
 generation seeding, WP-12 integration. The **implementation report
 (`docs/reports/wp-8m-configuration-namespace-recovery-implementation-report.md`)
-is complete** with the verification evidence; the **next gate is the
-WP-8-F…WP-8-M implementation review**; **WP-8-F…WP-8-L are not closed**;
-WP-8 implementation remains **not closed**; WP-9 and later packages
-remain **not authorized**. No release, publication, installation, or
+is complete** with the verification evidence.
+
+**WP-8 CLOSED** (closure decision: implementation through WP-8-M
+accepted; committed implementations, reports, tests, and commit history
+are the accepted evidence):
+
+- **WP-8-N configuration migration is DEFERRED** by human decision
+  (decision (c) Deferral) under the existing DS-13 / §23.2
+  version-transition decision (DCS-002: deferred decisions must not be
+  resolved by implementation). The live configuration transition
+  primitive is intentionally undefined; `ConfigurationSnapshotRecord`
+  production is deferred with it; WP-8M same-version configuration
+  recovery remains complete and unchanged. Migration is **not a WP-8
+  closure blocker** — no contract clause makes DS-13 resolution a WP-8
+  completion prerequisite.
+- **Compaction is DEFERRED / NON-MVP**: no normative WP-8 MVP
+  completion rule requires a compaction mechanism; the contract
+  references compaction only as a prohibition (TAX-009, RNT-002: no
+  silent compaction or deletion of indefinite-retention classes).
+- **Remaining adjudication-only classes are INTENTIONALLY
+  ADJUDICATION-ONLY — not blockers**: wrong-type/wrong-UID-mode/
+  unexpected-hard-link quarantine objects, foreign objects, tamper-class
+  records, dangling audits, and leftover recovery-break guards are
+  contract-defined external-disposition boundaries (WPR-023, LOK-020,
+  §16.7); a `requires-external-disposition` scanner classification never
+  implies an automatic-mutation obligation, and deletion authority is
+  not broadened.
+- **Lifecycle approval decisions**: later-owned by WP-12 (local
+  approval and execution control plane); TAU-009 — maintenance
+  procedures never invent lifecycle decisions; WP-8 derives structure
+  only.
+- **Later-package ownership**: WP-9 generation seeding rides with the
+  next work package; WP-12 integration is later-owned (WP-8 is a
+  satisfied prerequisite OF WP-12, not the reverse).
+- **Earliest next work package: WP-9 (MCP inspection surface)** —
+  read-only inspection MCP tools; prerequisites WP-7 and WP-4 are
+  already satisfied; inspection-only, no mutation tools.
+
+No release, publication, installation, or
 deployment action has occurred for WP-8.
 
 **Normative cross-references:** `project-gateway-scope-and-principles.md`

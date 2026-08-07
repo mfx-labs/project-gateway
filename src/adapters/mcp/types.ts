@@ -17,8 +17,8 @@
  */
 import type { SchemaRegistry } from '../../schema/registry.js';
 
-/** Closed MCP inspection tool vocabulary (slice 1). */
-export const MCP_INSPECTION_TOOLS = ['validate-artifact', 'inspect-stored-record', 'inspect-registry'] as const;
+/** Closed MCP inspection tool vocabulary (Slice 1 + Slice 2). */
+export const MCP_INSPECTION_TOOLS = ['validate-artifact', 'inspect-stored-record', 'inspect-registry', 'inspect-audit-history'] as const;
 export type McpInspectionTool = (typeof MCP_INSPECTION_TOOLS)[number];
 
 /** Narrow public error taxonomy (adapter boundary; never internal errno/stack data). */

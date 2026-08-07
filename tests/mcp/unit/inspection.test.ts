@@ -18,10 +18,14 @@ import {
 } from '../../../src/storage/trusted-input/bootstrap-input.js';
 import { initializeTrustedStore } from '../../../src/storage/initialization/initialize.js';
 import { publishRecord } from '../../../src/storage/publication/index.js';
-import { readRecord } from '../../../src/storage/read/index.js';
+import { readRecord, inspectAuditHistory } from '../../../src/storage/read/index.js';
 import { deriveRegistryView } from '../../../src/storage/registry/compose.js';
 import { validateArtifactInput, createSchemaRegistry } from '../../../src/api/validate.js';
-import { computePayloadDigest } from '../../../src/storage/format/envelope.js';
+import { computePayloadDigest, canonicalEnvelopeBytes } from '../../../src/storage/format/envelope.js';
+import { deriveRecordRelativePath } from '../../../src/storage/layout/layout.js';
+import { verifyStoreInstance } from '../../../src/storage/read/read-record.js';
+import { buildAuthorizedWriteAuditEvent, buildRecoveryAuditReconstructionEvent } from '../../../src/storage/audit/write-audit.js';
+import { buildAuditReconstructionEvidenceRecord } from '../../../src/storage/recovery/index.js';
 import { defaultLimitProfile, type SelectedLimitProfile } from '../../../src/storage/limits/limits.js';
 import { createInspectionContext, createMcpInspectionSurface, MCP_INSPECTION_TOOLS, mapDomainError } from '../../../src/adapters/mcp/index.js';
 import type { McpInspectionRequest, McpInspectionResponse } from '../../../src/adapters/mcp/types.js';
@@ -75,6 +79,7 @@ interface TestEnv {
   readonly limitProfile: SelectedLimitProfile;
   readonly storeRoot: string;
   readonly configRoot: string;
+  readonly storeInstance: NonNullable<ReturnType<typeof verifyStoreInstance>['storeInstance']>;
   readonly surface: ReturnType<typeof createMcpInspectionSurface>;
 }
 
@@ -96,6 +101,8 @@ function makeStore(limitProfile: SelectedLimitProfile = profile()): TestEnv {
   assert.equal(result.ok, true, JSON.stringify(result.findings));
   const context = createInspectionContext({ trustedConfiguration: config, trustedInput: inputResult.input!, schemaRegistry: createSchemaRegistry() });
   assert.equal(context.ok, true, context.message ?? '');
+  const storeResult = verifyStoreInstance({ locator: dir, serviceUid: UID, forbiddenRoots: [], configurationIdentity: CONFIG_IDENTITY, configurationVersion: '1', limitProfile });
+  assert.equal(storeResult.ok, true, storeResult.message ?? '');
   return {
     dir,
     config,
@@ -103,9 +110,190 @@ function makeStore(limitProfile: SelectedLimitProfile = profile()): TestEnv {
     limitProfile,
     storeRoot: `${dir}/store-v1`,
     configRoot: `${dir}/config-v1`,
+    storeInstance: storeResult.storeInstance!,
     surface: createMcpInspectionSurface(context.context!),
   };
 }
+
+
+// ── WP-9 Slice 2: audit-history fixture helpers (WP-8K accepted builders) ──
+
+function namespaces(env: TestEnv): readonly { readonly kind: 'configuration' | 'store-records'; readonly dev: number; readonly ino: number }[] {
+  return env.storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino }));
+}
+
+/** Publish one approval record and derive its deterministic original authorized-write audit event. */
+function publishHistoryTarget(env: TestEnv, recordId: string): { readonly recordDigest: string; readonly auditEventId: string; readonly auditPath: string; readonly auditCanonicalUtf8: string } {
+  // The write provenance must correlate the env's exact limit profile
+  // (custom profiles such as enumerationResults: 1 are used by Slice 2).
+  const provenance = createStorageWriteActionProvenance({
+    actionIdentity: WRITE_ACTION,
+    locator: env.dir,
+    serviceUid: UID,
+    forbiddenRoots: [],
+    configurationIdentity: CONFIG_IDENTITY,
+    limitProfile: env.limitProfile,
+  });
+  const result = publishRecord({
+    trustedConfiguration: env.config,
+    bootstrapInput: env.trustedInput,
+    writeActionProvenance: provenance,
+    locator: env.dir,
+    serviceUid: UID,
+    forbiddenRoots: [],
+    limitProfile: env.limitProfile,
+    recordClass: 'approval-record',
+    record: approvalRecord(recordId),
+    timeSource: { now: () => 1000, processStartTime: 500 },
+  });
+  assert.equal(result.ok, true, JSON.stringify(result.findings));
+  const audit = buildAuthorizedWriteAuditEvent({
+    storeInstance: namespaces(env),
+    primaryClass: 'approval-record',
+    primaryRecordId: recordId,
+    primaryRevision: 1,
+    primaryDigest: result.recordDigest!,
+    eventKind: 'authorized-write',
+    trustedActionIdentity: WRITE_ACTION,
+    primaryCreatedAt: '2026-01-01T00:00:00.000Z',
+  });
+  assert.equal(audit.ok, true);
+  const event = audit.event!;
+  const derived = deriveRecordRelativePath('authoritative-audit-event', event.recordId);
+  assert.equal(derived.ok, true);
+  return { recordDigest: result.recordDigest!, auditEventId: event.recordId, auditPath: `${env.storeRoot}/${(derived as { readonly relativePath: string }).relativePath}`, auditCanonicalUtf8: event.canonicalUtf8 };
+}
+
+/** Write one canonical audit event envelope at its derived path (test fixture). */
+function writeAuditEnvelope(env: TestEnv, model: Readonly<Record<string, unknown>>): void {
+  const canonical = canonicalEnvelopeBytes(model);
+  const derived = deriveRecordRelativePath('authoritative-audit-event', model['recordId'] as string);
+  assert.equal(derived.ok, true);
+  const path = `${env.storeRoot}/${(derived as { readonly relativePath: string }).relativePath}`;
+  mkdirSync(path.slice(0, path.lastIndexOf('/')), { recursive: true, mode: 0o700 });
+  writeFileSync(path, canonical.canonicalUtf8, { mode: 0o600 });
+  chmodSync(path, 0o600);
+}
+
+/** Write one canonical store-evidence envelope at its derived path (test fixture). */
+function writeEvidenceEnvelope(env: TestEnv, model: Readonly<Record<string, unknown>>): void {
+  const canonical = canonicalEnvelopeBytes(model);
+  const derived = deriveRecordRelativePath('store-evidence-record', model['recordId'] as string);
+  assert.equal(derived.ok, true);
+  const path = `${env.storeRoot}/${(derived as { readonly relativePath: string }).relativePath}`;
+  mkdirSync(path.slice(0, path.lastIndexOf('/')), { recursive: true, mode: 0o700 });
+  writeFileSync(path, canonical.canonicalUtf8, { mode: 0o600 });
+  chmodSync(path, 0o600);
+}
+
+/** One reconstruction event built through the committed WP-8G builder. */
+function reconstructionEvent(env: TestEnv, digest: string, recoveryActionIdentity: string, recoveryTime: string): NonNullable<ReturnType<typeof buildRecoveryAuditReconstructionEvent>['event']> {
+  const built = buildRecoveryAuditReconstructionEvent({
+    storeInstance: namespaces(env) as readonly { readonly kind: 'configuration' | 'store-records'; readonly dev: number; readonly ino: number }[],
+    primaryClass: 'approval-record',
+    primaryRecordId: RECORD_ID_A,
+    primaryRevision: 1,
+    primaryDigest: digest,
+    recoveryActionIdentity,
+    recoveryTime,
+  });
+  assert.equal(built.ok, true);
+  return built.event!;
+}
+
+/** Canonical reconstruction-evidence model for one reconstruction event (WP-8G builder). */
+function evidenceModelFor(env: TestEnv, targetDigest: string, event: { readonly recordId: string; readonly digest: string }, actionIdentity: string): Readonly<Record<string, unknown>> {
+  const built = buildAuditReconstructionEvidenceRecord({
+    storeInstance: env.storeInstance,
+    actionIdentity,
+    evidenceKind: 'recovery-evidence',
+    recoveryOperation: 'audit-reconstruction',
+    targetRecordClass: 'approval-record',
+    targetRecordId: RECORD_ID_A,
+    targetRecordDigest: targetDigest,
+    originalActionIdentity: WRITE_ACTION,
+    reconstructionAuditId: event.recordId,
+    reconstructionAuditDigest: event.digest,
+    missingAuditObservationId: 'obs-wp9-fixture',
+    generation: 'sha-256:' + 'a'.repeat(64),
+    surfaceGeneration: 'sha-256:' + 'b'.repeat(64),
+    outcome: 'reconstructed',
+    createdAt: '2026-01-01T00:00:01.000Z',
+  });
+  assert.equal(built.ok, true);
+  return JSON.parse(built.record!.canonicalUtf8) as Readonly<Record<string, unknown>>;
+}
+
+function eventModelOf(event: { readonly recordId: string; readonly canonicalUtf8: string }): Readonly<Record<string, unknown>> {
+  return JSON.parse(event.canonicalUtf8) as Readonly<Record<string, unknown>>;
+}
+
+/** MCP inspect-audit-history call. */
+function historyInspect(env: TestEnv, recordId: string, overrides: { readonly revision?: number; readonly continuation?: string } = {}, requestId?: string): McpInspectionResponse {
+  return inspect(env, 'inspect-audit-history', { recordClass: 'approval-record', recordId, ...overrides }, requestId);
+}
+
+/** Walk MCP continuation pages to completion; concatenate reported collections. */
+function walkHistoryPages(env: TestEnv, recordId: string): {
+  readonly pages: McpInspectionResponse[];
+  readonly events: Array<{ readonly eventId: string; readonly createdAt: string; readonly eventKind: string; readonly isOriginalWrite: boolean }>;
+  readonly findings: Array<{ readonly kind: string; readonly reason: string }>;
+  readonly annotations: unknown[];
+  readonly snapshotIdentities: string[];
+  readonly statuses: Array<string | undefined>;
+} {
+  const pages: McpInspectionResponse[] = [];
+  const events: Array<{ readonly eventId: string; readonly createdAt: string; readonly eventKind: string; readonly isOriginalWrite: boolean }> = [];
+  const findings: Array<{ readonly kind: string; readonly reason: string }> = [];
+  const annotations: unknown[] = [];
+  const snapshotIdentities: string[] = [];
+  const statuses: Array<string | undefined> = [];
+  let cursor: string | undefined;
+  for (let i = 0; i < 64; i++) {
+    const page = historyInspect(env, recordId, cursor === undefined ? {} : { continuation: cursor });
+    assert.equal(page.ok, true, JSON.stringify(page.error));
+    pages.push(page);
+    const result = page.result as {
+      events?: Array<{ readonly eventId: string; readonly createdAt: string; readonly eventKind: string; readonly isOriginalWrite: boolean }>;
+      auditFindings?: Array<{ readonly kind: string; readonly reason: string }>;
+      reconstructionEvidence?: unknown[];
+      snapshot?: { readonly historySnapshotIdentity: string };
+      status?: string;
+      continuation?: string;
+    };
+    events.push(...(result.events ?? []));
+    findings.push(...(result.auditFindings ?? []));
+    annotations.push(...(result.reconstructionEvidence ?? []));
+    if (result.snapshot !== undefined) snapshotIdentities.push(result.snapshot.historySnapshotIdentity);
+    statuses.push(result.status);
+    if (result.continuation === undefined) break;
+    cursor = result.continuation;
+  }
+  return { pages, events, findings, annotations, snapshotIdentities, statuses };
+}
+
+/** Direct WP-8K history walk (domain equivalence reference). */
+function walkHistoryDomain(env: TestEnv, recordId: string): { readonly events: Array<{ readonly eventId: string; readonly createdAt: string; readonly eventKind: string; readonly isOriginalWrite: boolean }>; readonly findings: Array<{ readonly kind: string; readonly reason: string }> } {
+  const events: Array<{ readonly eventId: string; readonly createdAt: string; readonly eventKind: string; readonly isOriginalWrite: boolean }> = [];
+  const findings: Array<{ readonly kind: string; readonly reason: string }> = [];
+  let cursor: { readonly formatVersion: number } | undefined;
+  for (let i = 0; i < 64; i++) {
+    const page = inspectAuditHistory({
+      trustedConfiguration: env.config,
+      trustedInput: env.trustedInput,
+      recordClass: 'approval-record',
+      recordId,
+      ...(cursor !== undefined ? { continuation: cursor as never } : {}),
+    });
+    assert.equal(page.ok, true, JSON.stringify(page.findings));
+    events.push(...(page.events ?? []));
+    findings.push(...(page.auditFindings ?? []));
+    if (page.continuation === undefined) break;
+    cursor = page.continuation;
+  }
+  return { events, findings };
+}
+
 
 function inspect(env: TestEnv, tool: string, params: unknown, requestId?: string): McpInspectionResponse {
   const request: McpInspectionRequest = { tool, params, ...(requestId !== undefined ? { requestId } : {}) };
@@ -660,5 +848,420 @@ test('mcp: results are immutable plain data (deep-frozen; no live internals)', (
     assert.equal(result.recordId, RECORD_ID_A, 'results are immutable copies');
   } finally {
     rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+// ── WP-9 Slice 2: inspect-audit-history ────────────────────────────────────
+
+test('mcp: single-page clean audit history preserves event order, status, completeness, and requestId echo', () => {
+  const env = makeStore();
+  try {
+    const facts = publishHistoryTarget(env, RECORD_ID_A);
+    const r = historyInspect(env, RECORD_ID_A, {}, 'req-history-clean');
+    assert.equal(r.ok, true, JSON.stringify(r.error));
+    const result = r.result as {
+      status: string;
+      originalAuthorizedWrite: { present: boolean; eventId?: string };
+      reconstruction: { present: boolean };
+      events: Array<{ eventId: string; eventKind: string; isOriginalWrite: boolean; trustedActionId: string }>;
+      completeness: { complete: boolean; truncated: boolean };
+      snapshot: { historySnapshotIdentity: string };
+    };
+    assert.equal((r as { requestId?: string }).requestId, 'req-history-clean');
+    assert.equal(result.status, 'complete');
+    assert.equal(result.originalAuthorizedWrite.present, true);
+    assert.equal(result.originalAuthorizedWrite.eventId, facts.auditEventId);
+    assert.equal(result.events.length, 1);
+    assert.equal(result.events[0]!.eventId, facts.auditEventId);
+    assert.equal(result.events[0]!.eventKind, 'authorized-write');
+    assert.equal(result.events[0]!.isOriginalWrite, true);
+    assert.equal(result.events[0]!.trustedActionId, WRITE_ACTION);
+    assert.equal(result.completeness.complete, true);
+    assert.equal(result.completeness.truncated, false);
+    assert.ok(result.snapshot.historySnapshotIdentity.startsWith('pgw:h:'));
+    assert.equal((result as { auditFindings?: unknown[] }).auditFindings?.length ?? 0, 0, 'a clean history reports no findings');
+    assert.equal((result as { reconstructionEvidence?: unknown[] }).reconstructionEvidence?.length ?? 0, 0, 'a clean history has no reconstruction annotations');
+    assert.equal(result.reconstruction.present, false, 'a clean history has no reconstruction claim');
+    assert.equal((result as { continuation?: unknown }).continuation, undefined, 'a completed walk carries no continuation');
+    // Domain equivalence: identical semantic conclusions.
+    const direct = inspectAuditHistory({ trustedConfiguration: env.config, trustedInput: env.trustedInput, recordClass: 'approval-record', recordId: RECORD_ID_A });
+    assert.equal(direct.ok, true);
+    assert.equal(direct.status, result.status);
+    assert.deepEqual((direct.events ?? []).map((e) => e.eventId), result.events.map((e) => e.eventId));
+    assert.equal(direct.completeness?.complete, result.completeness.complete);
+    assert.equal(direct.snapshot?.historySnapshotIdentity, result.snapshot.historySnapshotIdentity);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: multi-page history walk reports every event exactly once in normative tuple order with one snapshot', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    const facts = publishHistoryTarget(env, RECORD_ID_A);
+    rmSync(facts.auditPath);
+    const first = reconstructionEvent(env, facts.recordDigest, 'recovery-one', '2026-01-01T00:00:00.000Z');
+    writeAuditEnvelope(env, eventModelOf(first));
+    const second = reconstructionEvent(env, facts.recordDigest, 'recovery-two', '2026-01-04T00:00:00.000Z');
+    writeAuditEnvelope(env, eventModelOf(second));
+    const walk = walkHistoryPages(env, RECORD_ID_A);
+    assert.ok(walk.pages.length >= 2, 'the results budget must force a multi-page walk');
+    const expectedIds = [first.recordId, second.recordId].sort();
+    const walkedIds = walk.events.map((e) => e.eventId).sort();
+    assert.deepEqual(walkedIds, expectedIds, 'every event is reported exactly once');
+    assert.equal(walk.events.length, 2);
+    // Normative tuple order (createdAt, eventId) — never filename/directory order.
+    for (let i = 1; i < walk.events.length; i++) {
+      const prev = walk.events[i - 1]!;
+      const cur = walk.events[i]!;
+      assert.ok(prev.createdAt < cur.createdAt || (prev.createdAt === cur.createdAt && prev.eventId <= cur.eventId), 'events must follow the normative tuple order');
+    }
+    // Truncated pages carry no definitive status; the final page does.
+    for (let i = 0; i < walk.pages.length - 1; i++) {
+      assert.equal(walk.statuses[i], undefined, 'a truncated page carries no definitive status');
+    }
+    assert.equal(walk.statuses[walk.statuses.length - 1], 'ambiguous-history', 'two reconstruction events for one gap are ambiguous');
+    // One snapshot identity across the whole walk.
+    assert.equal(new Set(walk.snapshotIdentities).size, 1, 'a continuation walk must not merge two history snapshots');
+    // Concatenated MCP walk equals a fresh direct-domain walk.
+    const direct = walkHistoryDomain(env, RECORD_ID_A);
+    assert.deepEqual(walk.events, direct.events, 'MCP events must equal the direct domain walk');
+    assert.deepEqual([...walk.findings].sort((a, b) => (a.kind < b.kind ? -1 : 1)), [...direct.findings].sort((a, b) => (a.kind < b.kind ? -1 : 1)), 'findings must match the direct domain walk exactly once');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: reconstructed-gap history preserves the reconstruction event, gap marker, and evidence annotation', () => {
+  const env = makeStore();
+  try {
+    const facts = publishHistoryTarget(env, RECORD_ID_A);
+    rmSync(facts.auditPath);
+    const event = reconstructionEvent(env, facts.recordDigest, 'recovery-action', '2026-01-01T00:00:01.000Z');
+    writeAuditEnvelope(env, eventModelOf(event));
+    writeEvidenceEnvelope(env, evidenceModelFor(env, facts.recordDigest, { recordId: event.recordId, digest: event.digest }, 'recovery-action'));
+    const r = historyInspect(env, RECORD_ID_A);
+    assert.equal(r.ok, true, JSON.stringify(r.error));
+    const result = r.result as {
+      status: string;
+      reconstruction: { present: boolean };
+      originalAuthorizedWrite: { present: boolean };
+      events: Array<{ eventId: string; eventKind: string; isOriginalWrite: boolean; trustedActionId: string; gapMarker?: { missingEventKind: string } }>;
+      reconstructionEvidence: Array<{ evidenceId: string; verified: boolean; linkedReconstructionEventId?: string }>;
+    };
+    assert.equal(result.status, 'reconstructed-gap');
+    assert.equal(result.originalAuthorizedWrite.present, false);
+    assert.equal(result.reconstruction.present, true);
+    assert.equal(result.events.length, 1);
+    assert.equal(result.events[0]!.eventKind, 'recovery-audit-reconstruction');
+    assert.equal(result.events[0]!.isOriginalWrite, false);
+    assert.deepEqual(result.events[0]!.gapMarker, { missingEventKind: 'authorized-write' });
+    assert.equal(result.events[0]!.trustedActionId, 'recovery-action');
+    assert.equal(result.reconstructionEvidence.length, 1);
+    assert.equal(result.reconstructionEvidence[0]!.verified, true);
+    assert.equal(result.reconstructionEvidence[0]!.linkedReconstructionEventId, event.recordId, 'the annotation links the durable reconstruction event');
+    // No fabricated original; no clean-history claim.
+    assert.equal(result.events.some((e) => e.eventKind === 'authorized-write'), false);
+    assert.equal(result.events.some((e) => e.isOriginalWrite), false);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: event-without-evidence keeps the integrity finding and fail-closed status', () => {
+  const env = makeStore();
+  try {
+    const facts = publishHistoryTarget(env, RECORD_ID_A);
+    rmSync(facts.auditPath);
+    const event = reconstructionEvent(env, facts.recordDigest, 'recovery-action', '2026-01-01T00:00:00.000Z');
+    writeAuditEnvelope(env, eventModelOf(event));
+    const r = historyInspect(env, RECORD_ID_A);
+    assert.equal(r.ok, true);
+    const result = r.result as { status: string; auditFindings?: Array<{ kind: string }>; reconstructionEvidence?: unknown[]; events?: unknown[] };
+    assert.equal(result.status, 'reconstructed-gap');
+    assert.equal(result.auditFindings?.some((f) => f.kind === 'event-without-evidence'), true, 'the event-without-evidence finding must remain visible');
+    assert.equal(result.reconstructionEvidence?.length ?? 0, 0, 'no evidence is fabricated');
+    assert.equal(result.events?.length, 1);
+    // Direct-domain equivalence of the integrity signal.
+    const direct = inspectAuditHistory({ trustedConfiguration: env.config, trustedInput: env.trustedInput, recordClass: 'approval-record', recordId: RECORD_ID_A });
+    assert.equal(direct.ok, true);
+    assert.equal(direct.auditFindings?.some((f) => f.kind === 'event-without-evidence'), true);
+    assert.equal(direct.status, result.status);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: conflicting reconstruction history is never reported as complete', () => {
+  const env = makeStore();
+  try {
+    const facts = publishHistoryTarget(env, RECORD_ID_A);
+    rmSync(facts.auditPath);
+    const first = reconstructionEvent(env, facts.recordDigest, 'recovery-one', '2026-01-01T00:00:00.000Z');
+    writeAuditEnvelope(env, eventModelOf(first));
+    const second = reconstructionEvent(env, facts.recordDigest, 'recovery-two', '2026-01-02T00:00:00.000Z');
+    writeAuditEnvelope(env, eventModelOf(second));
+    const r = historyInspect(env, RECORD_ID_A);
+    assert.equal(r.ok, true);
+    const result = r.result as { status: string; events: unknown[]; auditFindings?: Array<{ kind: string }>; completeness: { complete: boolean } };
+    assert.equal(result.status, 'ambiguous-history');
+    assert.equal(result.events.length, 2, 'both reconstruction events are reported, never discarded');
+    assert.equal(result.auditFindings?.some((f) => f.kind === 'conflicting-audit'), true);
+    assert.equal(result.completeness.complete, false, 'a conflicting history is never complete');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: stale continuation fails closed after a history-surface change; an irrelevant index change does not', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    const facts = publishHistoryTarget(env, RECORD_ID_A);
+    rmSync(facts.auditPath);
+    writeAuditEnvelope(env, eventModelOf(reconstructionEvent(env, facts.recordDigest, 'recovery-one', '2026-01-01T00:00:00.000Z')));
+    writeAuditEnvelope(env, eventModelOf(reconstructionEvent(env, facts.recordDigest, 'recovery-two', '2026-01-04T00:00:00.000Z')));
+    const page1 = historyInspect(env, RECORD_ID_A);
+    assert.equal(page1.ok, true);
+    const page1Result = page1.result as { completeness: { truncated: boolean }; continuation: string };
+    assert.equal(page1Result.completeness.truncated, true);
+    assert.ok(page1Result.continuation !== undefined, 'the two-event fixture must truncate the first page');
+    const cursor = page1Result.continuation;
+    // An irrelevant non-authoritative index object must NOT invalidate the cursor.
+    mkdirSync(`${env.storeRoot}/index`, { recursive: true, mode: 0o700 });
+    writeFileSync(`${env.storeRoot}/index/registry-index`, 'not authoritative', { mode: 0o600 });
+    chmodSync(`${env.storeRoot}/index/registry-index`, 0o600);
+    const afterIndex = historyInspect(env, RECORD_ID_A, { continuation: cursor });
+    assert.equal(afterIndex.ok, true, 'a non-authoritative index change must not invalidate the history cursor');
+    // A real history-surface change (a NEW audit event) invalidates the snapshot.
+    const third = reconstructionEvent(env, facts.recordDigest, 'recovery-three', '2026-01-05T00:00:00.000Z');
+    writeAuditEnvelope(env, eventModelOf(third));
+    const stale = historyInspect(env, RECORD_ID_A, { continuation: cursor });
+    assert.equal(stale.ok, false);
+    assert.equal(stale.error?.code, 'stale-cursor', 'a changed history snapshot maps to stale-cursor, never a mixed-snapshot success');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: history cursor tamper matrix fails closed through WP-8K validation', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    const facts = publishHistoryTarget(env, RECORD_ID_A);
+    rmSync(facts.auditPath);
+    writeAuditEnvelope(env, eventModelOf(reconstructionEvent(env, facts.recordDigest, 'recovery-one', '2026-01-01T00:00:00.000Z')));
+    writeAuditEnvelope(env, eventModelOf(reconstructionEvent(env, facts.recordDigest, 'recovery-two', '2026-01-04T00:00:00.000Z')));
+    const page1 = historyInspect(env, RECORD_ID_A);
+    assert.equal(page1.ok, true);
+    const page1Result = page1.result as { continuation: string };
+    assert.ok(page1Result.continuation !== undefined, 'the two-event fixture must truncate the first page');
+    const cursor = page1Result.continuation;
+    const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Record<string, unknown>;
+    const reencode = (patch: (c: Record<string, unknown>) => Record<string, unknown>): string => Buffer.from(JSON.stringify(patch({ ...decoded })), 'utf8').toString('base64url');
+    const cases: Array<{ name: string; encoded: string; expectedStale?: boolean }> = [
+      { name: 'future format version', encoded: reencode((c) => ({ ...c, formatVersion: 2 })) },
+      { name: 'malformed snapshot identity', encoded: reencode((c) => ({ ...c, historySnapshotIdentity: 'not-a-snapshot' })) },
+      { name: 'well-formed foreign snapshot identity', encoded: reencode((c) => ({ ...c, historySnapshotIdentity: 'pgw:h:' + '0'.repeat(32) })), expectedStale: true },
+      { name: 'changed target identity', encoded: reencode((c) => ({ ...c, recordId: RECORD_ID_B })) },
+      { name: 'changed revision', encoded: reencode((c) => ({ ...c, revision: 2 })) },
+      { name: 'changed generation', encoded: reencode((c) => ({ ...c, generation: 'sha-256:' + '1'.repeat(64) })) },
+      { name: 'changed surface generation', encoded: reencode((c) => ({ ...c, surfaceGeneration: 'sha-256:' + '2'.repeat(64) })) },
+      { name: 'changed query shape', encoded: reencode((c) => ({ ...c, queryShape: 'sha-256:' + '3'.repeat(64) })) },
+      { name: 'invalid phase', encoded: reencode((c) => ({ ...c, phase: 'bogus' })) },
+      { name: 'missing resume position', encoded: reencode((c) => { const next = { ...c }; delete next['lastAuditEntry']; return next; }) },
+      { name: 'array payload', encoded: Buffer.from('[]', 'utf8').toString('base64url') },
+    ];
+    for (const c of cases) {
+      const r = historyInspect(env, RECORD_ID_A, { continuation: c.encoded });
+      assert.equal(r.ok, false, `${c.name} must fail closed`);
+      // WP-8K semantics: malformed bindings fail as invalid-cursor; a
+      // WELL-FORMED snapshot identity that differs from the current
+      // snapshot is indistinguishable from a changed history and maps to
+      // stale-cursor (the domain's resume-time snapshot comparison).
+      assert.equal(r.error?.code, (c as { expectedStale?: boolean }).expectedStale === true ? 'stale-cursor' : 'invalid-cursor', `${c.name} maps per the domain distinction`);
+    }
+    // A changed resume position within the SAME snapshot is a resume hint,
+    // not an authenticated token: the snapshot identity is the anti-tamper
+    // binding and it is unchanged, so the domain resumes (documented WP-8K
+    // semantics; the adapter passes domain facts through unchanged).
+    const movedPosition = reencode((c) => ({ ...c, lastAuditEntry: 'ffffffffffffffffffffffffffffffff.aud' }));
+    const resumed = historyInspect(env, RECORD_ID_A, { continuation: movedPosition });
+    assert.equal(resumed.ok, true, 'a resume-position hint within the same bound snapshot is domain-owned data');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: a history cursor from another store fails closed', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  const other = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    const facts = publishHistoryTarget(env, RECORD_ID_A);
+    rmSync(facts.auditPath);
+    writeAuditEnvelope(env, eventModelOf(reconstructionEvent(env, facts.recordDigest, 'recovery-one', '2026-01-01T00:00:00.000Z')));
+    writeAuditEnvelope(env, eventModelOf(reconstructionEvent(env, facts.recordDigest, 'recovery-two', '2026-01-04T00:00:00.000Z')));
+    const page1 = historyInspect(env, RECORD_ID_A);
+    assert.equal(page1.ok, true);
+    const page1Result = page1.result as { continuation: string };
+    assert.ok(page1Result.continuation !== undefined, 'the two-event fixture must truncate the first page');
+    const cursor = page1Result.continuation;
+    const r = historyInspect(other, RECORD_ID_A, { continuation: cursor });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-cursor', 'a cross-store cursor must fail closed through the store-identity binding');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+    rmSync(other.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: genuine target absence is not-found; a missing audit is a history gap, never not-found', () => {
+  const env = makeStore();
+  try {
+    // Target genuinely absent.
+    let r = historyInspect(env, 'pgw:r:' + 'c'.repeat(32));
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'not-found');
+    // Target present, original audit missing.
+    const facts = publishHistoryTarget(env, RECORD_ID_A);
+    rmSync(facts.auditPath);
+    r = historyInspect(env, RECORD_ID_A);
+    assert.equal(r.ok, true, 'a history gap is a status/finding inside an ok result, never an adapter failure');
+    const result = r.result as { status: string; originalAuthorizedWrite: { present: boolean }; events: unknown[] };
+    assert.equal(result.status, 'missing-authorized-write');
+    assert.equal(result.originalAuthorizedWrite.present, false);
+    assert.equal(result.events.length, 0);
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: inspect-audit-history schema boundary (revision form, cross-class substitution, paths, unknown fields)', () => {
+  const env = makeStore();
+  try {
+    publishHistoryTarget(env, RECORD_ID_A);
+    // Unknown field.
+    let r = inspect(env, 'inspect-audit-history', { recordClass: 'approval-record', recordId: RECORD_ID_A, scope: 'all' });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-request');
+    // Missing required field.
+    r = inspect(env, 'inspect-audit-history', { recordClass: 'approval-record' });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-request');
+    // Wrong types.
+    r = inspect(env, 'inspect-audit-history', { recordClass: 'approval-record', recordId: 42 });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-request');
+    // Revision form: string, zero, fractional, negative — all rejected; absent defaults to 1.
+    for (const bad of ['1', 0, 1.5, -1]) {
+      r = inspect(env, 'inspect-audit-history', { recordClass: 'approval-record', recordId: RECORD_ID_A, revision: bad });
+      assert.equal(r.ok, false, `revision ${String(bad)} must be rejected`);
+      assert.equal(r.error?.code, 'invalid-request');
+    }
+    r = historyInspect(env, RECORD_ID_A, { revision: 1 });
+    assert.equal(r.ok, true, 'revision 1 (the default) is accepted');
+    // Cross-class substitution: internal/non-history targets are rejected.
+    for (const badClass of ['authoritative-audit-event', 'store-metadata', 'configuration-snapshot-record', 'not-a-class']) {
+      r = inspect(env, 'inspect-audit-history', { recordClass: badClass, recordId: RECORD_ID_A });
+      assert.equal(r.ok, false, `class ${badClass} must be rejected`);
+      assert.equal(r.error?.code, 'invalid-request');
+    }
+    // Path-shaped operands.
+    r = inspect(env, 'inspect-audit-history', { recordClass: 'approval-record', recordId: '/abs/path' });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-request');
+    // Exact-revision mismatch: the revision-1 object exists at the derived
+    // location, so the domain reports an integrity mismatch, never absence
+    // (WP-8K exact-revision semantics; HST-001).
+    r = historyInspect(env, RECORD_ID_A, { revision: 2 });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'integrity-conflict');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: history requestId echo on success and error paths', () => {
+  const env = makeStore();
+  try {
+    publishHistoryTarget(env, RECORD_ID_A);
+    // Success.
+    let r = historyInspect(env, RECORD_ID_A, {}, 'req-history');
+    assert.equal(r.ok, true);
+    assert.equal((r as { requestId?: string }).requestId, 'req-history');
+    // Not-found error.
+    r = historyInspect(env, 'pgw:r:' + 'c'.repeat(32), {}, 'req-notfound');
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'not-found');
+    assert.equal(r.error?.requestId, 'req-notfound');
+    // Invalid-cursor error.
+    r = historyInspect(env, RECORD_ID_A, { continuation: '!!!!' }, 'req-badcursor');
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-cursor');
+    assert.equal(r.error?.requestId, 'req-badcursor');
+    // Invalid-request error.
+    r = inspect(env, 'inspect-audit-history', { recordClass: 'approval-record', recordId: RECORD_ID_A, revision: 0 }, 'req-badrev');
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-request');
+    assert.equal(r.error?.requestId, 'req-badrev');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: history responses are redacted and history facts/cursors grant zero authority', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    const facts = publishHistoryTarget(env, RECORD_ID_A);
+    rmSync(facts.auditPath);
+    writeAuditEnvelope(env, eventModelOf(reconstructionEvent(env, facts.recordDigest, 'recovery-one', '2026-01-01T00:00:00.000Z')));
+    writeAuditEnvelope(env, eventModelOf(reconstructionEvent(env, facts.recordDigest, 'recovery-two', '2026-01-04T00:00:00.000Z')));
+    const page1 = historyInspect(env, RECORD_ID_A);
+    assert.equal(page1.ok, true);
+    const page1Result = page1.result as { continuation: string };
+    assert.ok(page1Result.continuation !== undefined, 'the two-event fixture must truncate the first page');
+    const serialized = JSON.stringify(page1);
+    assert.equal(serialized.includes(env.dir), false, 'no absolute project/store path may leak');
+    assert.equal(/node:fs|Error:|at \w|ETIMEDOUT|ENOENT|EACCES/.test(serialized), false, 'no stack/errno material may leak');
+    assert.ok(serialized.includes('pgw:l:'), 'normative event identities remain public facts');
+    const cursor = page1Result.continuation;
+    // Replaying result or cursor data into genuine-brand boundaries grants nothing.
+    const asInput = { configurationIdentity: CONFIG_IDENTITY, serviceUid: UID, forbiddenRoots: [], locator: env.dir, limitProfile: env.limitProfile, actionIdentity: 'replay', cursor };
+    const context = createInspectionContext({ trustedConfiguration: env.config, trustedInput: asInput });
+    assert.equal(context.ok, false, 'structural replay of history data must never become a trusted input');
+    const decodedCursor = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    const context2 = createInspectionContext({ trustedConfiguration: env.config, trustedInput: decodedCursor });
+    assert.equal(context2.ok, false, 'a decoded history cursor must never become a trusted input');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: history inspection never mutates the store (clean, paginated, stale, malformed, conflicting)', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  const plain = makeStore();
+  try {
+    // Fixtures for both stores are set up BEFORE the before-snapshot.
+    const facts = publishHistoryTarget(env, RECORD_ID_A);
+    rmSync(facts.auditPath);
+    writeAuditEnvelope(env, eventModelOf(reconstructionEvent(env, facts.recordDigest, 'recovery-one', '2026-01-01T00:00:00.000Z')));
+    writeAuditEnvelope(env, eventModelOf(reconstructionEvent(env, facts.recordDigest, 'recovery-two', '2026-01-04T00:00:00.000Z')));
+    const plainFacts = publishHistoryTarget(plain, RECORD_ID_A);
+    rmSync(plainFacts.auditPath);
+    writeAuditEnvelope(plain, eventModelOf(reconstructionEvent(plain, plainFacts.recordDigest, 'recovery-one', '2026-01-01T00:00:00.000Z')));
+    writeAuditEnvelope(plain, eventModelOf(reconstructionEvent(plain, plainFacts.recordDigest, 'recovery-two', '2026-01-02T00:00:00.000Z')));
+    const before = snapshotStore(env.storeRoot) + snapshotStore(env.configRoot) + snapshotStore(plain.storeRoot) + snapshotStore(plain.configRoot);
+    // Paginated walk + stale cursor + malformed cursor on env.
+    const page1 = historyInspect(env, RECORD_ID_A);
+    assert.equal(page1.ok, true);
+    const cursor = (page1.result as { continuation: string }).continuation;
+    historyInspect(env, RECORD_ID_A, { continuation: cursor });
+    historyInspect(env, RECORD_ID_A, { continuation: 'tampered!' });
+    // Conflicting single-page on plain env.
+    historyInspect(plain, RECORD_ID_A);
+    historyInspect(plain, 'pgw:r:' + 'c'.repeat(32));
+    const after = snapshotStore(env.storeRoot) + snapshotStore(env.configRoot) + snapshotStore(plain.storeRoot) + snapshotStore(plain.configRoot);
+    assert.equal(after, before, 'no store object may be created, modified, or removed by history inspection');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+    rmSync(plain.dir, { recursive: true, force: true });
   }
 });

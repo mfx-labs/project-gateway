@@ -582,30 +582,36 @@ are the accepted evidence):
 > adjudication-only states remain intentional; the next work package
 > remains WP-9.
 
-**WP-9 (MCP inspection surface) STARTED — slice 1 implemented**
+**WP-9 (MCP inspection surface) — Slice 1 committed at
+`b3cde8bdf853452b57401812708fb3096a65da45`; Slice 2 candidate ready for
+independent review**
 (`docs/reports/wp-9-mcp-inspection-surface-implementation-report.md`): the
 **transport-free MCP inspection protocol/tool layer**
-(`src/adapters/mcp/`) exposes the closed read-only tool vocabulary
-`validate-artifact` (pure WP-4 validation), `inspect-stored-record`
-(exact verified WP-8 read), and `inspect-registry` (authoritative WP-8
-registry view with opaque self-validating continuation and optional
-verified persistent-index fast path). Strict closed-field request
-validation; deterministic public error taxonomy (invalid-request /
-not-found / unsupported / limit-exceeded / invalid-cursor / stale-cursor /
-integrity-conflict / adapter-error); host-supplied trusted store targeting
-(genuine branded trusted input + strict store verification at context
-construction; MCP clients never select roots, stores, or namespaces);
-deep-frozen redacted responses; zero filesystem/mutation imports (static
-proof). The `./mcp` package subpath is the only package-export change;
-`./mcp` exposes no storage authority. **Slice 1 independent review returned
-`CORRECTIONS REQUIRED` (F1: `validate-artifact` success responses failed to
-echo `requestId`); the narrow F1 correction is implemented — success
-requestId echo is now uniform across all three tools — and the candidate is
-ready for independent rereview**; acceptance is not declared by the
-implementation.
+(`src/adapters/mcp/`) exposes the closed read-only tool vocabulary.
+Slice 1 (committed, independently reviewed with the F1 requestId-echo
+correction): `validate-artifact` (pure WP-4 validation),
+`inspect-stored-record` (exact verified WP-8 read), `inspect-registry`
+(authoritative WP-8 registry view with opaque self-validating
+continuation and optional verified persistent-index fast path).
+**Slice 2 (candidate): `inspect-audit-history`** — bounded read-only
+audit-history inspection routing the assurance-revalidated WP-8K
+`inspectAuditHistory` API through the committed adapter boundary;
+normative tuple ordering, snapshot-bound continuation
+(invalid-cursor/stale-cursor distinction), status/completeness,
+reconstruction and event-without-evidence findings preserved verbatim;
+closed WP-8K target vocabulary; no package-export change; no WP-8K
+production change. Strict closed-field request validation; deterministic
+public error taxonomy (invalid-request / not-found / unsupported /
+limit-exceeded / invalid-cursor / stale-cursor / integrity-conflict /
+adapter-error); host-supplied trusted store targeting (genuine branded
+trusted input + strict store verification at context construction; MCP
+clients never select roots, stores, or namespaces); deep-frozen redacted
+responses; zero filesystem/mutation imports (static proof); `./mcp`
+exposes no storage authority. **Slice 2 is ready for independent review**;
+acceptance is not declared by the implementation.
 Remaining WP-9 work: transport/runtime ownership (no MCP transport is
 normatively selected — exact open decision, out of this slice),
-audit-history / verify / enumeration MCP tools, multi-store surface
+verify-by-identity / enumeration MCP tools, multi-store surface
 registration, and WP-9 generation seeding.
 
 - **WP-8-N configuration migration is DEFERRED** by human decision
@@ -638,9 +644,9 @@ registration, and WP-9 generation seeding.
   satisfied prerequisite OF WP-12, not the reverse).
 - **Current work package: WP-9 (MCP inspection surface)** — read-only
   inspection MCP tools; prerequisites WP-7 and WP-4 satisfied;
-  inspection-only, no mutation tools; slice 1 (transport-free protocol/
-  tool layer) implemented with the F1 requestId-echo correction applied,
-  ready for independent rereview (see the WP-9 section above).
+  inspection-only, no mutation tools; slice 1 committed; slice 2
+  (audit-history inspection tool) candidate ready for independent
+  review (see the WP-9 section above).
 
 No release, publication, installation, or
 deployment action has occurred for WP-8.

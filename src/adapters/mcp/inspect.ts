@@ -16,7 +16,7 @@
  * provenance, path, descriptor, or trusted-input internals are exposed.
  */
 import { validateArtifactInput } from '../../api/validate.js';
-import { readRecord } from '../../storage/read/index.js';
+import { readRecord, inspectAuditHistory } from '../../storage/read/index.js';
 import { deriveRegistryView } from '../../storage/registry/compose.js';
 import { decodeContinuation, encodeContinuation, validateInspectionRequest, validateToolParams } from './validate.js';
 import type { McpErrorCode, McpInspectionContext, McpInspectionRequest, McpInspectionResponse, McpInspectionSurface, McpToolDescriptor } from './types.js';
@@ -55,6 +55,7 @@ export function mapDomainError(code: string | undefined, hadContinuation: boolea
         : { code: 'integrity-conflict', message: 'the verified store identity changed; inspection fails closed' };
     case 'ERR-STO-MALFORMED':
     case 'ERR-STO-INTEGRITY':
+    case 'ERR-STO-FTYPE-UNSUPPORTED':
       return { code: 'integrity-conflict', message: 'stored content failed verification; nothing is returned as verified data' };
     case 'ERR-STO-REQ-INVALID':
       return hadContinuation
@@ -167,6 +168,47 @@ function runInspectRegistry(context: McpInspectionContext, continuation: string 
   return okResponse(mapped, requestId);
 }
 
+function runInspectAuditHistory(context: McpInspectionContext, recordClass: string, recordId: string, revision: number | undefined, continuation: string | undefined, requestId?: string): McpInspectionResponse {
+  let domainContinuation: unknown;
+  if (continuation !== undefined) {
+    const decoded = decodeContinuation(continuation);
+    if (!decoded.ok) {
+      return errorResponse(decoded.issue.code, decoded.issue.message, requestId);
+    }
+    domainContinuation = decoded.cursor;
+  }
+  const result = inspectAuditHistory({
+    trustedConfiguration: context.trustedConfiguration,
+    trustedInput: context.trustedInput,
+    recordClass: recordClass as never,
+    recordId,
+    ...(revision !== undefined ? { revision } : {}),
+    ...(domainContinuation !== undefined ? { continuation: domainContinuation as never } : {}),
+  });
+  if (!result.ok) {
+    // History-boundary failures only: genuine target absence is NOT a
+    // history gap (gaps are status/findings inside ok results). Cursor
+    // semantics are preserved: cursor-bound failures map through the
+    // committed taxonomy with the continuation flag.
+    const mapped = mapDomainError(result.findings?.[0]?.code, continuation !== undefined);
+    return errorResponse(mapped.code, mapped.message, requestId);
+  }
+  const mapped = {
+    ...(result.target !== undefined ? { target: result.target } : {}),
+    ...(result.status !== undefined ? { status: result.status } : {}),
+    ...(result.originalAuthorizedWrite !== undefined ? { originalAuthorizedWrite: result.originalAuthorizedWrite } : {}),
+    ...(result.reconstruction !== undefined ? { reconstruction: result.reconstruction } : {}),
+    ...(result.events !== undefined ? { events: result.events } : {}),
+    ...(result.auditFindings !== undefined ? { auditFindings: result.auditFindings } : {}),
+    ...(result.reconstructionEvidence !== undefined ? { reconstructionEvidence: result.reconstructionEvidence } : {}),
+    ...(result.completeness !== undefined ? { completeness: result.completeness } : {}),
+    ...(result.snapshot !== undefined ? { snapshot: result.snapshot } : {}),
+    ...(result.continuation !== undefined ? { continuation: encodeContinuation(result.continuation) } : {}),
+    ...(result.findings.length > 0 ? { findings: result.findings.map(findingOf) } : {}),
+  };
+  return okResponse(mapped, requestId);
+}
+
 /** Dispatch one validated inspection request to the domain. */
 export function dispatchInspection(context: McpInspectionContext, request: McpInspectionRequest): McpInspectionResponse {
   const requestId = request.requestId;
@@ -187,6 +229,12 @@ export function dispatchInspection(context: McpInspectionContext, request: McpIn
       if (!validated.ok) return errorResponse(validated.issue.code, validated.issue.message, requestId);
       const value = validated.value as { readonly continuation?: string; readonly usePersistentIndex: boolean };
       return runInspectRegistry(context, value.continuation, value.usePersistentIndex, requestId);
+    }
+    case 'inspect-audit-history': {
+      const validated = validateToolParams(request.tool, request.params);
+      if (!validated.ok) return errorResponse(validated.issue.code, validated.issue.message, requestId);
+      const value = validated.value as { readonly recordClass: string; readonly recordId: string; readonly revision?: number; readonly continuation?: string };
+      return runInspectAuditHistory(context, value.recordClass, value.recordId, value.revision, value.continuation, requestId);
     }
     default:
       return errorResponse('invalid-request', 'tool is outside the closed inspection vocabulary', requestId);
@@ -210,6 +258,12 @@ const TOOL_DESCRIPTORS: readonly McpToolDescriptor[] = Object.freeze([
     name: 'inspect-registry',
     description: 'Authoritative read-only registry view through the WP-8 registry derivation. Optional verified persistent-index fast path with automatic authoritative fallback; opaque self-validating continuation preserves bounded paging.',
     params: Object.freeze(['continuation', 'usePersistentIndex']),
+    readOnly: true,
+  }),
+  Object.freeze({
+    name: 'inspect-audit-history',
+    description: 'Bounded read-only audit-history inspection for one exact store record through the WP-8K history API. Preserves normative event ordering, snapshot-bound continuation, status/completeness, reconstruction and event-without-evidence findings exactly as the domain reports them. Never a reconstruction authority.',
+    params: Object.freeze(['recordClass', 'recordId', 'revision', 'continuation']),
     readOnly: true,
   }),
 ]);

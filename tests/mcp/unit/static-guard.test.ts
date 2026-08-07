@@ -57,6 +57,7 @@ test('mcp static guard: imports stay inside the exact read-only/pure domain allo
     '../../schema/registry.js',
     '../../storage/read/index.js',
     '../../storage/read/read-record.js',
+    '../../storage/read/history.js',
     '../../storage/registry/compose.js',
     '../../storage/trusted-input/bootstrap-input.js',
     '../../storage/format/index.js',
@@ -78,6 +79,16 @@ test('mcp static guard: imports stay inside the exact read-only/pure domain allo
     for (const forbidden of ['publishRecord', 'publishImmutableRecord', 'publishRecoveryBoundRecord', 'executeRecoveryMutation', 'executeRetentionMutation', 'acquireWriterLock', 'releaseWriterLock', 'breakWriterLock', 'executeConfigurationRecovery', 'persistRecoveryConfigurationMetadata', 'createWriteCapability', 'createRecoveryCapability', 'createRetentionCapability', 'createInitializationCapability', 'createTrustedStorageBootstrapInput', 'createStorageBootstrapActionProvenance', 'createStorageWriteActionProvenance', 'createRecoveryActionProvenance', 'createRetentionActionProvenance', 'createTrustedWriteRequest', 'createTrustedRecoveryRequest', 'createTrustedRetentionRequest', 'unlinkSync', 'renameSync', 'writeFileSync', 'mkdirSync', 'rmSync', 'chmodSync', 'chownSync', 'copyFileSync', 'openSync']) {
       assert.equal(content.includes(forbidden), false, `${rel(file)} must not reach ${forbidden}`);
     }
+    // WP-9 Slice 2: the adapter may consume the WP-8K read-only history API
+    // but never reconstruction producers/mutators or recovery evidence
+    // publication (reconstruction authority stays out of the MCP layer).
+    for (const forbidden of ['buildRecoveryAuditReconstructionEvent', 'buildAuditReconstructionEvidenceRecord', 'publishRecoveryEvidence', 'reconstruct.ts', 'recovery/reconstruct', 'recovery/evidence']) {
+      assert.equal(content.includes(forbidden), false, `${rel(file)} must not reach ${forbidden}`);
+    }
+    // The only history dependency allowed is the accepted read-only entry.
+    if (content.includes('inspectAuditHistory')) {
+      assert.equal(content.includes("from '../../storage/read/index.js'"), true, `${rel(file)} must import inspectAuditHistory only from the read composition`);
+    }
   }
 });
 
@@ -94,6 +105,11 @@ test('mcp static guard: package export maps ./mcp to the adapter entry point onl
   const pkg = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8')) as { exports?: Record<string, { types?: string; import?: string }> };
   assert.equal(pkg.exports?.['./mcp']?.import, './dist/adapters/mcp/index.js');
   assert.equal(pkg.exports?.['./mcp']?.types, './dist/adapters/mcp/index.d.ts');
+});
+
+test('mcp static guard: the closed tool inventory includes exactly the four committed tools', () => {
+  const types = readFileSync(join(MCP_SRC, 'types.ts'), 'utf8');
+  assert.equal(/MCP_INSPECTION_TOOLS = \['validate-artifact', 'inspect-stored-record', 'inspect-registry', 'inspect-audit-history'\]/.test(types), true, 'the closed tool inventory must be exactly the four-tool vocabulary');
 });
 
 test('mcp static guard: the adapter is transport-free (no server/runtime imports) and dependency-free', () => {

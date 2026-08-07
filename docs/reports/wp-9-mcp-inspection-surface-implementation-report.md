@@ -212,16 +212,68 @@ all three tools, and requestId never entering result payloads).
 Slice 1 correction is ready for independent rereview; acceptance is not
 declared here.
 
+## 12b. Slice 2 — Audit-history inspection tool (`inspect-audit-history`)
+
+Slice 2 adds exactly one bounded, read-only MCP-facing audit-history
+inspection operation by routing the assurance-revalidated WP-8K
+`inspectAuditHistory` API (the accepted read-only composition entry) through
+the committed WP-9 adapter boundary. The closed tool inventory is now
+exactly: `validate-artifact`, `inspect-stored-record`, `inspect-registry`,
+`inspect-audit-history`.
+
+- **Domain API reused:** `inspectAuditHistory` from
+  `src/storage/read/index.js` (imported through the same read composition as
+  Slice 1); `isHistoryTargetClass` from `src/storage/read/history.js` for
+  the closed target vocabulary. No WP-8K production code was changed; no
+  second history scanner exists.
+- **Request schema:** `{ recordClass, recordId, revision?, continuation? }`
+  — logical identifiers only; `recordClass` must satisfy the WP-8K inspected
+  vocabulary (store-records classes excluding the audit class and bootstrap
+  metadata; `authoritative-audit-event`, `store-metadata`, and
+  non-store-records classes are rejected); `recordId` must be a canonical
+  typed identifier; `revision` optional positive safe integer (domain
+  default 1); `continuation` an opaque bounded cursor string.
+- **Response schema:** `status`, `target`, `originalAuthorizedWrite`,
+  `reconstruction`, `events`, `auditFindings`, `reconstructionEvidence`,
+  `completeness`, `snapshot`, `findings` (mapped boundary findings), and
+  `continuation` (opaque) — all exactly as the domain reports them.
+- **Cursor model:** the Slice 1 generic base64url codec is reused (encoding
+  is not authentication); the domain's `AuditHistoryCursor` self-validation
+  owns all semantics (explicit `formatVersion`, store/target/query binding,
+  `historySnapshotIdentity`, phase, resume position, tuple state). Malformed
+  encodings/bindings map to `invalid-cursor`; a well-formed snapshot
+  identity differing from the current history maps to `stale-cursor` (the
+  domain's resume-time comparison); other boundary failures map through the
+  committed taxonomy (`not-found` only for a genuinely absent target — a
+  history gap is a status/finding inside an ok result, never `not-found`).
+- **Semantics preserved:** normative D-8 tuple event ordering (never
+  re-sorted), exactly-once findings/annotations across continuation pages,
+  one history snapshot per walk (surface changes between pages fail closed),
+  reconstruction/ambiguous/event-without-evidence distinctions, and
+  completeness/status fields — all verbatim from WP-8K.
+- **Read-only boundary:** the adapter imports no filesystem API and no
+  reconstruction producer/mutator; the static guard now allows the
+  read-only `history.js` dependency and still forbids every mutation
+  surface. History results and cursors are plain frozen data and grant zero
+  authority (probed by replay against the trusted-input brand boundary).
+- **Focused tests:** 14 new tests (13 inspection + 1 static-guard inventory):
+  clean single-page, multi-page walk,
+  reconstructed-gap with evidence, event-without-evidence, conflicting
+  history, stale continuation + irrelevant index change, cursor tamper
+  matrix, cross-store cursor, not-found vs gap, schema boundary, requestId
+  echo, redaction/non-escalation, read-only mutation watchdog).
+- **Package/export changes:** none — the committed `./mcp` subpath is
+  extended only.
+
 ## 13. Remaining WP-9 Work (not in this slice)
 
 - **Transport/runtime ownership — exact open decision:** no MCP transport is
   normatively selected; a transport shim (MCP server runtime, stdio/SSE/SDK
   ownership, host process wiring) requires a product decision and is
   explicitly out of this slice.
-- Audit-history inspection MCP tool (WP-8K `inspectAuditHistory` routing) —
-  deferred to a later slice (roadmap lists artifacts/registry/validation for
-  this slice; the history API and cursor encoding are already available).
 - Verify-by-identity and enumeration MCP tools.
 - Multi-store surface registration (currently one verified store per
   surface instance).
 - WP-9 generation seeding (rides with WP-9 per the WP-8 planning note).
+- Transport/runtime ownership remains the exact open product decision
+  (unchanged; not part of Slice 1 or Slice 2).

@@ -7,6 +7,7 @@
  */
 import { isAcceptedRecordClass } from '../../storage/format/taxonomy.js';
 import { isCanonicalTypedIdentifier } from '../../storage/format/identifier.js';
+import { isHistoryTargetClass } from '../../storage/read/history.js';
 import { MCP_INSPECTION_TOOLS, type McpErrorCode, type McpInspectionRequest } from './types.js';
 
 /** Bounded opaque continuation encoding (base64url of JSON; domain cursor semantics preserved). */
@@ -162,6 +163,46 @@ export function validateRegistryParams(params: Readonly<Record<string, unknown>>
   return { ok: true, value: { ...(continuation !== undefined ? { continuation } : {}), usePersistentIndex } };
 }
 
+/** Validate `inspect-audit-history` params: `{ recordClass, recordId, revision?, continuation? }` (logical identifiers only; WP-8K target vocabulary). */
+export function validateAuditHistoryParams(params: Readonly<Record<string, unknown>>): { readonly ok: true; readonly value: { readonly recordClass: string; readonly recordId: string; readonly revision?: number; readonly continuation?: string } } | { readonly ok: false; readonly issue: ValidationIssue } {
+  const unknown = rejectUnknownFields(params, ['recordClass', 'recordId', 'revision', 'continuation']);
+  if (unknown !== undefined) return { ok: false, issue: unknown };
+  const recordClass = params['recordClass'];
+  if (typeof recordClass !== 'string' || recordClass.length === 0 || recordClass.length > 64) {
+    return { ok: false, issue: { code: 'invalid-request', message: 'recordClass must be a non-empty string within the size bound' } };
+  }
+  // WP-8K defines the exact inspected class vocabulary (13.4): store-records
+  // classes excluding the audit class and bootstrap metadata. Internal and
+  // non-history targets are rejected; cross-class substitution fails here.
+  if (!isHistoryTargetClass(recordClass as never)) {
+    return { ok: false, issue: { code: 'invalid-request', message: 'recordClass is outside the WP-8K inspected history vocabulary' } };
+  }
+  const recordId = params['recordId'];
+  if (typeof recordId !== 'string' || recordId.length === 0 || recordId.length > 128) {
+    return { ok: false, issue: { code: 'invalid-request', message: 'recordId must be a non-empty string within the size bound' } };
+  }
+  if (!isCanonicalTypedIdentifier(recordId)) {
+    return { ok: false, issue: { code: 'invalid-request', message: 'recordId is not a canonical typed identifier' } };
+  }
+  let revision: number | undefined;
+  if (params['revision'] !== undefined) {
+    const raw = params['revision'];
+    if (typeof raw !== 'number' || !Number.isSafeInteger(raw) || raw < 1) {
+      return { ok: false, issue: { code: 'invalid-request', message: 'revision must be a positive safe integer' } };
+    }
+    revision = raw;
+  }
+  let continuation: string | undefined;
+  if (params['continuation'] !== undefined) {
+    const raw = params['continuation'];
+    if (typeof raw !== 'string' || raw.length === 0 || raw.length > CURSOR_MAX_ENCODED_BYTES) {
+      return { ok: false, issue: { code: 'invalid-cursor', message: 'continuation must be a bounded opaque string' } };
+    }
+    continuation = raw;
+  }
+  return { ok: true, value: { recordClass, recordId, ...(revision !== undefined ? { revision } : {}), ...(continuation !== undefined ? { continuation } : {}) } };
+}
+
 /** Per-tool param validation dispatch (closed). */
 export function validateToolParams(tool: string, params: unknown): { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly issue: ValidationIssue } {
   const record = params as Readonly<Record<string, unknown>>;
@@ -169,6 +210,7 @@ export function validateToolParams(tool: string, params: unknown): { readonly ok
     case 'validate-artifact':
     case 'inspect-stored-record':
     case 'inspect-registry':
+    case 'inspect-audit-history':
       return validateToolSpecific(tool, record);
     default:
       return { ok: false, issue: { code: 'invalid-request', message: 'tool is outside the closed inspection vocabulary' } };
@@ -183,6 +225,8 @@ function validateToolSpecific(tool: string, record: Readonly<Record<string, unkn
       return validateStoredRecordParams(record);
     case 'inspect-registry':
       return validateRegistryParams(record);
+    case 'inspect-audit-history':
+      return validateAuditHistoryParams(record);
     default:
       return { ok: false, issue: { code: 'invalid-request', message: 'tool is outside the closed inspection vocabulary' } };
   }

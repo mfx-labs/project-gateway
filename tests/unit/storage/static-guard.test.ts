@@ -78,6 +78,11 @@ const FS_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   // readdir + no-follow lstat freshness probe, and the index-family
   // enumeration. No mutating API is delegated.
   'src/storage/registry/index-store.ts': ['readdirSync', 'lstatSync', 'openSync', 'closeSync', 'fstatSync', 'readFileSync', 'constants'],
+  // WP-8-L exact retention-deletion mutation owner (§15.4/ADR-035): the
+  // descriptor-bound no-follow re-verification + exact-name unlink +
+  // absence verification + containing-directory fsync. No rename, copy,
+  // recursive removal, rmdir, chmod/chown, or arbitrary mkdir.
+  'src/storage/retention/delete.ts': ['openSync', 'closeSync', 'fstatSync', 'readFileSync', 'unlinkSync', 'fsyncSync', 'constants'],
 };
 
 /** Complete filesystem API name vocabulary (denied outside the allowlist). */
@@ -105,11 +110,24 @@ const CREATOR_EDGES: Readonly<Record<string, readonly string[]>> = {
   createProvisioningCapability: ['src/storage/publication/index.ts'],
   createReadCapability: ['src/storage/read/index.ts', 'src/storage/registry/compose.ts', 'src/storage/recovery/compose.ts'],
   createVerifyCapability: ['src/storage/read/index.ts'],
-  // WP-8-F edges: the recovery-mutation boundary is the sole production
+  // WP-8-J edges: the recovery-mutation boundary is the sole production
   // consumer; the provenance creator has zero production consumers.
   createRecoveryActionProvenance: [], // future consumer: src/control-plane/storage-recovery-action.ts (does not exist)
   createTrustedRecoveryRequest: ['src/storage/recovery/execute.ts'],
   createRecoveryCapability: ['src/storage/recovery/execute.ts'],
+  // WP-8-L edges: the retention-mutation boundary is the sole production
+  // consumer; the retention provenance creator has zero production
+  // consumers (its future consumer is
+  // src/control-plane/storage-retention-action.ts, which does not exist).
+  createRetentionActionProvenance: [],
+  createTrustedRetentionRequest: ['src/storage/retention/execute.ts'],
+  createRetentionCapability: ['src/storage/retention/execute.ts'],
+  // WP-8-L: the exact-record retention publication permit is minted only by
+  // the retention evidence module and verified/liveness-checked only by the
+  // narrow permit-bound retention publication implementation.
+  createRetentionPublicationPermit: ['src/storage/retention/evidence.ts'],
+  isGenuineRetentionPublicationPermit: ['src/storage/publication/publish-record.ts'],
+  retentionPublicationPermitLive: ['src/storage/publication/publish-record.ts'],
   // WP-8-F correction edges: the exact-record recovery publication permit
   // is minted only by the evidence module and verified/liveness-checked
   // only by the narrow permit-bound publication implementation.
@@ -492,7 +510,7 @@ test('static guard: package exports and dependencies unchanged', () => {
 test('static guard: authoritative contract is byte-identical at the accepted SHA-256', () => {
   const contract = readFileSync(join(REPO, 'docs', 'specs', 'wp-8-local-storage-registry-contract.md'), 'utf8');
   const hash = createHash('sha256').update(contract).digest('hex');
-  assert.equal(hash, '5050c61c0b9539dfa19295f1545a624d83dd2f91463268f35333a6c085cd9d95');
+  assert.equal(hash, 'a516522eb2c37cfc12bd0205989854fc2d11f098853a82cd869335193aa404c3');
 });
 
 test('static guard: no timers, randomness, or environment dependence in storage modules', () => {
@@ -509,7 +527,9 @@ test('static guard: no timers, randomness, or environment dependence in storage 
 });
 
 test('static guard: no forbidden later-phase directories exist (W8B-C03; WP-8-D/E)', () => {
-  for (const d of ['retention']) {
+  // WP-8-L: the retention authority domain is authorized (separate from
+  // recovery); no later-phase directory beyond it exists.
+  for (const d of ['migration']) {
     assert.equal(existsSync(join(STORAGE_SRC, d)), false, `src/storage/${d} must not exist in this phase`);
   }
   // WP-8-D authorized directories exist exactly once each.
@@ -520,6 +540,16 @@ test('static guard: no forbidden later-phase directories exist (W8B-C03; WP-8-D/
   for (const d of ['registry', 'recovery']) {
     assert.equal(existsSync(join(STORAGE_SRC, d)), true, `src/storage/${d} must exist in this phase`);
   }
+  // WP-8-L: the retention authority domain exists with exactly its
+  // authorized modules (no generic deletion owner anywhere).
+  const retentionDir = join(STORAGE_SRC, 'retention');
+  assert.equal(existsSync(retentionDir), true, 'src/storage/retention must exist in this phase');
+  const retentionFiles = collectTsFiles(retentionDir);
+  assert.deepEqual(
+    retentionFiles.map((f) => relative(STORAGE_SRC, f).replaceAll('\\', '/')).sort(),
+    ['retention/delete.ts', 'retention/evidence.ts', 'retention/execute.ts', 'retention/index.ts'],
+    'the retention domain contains exactly the authorized modules',
+  );
 });
 
 test('static guard: locks-only entropy/process exception does not leak (D-3)', () => {
@@ -909,11 +939,113 @@ test('static guard: audit-history inspection is read-only, capability-free, and 
     assert.equal(resultType.includes(marker), false, `the history result type must not carry ${marker}`);
   }
   // No audit-history → capability dependency anywhere: no storage module
-  // imports history.ts except the read composition boundary.
+  // imports history.ts except the read composition boundary and the
+  // WP-8-L retention mutation boundary (which derives the authoritative
+  // history binding from the committed WP-8-K inspection).
   for (const file of files) {
     const content = readFileSync(file, 'utf8');
     if (content.includes("from './history.js'") || content.includes("from '../read/history.js'")) {
-      assert.equal(rel(file), 'src/storage/read/index.ts', `${rel(file)} must not import the history module`);
+      assert.ok(
+        rel(file) === 'src/storage/read/index.ts' || rel(file) === 'src/storage/retention/execute.ts',
+        `${rel(file)} must not import the history module`,
+      );
+    }
+  }
+});
+
+test('static guard: retention deletion vocabulary is closed, separate from recovery, and confined (WP-8-L)', () => {
+  const files = collectTsFiles(STORAGE_SRC);
+  // No generic deletion vocabulary anywhere in src/storage: the only
+  // authorized retention operations are the two exact ones; generic
+  // delete/purge/admin/filesystem-delete markers are denied (the bare
+  // `'delete-record'` quoted form and camelCase variants; the hyphenated
+  // `retention-delete-record` operation is the authorized vocabulary).
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    assert.equal(
+      /'delete-object'|'delete-any'|'delete-record'|deleteRecord|deleteAny|deleteObject|\bpurge\b|\bretention-admin\b|\bfilesystem-delete\b/.test(content),
+      false,
+      `${rel(file)} contains a generic deletion marker`,
+    );
+  }
+  // The `retention-delete-record` / `retention-delete-audit` operation
+  // literals exist only in their owners.
+  const retentionOwners = new Set([
+    'src/storage/capabilities/authenticity.ts',
+    'src/storage/locks/lock.ts',
+    'src/storage/retention/execute.ts',
+    'src/storage/retention/evidence.ts',
+    'src/storage/publication/publish-record.ts',
+    'src/storage/recovery/scan.ts',
+    'src/storage/recovery/assess.ts',
+    'src/storage/registry/derive.ts',
+    'src/storage/types.ts',
+    'src/storage/retention/index.ts',
+  ]);
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    for (const op of ['retention-delete-record', 'retention-delete-audit']) {
+      if (content.includes(`'${op}'`)) {
+        assert.ok(retentionOwners.has(rel(file)), `${rel(file)} contains the ${op} operation literal outside its owners`);
+      }
+    }
+  }
+  // The retention capability is a distinct authority domain: the recovery
+  // capability creator never accepts a retention operation, and the
+  // retention capability creator never accepts a recovery operation.
+  const authenticity = readFileSync(join(STORAGE_SRC, 'capabilities', 'authenticity.ts'), 'utf8');
+  const recoveryCreator = authenticity.slice(authenticity.indexOf('export function createRecoveryCapability'), authenticity.indexOf('export function createRecoveryCapability') + 1600);
+  assert.equal(/RETENTION_OPERATION_SET\.includes/.test(recoveryCreator), false, 'the recovery capability creator must never accept retention operations');
+  const retentionCreator = authenticity.slice(authenticity.indexOf('export function createRetentionCapability'), authenticity.indexOf('export function createRetentionCapability') + 1600);
+  assert.equal(/RECOVERY_OPERATION_SET\.includes/.test(retentionCreator), false, 'the retention capability creator must never accept recovery operations');
+  // The retention mutation boundary is filesystem-free and never accepts
+  // raw paths, descriptors, callbacks, fs functions, or plan actions.
+  const execute = readFileSync(join(STORAGE_SRC, 'retention', 'execute.ts'), 'utf8');
+  for (const name of ['unlinkSync', 'renameSync', 'copyFileSync', 'cpSync', 'mkdirSync', 'rmSync', 'rmdirSync', 'chmodSync', 'chownSync', 'writeSync']) {
+    assert.equal(new RegExp(`\\b${name}\\b`).test(execute), false, `retention/execute.ts must not use ${name}`);
+  }
+  assert.equal(/RecoveryPlanAction/.test(execute), false, 'retention/execute.ts must not accept a plan action operand');
+  assert.equal(/readonly targetPath|readonly rawPath|readonly descriptor|readonly callback/.test(execute), false, 'retention/execute.ts must not accept raw path/descriptor/callback operands');
+  assert.equal(/unlinkVerifiedRecordObject|fsyncRetentionDirectory/.test(execute), true, 'retention/execute.ts must reach the unlink owner only');
+  // The retention evidence module is filesystem-free and the unlink owner
+  // never publishes records or mints permits.
+  const evidence = readFileSync(join(STORAGE_SRC, 'retention', 'evidence.ts'), 'utf8');
+  assert.equal(/node:fs|from 'node:fs'/.test(evidence), false, 'retention/evidence.ts must remain filesystem-free');
+  assert.equal(/createRetentionPublicationPermit|publishRetentionBoundRecord/.test(evidence), true, 'retention/evidence.ts must use the exact-record permit pipeline');
+  const deleteOwner = readFileSync(join(STORAGE_SRC, 'retention', 'delete.ts'), 'utf8');
+  const deleteAllowlist = FS_ALLOWLIST['src/storage/retention/delete.ts'] ?? [];
+  assert.deepEqual([...deleteAllowlist].sort(), ['closeSync', 'constants', 'fstatSync', 'fsyncSync', 'openSync', 'readFileSync', 'unlinkSync']);
+  for (const forbidden of ['renameSync', 'copyFileSync', 'cpSync', 'rmSync', 'rmdirSync', 'mkdirSync', 'chmodSync', 'chownSync', 'fchmodSync', 'writeSync', 'linkSync']) {
+    assert.equal(deleteAllowlist.includes(forbidden), false, `retention delete allowlist must not contain ${forbidden}`);
+  }
+  assert.equal(/createRetentionPublicationPermit|publishRetentionBoundRecord|publishRetentionEvidence/.test(deleteOwner), false, 'retention/delete.ts must never publish records or mint permits');
+  // No caller-supplied authority booleans in the retention request
+  // vocabulary: the mutation action/request types carry only trusted
+  // decision bindings and closed adjudication facts.
+  const types = readFileSync(join(STORAGE_SRC, 'types.ts'), 'utf8');
+  const retentionTypes = types.slice(types.indexOf('export interface RetentionMutationAction'), types.indexOf('export interface RetentionMutationResult'));
+  for (const marker of ['canDelete', 'retentionExpired', 'hasNoHold', 'legalHold', 'safeToDelete', 'isExpired']) {
+    assert.equal(retentionTypes.includes(marker), false, `the retention request vocabulary must not accept ${marker}`);
+  }
+  // The retention capability never reaches the generic publication
+  // substrate: the retention entry point consumes only the exact permit.
+  const substrate = readFileSync(join(STORAGE_SRC, 'publication', 'publish-record.ts'), 'utf8');
+  assert.equal(/publishRetentionBoundRecord/.test(substrate), true, 'the dedicated retention publication entry point must exist');
+  const retentionEntry = substrate.slice(substrate.indexOf('export function publishRetentionBoundRecord'), substrate.indexOf('export function publishRetentionBoundRecord') + 900);
+  assert.equal(/readonly recordClass|readonly finalPath|readonly shard|readonly operation/.test(retentionEntry), false, 'the retention publication entry point must not accept a record class, final path, shard, or operation');
+  assert.equal(/readonly permit: RetentionPublicationPermit/.test(substrate), true, 'the retention entry point must consume the permit only');
+  // No permit creator or verifier in any barrel or the package root.
+  for (const barrel of ['src/storage/index.ts', 'src/storage/retention/index.ts', 'src/storage/capabilities/index.ts', 'src/index.ts']) {
+    const content = readFileSync(join(REPO, barrel), 'utf8');
+    assert.equal(/createRetentionPublicationPermit|isGenuineRetentionPublicationPermit|retentionPublicationPermitLive/.test(content), false, `${barrel} must not export the retention publication permit creator or verifier`);
+  }
+  // The retention capability and provenance creators are never re-exported
+  // by any storage module (the creator-edge test covers importers; this
+  // covers re-export chains).
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    for (const name of exportedBindingNames(content)) {
+      assert.equal(name === 'createRetentionCapability' || name === 'createTrustedRetentionRequest' || name === 'createRetentionActionProvenance', false, `${rel(file)} re-exports a retention creator`);
     }
   }
 });

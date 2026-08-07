@@ -609,6 +609,176 @@ vocabulary of HST-007. Inspection performs zero mutation (RDS-006/011).
 - **RNT-009.** Deletion MUST NOT be permitted for immutable classes under any retention action.
 - **RNT-010.** Deletion audit evidence MUST be retained per the audit retention class and MUST NOT be deletable by the same action that produced it.
 
+**15.4 Retention deletion and legal hold (WP-8-L; ADR-035).** Retention
+deletion is the first policy-bound deletion path. It is NOT recovery: it
+MUST NOT reuse the recovery capability, recovery action provenance, or
+recovery evidence semantics, and recovery authority MUST NEVER perform
+retention deletion. The storage layer authenticates an exact trusted
+retention decision, binds it to immutable target/history facts, refuses
+deletion under an active or unknown hold, immediately re-verifies the
+target, executes only the exact authorized unlink, and publishes durable
+deletion-intent and deletion-completion evidence. The trusted local
+control plane adjudicates retention policy and legal holds; storage never
+decides policy (RNT-001). No caller-supplied boolean
+(`canDelete`, `retentionExpired`, `hasNoHold`, `legalHold`) is authority.
+
+- **Retention authority domain.** A separate private branded retention
+  authority domain exists (ADR-035 §2): retention-action provenance,
+  trusted-retention-request, retention capability, and exact-record
+  retention publication permits, mirroring the recovery domain but
+  distinct from it. The exact operations are `retention-delete-record` and
+  `retention-delete-audit`; no generic `delete-object`/`delete-record`/
+  `delete-any`/`purge`/`cleanup`/`retention-admin`/`filesystem-delete`
+  operation exists. The genuine trusted retention action binds at minimum:
+  store identity, namespace identity, exact operation, exact target class,
+  exact target identity, exact target revision, exact target digest,
+  retention policy identity/version, exact retention decision identity,
+  legal-hold snapshot/generation identity, the explicit hold result from
+  the trusted authority, the audit-history binding digest, history
+  generation/surface, and the exact decision facts of this section. Zero
+production retention-action-provenance producers exist in the WP-8-L
+slice; creators are private and static-guarded.
+- **Legal-hold gate and freshness (ADR-035 §3).** The hold-state
+  generation is the deterministic digest over the exact (configuration
+  identity, configuration version) the trusted authority adjudicated
+  (`PGAP-STORAGE-RETENTION-HOLD-STATE-GENERATION-v1`). Storage re-derives
+  it from the current genuine trusted configuration at every mutation
+  boundary (before intent, under the writer lock, after intent
+  publication) and requires exact equality with the decision's binding and
+  the durable intent's binding. Hold adjudication outcomes are closed:
+  `active-hold` → deletion prohibited; `unknown-hold-state` → deletion
+  prohibited; `stale-hold-decision` → deletion prohibited;
+  `clear-current-hold-state` → evaluation may proceed only if all other
+  gates pass. A hold appearing after intent publication fails the
+  post-intent
+  revalidation (capability generation and/or hold-state generation
+  mismatch) and the unlink never executes; the durable intent remains
+  historical evidence of an authorized-but-not-executed deletion and is
+  never self-executing authority. Freshness is generation binding, never
+  wall-clock TTL.
+- **Eligible classes (ADR-035 §2).** The narrow retention-deletable
+  primary record-class set is: `validation-record`, `revocation-record`,
+  `execution-occurrence-record`, `execution-attempt-record`,
+  `trusted-receipt`, `execution-summary-record`, `migration-record`,
+  `supersession-record`. `StoreEvidenceRecord`, store metadata, registry
+  indexes, configuration records, lock records, quarantine objects,
+  foreign objects, malformed records, tamper-class records, registry
+  snapshots, activation records, and the revocable-usability classes are
+  NOT retention-deletable in this slice. Audit events are deleted only
+  through `retention-delete-audit`.
+- **No cascade.** Primary deletion removes exactly that canonical record;
+  its associated audit history remains durable and observable. Primary
+  deletion and audit deletion are separate authority decisions; audit
+  deletion never precedes primary deletion (the referenced primary MUST be
+  absent AND its durable retention deletion completion evidence MUST
+  exist), and each audit deletion is exact and independently authorized.
+- **Durable intent and completion evidence (ADR-035 §5/§7/§8).** Every
+  retention deletion publishes a durable immutable `StoreEvidenceRecord`
+  (`retention-evidence`) deletion-intent evidence record BEFORE any unlink
+  and a deletion-completion evidence record AFTER the unlink and
+  containing-directory fsync, each with its mechanical `authorized-write`
+  audit. Identities are deterministic domain digests
+  (`PGAP-STORAGE-RETENTION-RECORD-DELETE-INTENT-v1`,
+  `PGAP-STORAGE-RETENTION-AUDIT-DELETE-INTENT-v1`,
+  `PGAP-STORAGE-RETENTION-RECORD-DELETE-COMPLETION-v1`,
+  `PGAP-STORAGE-RETENTION-AUDIT-DELETE-COMPLETION-v1`) over the exact
+  factual tuples; time and action identity never enter an identity.
+  The intent binds the target facts, policy/decision/hold bindings, the
+  history binding, and the intended resulting state; it grants no
+  authority by itself. The completion binds the intent identity/digest,
+  the target facts, the decision bindings, and the resulting state with
+  outcome `deleted` or `already-completed`.
+- **History binding (ADR-035 §4).** Retention deletion of a primary
+  requires the committed WP-8-K authoritative history inspection bound to
+  a deterministic history-binding digest
+  (`PGAP-STORAGE-RETENTION-HISTORY-BINDING-v1` over target facts, verified
+  events in the normative tuple order, recovery annotations, closed
+  findings, completeness, and generation/surface tokens). Only a clean
+  complete original lineage (`complete`, complete flag, zero findings, no
+  continuation) is eligible; `missing-authorized-write`, `ambiguous-history`,
+  contested findings, truncated results, and `reconstructed-gap` fail
+  closed — the contract does not permit retention deletion with
+  reconstructed history gaps in this slice. The history binding is
+  re-derived under the writer lock and after intent publication; any
+  change fails closed before unlink.
+- **Idempotency (ADR-035 §6).** Target present + no intent → validate →
+  intent → unlink → completion. Target present + matching intent + no
+  completion → reverify → unlink → completion. Target absent + matching
+  intent + no completion → completion roll-forward (absence made durable
+  by directory fsync before completion). Target absent + matching intent +
+  matching completion → `already-completed`. Target absent + no intent →
+  fail closed (absence without intent never counts as retention
+  completion). Target present + completion → integrity inconsistency.
+  Target or binding changed after intent → fail closed; a replacement is
+  never deleted; a policy or hold change after intent fails closed as
+  `policy-blocked` or `hold-blocked`; the caller may obtain a new decision.
+- **Crash model.** A fixed 14-stage crash inventory covers both target
+  classes (before/after writer lock; before/after intent publication;
+  after intent audit; after post-intent revalidation; before/after target
+  unlink; before/after containing-directory fsync; before/after completion
+  publication; after completion audit; before writer-lock release). After
+  every crash: no unrelated object is deleted; the state is classifiable
+  (intent-pending, roll-forward-eligible, completed, conflicting,
+  evidence-with-live-target, dangling-evidence); durable intent enables
+  safe roll-forward; absence without intent never counts as completion;
+  an active/new hold blocks further deletion before unlink; completion is
+  never fabricated for a different target; a stale writer lock is never
+  automatically broken.
+- **Scanner and registry semantics.** A successfully deleted primary
+  disappears from the live registry record set; persistent indexes become
+  stale and fall back/rebuild through WP-8-H semantics; retention never
+  mutates index objects. Surviving audit events of a retention-deleted
+  primary are intentional retention survivors (never corruption): the
+  recovery scan classifies them via the durable completion evidence
+  (`retentionSurvivors`) and never proposes their disposition. Retention
+  evidence states are classified deterministically (`completed`,
+  `evidence-with-live-target`, `intent-pending`, `roll-forward-eligible`,
+  `conflicting`, `dangling-evidence`).
+
+### Retention-deletion requirements
+
+- **RNT-011.** Retention deletion MUST be a separate private branded
+  retention authority domain; the recovery capability and recovery action
+  provenance MUST NEVER authorize retention deletion, and no generic
+  deletion operation exists.
+- **RNT-012.** The genuine trusted retention action MUST bind the facts of
+  §15.4 (store/namespace, operation, target class/identity/revision/
+  digest, policy identity/version, decision identity, hold-state
+  generation, hold result, history binding, generation/surface);
+  caller-supplied deletion booleans are never authority.
+- **RNT-013.** Deletion MUST be prohibited under `active-hold`,
+  `unknown-hold-state`, and `stale-hold-decision`; the hold-state
+  generation MUST be re-derived from the current trusted configuration at
+  every mutation boundary and MUST equal the decision's and the durable
+  intent's binding; hold freshness is generation binding, never wall-clock
+  TTL.
+- **RNT-014.** Only the §15.4 eligible primary classes are
+  retention-deletable in this slice; every other class fails closed.
+- **RNT-015.** Primary deletion MUST NOT cascade to audits; audit deletion
+  requires the referenced primary absent AND its durable retention
+  deletion completion evidence present; each audit deletion is exact and
+  independently authorized.
+- **RNT-016.** A durable immutable deletion-intent evidence record MUST be
+  published before any unlink and a deletion-completion evidence record
+  after the unlink and containing-directory fsync; both use
+  `retention-evidence` with the §15.4 domains and their mechanical
+  `authorized-write` audits.
+- **RNT-017.** Retention deletion of a primary requires the §15.4 history
+  binding over a clean complete WP-8-K lineage; reconstructed gaps,
+  contested lineages, truncation, and history change after intent fail
+  closed.
+- **RNT-018.** Idempotency follows §15.4: matching intent/completion
+  states resolve as `already-completed` or safe roll-forward; absence
+  without intent, live target with completion, and conflicting
+  intent/completion fail closed; replacements are never deleted.
+- **RNT-019.** A policy, hold, or history change after intent publication
+  fails closed before the unlink; the durable intent is never
+  self-executing authority independent of the current hold/policy state.
+- **RNT-020.** The recovery scan MUST distinguish intentional retention
+  survivors (via durable completion evidence) from corruption and MUST
+  never propose their disposition; retention evidence states and survivors
+  are classified deterministically.
+
 ## 16. Crash Safety and Recovery
 
 **16.1 Stage table.** The contract defines required behavior for crashes at every stage: before temporary creation; during temporary write; after file sync before publication; after link creation; after final-directory sync before temporary unlink; after temporary unlink before `tmp/`-directory sync; after `tmp/`-directory sync before audit publication; after publication before index update; during index rebuild; during audit-event creation, publication, or audit-directory sync; while holding the writer lock.

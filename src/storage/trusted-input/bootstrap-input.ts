@@ -356,7 +356,6 @@ function freezeProvenance(fields: StorageBootstrapActionProvenance): StorageBoot
   Object.freeze(fields.limitProfile);
   return Object.freeze(fields);
 }
-
 function freezeInput(input: TrustedStorageBootstrapInput): TrustedStorageBootstrapInput {
   Object.freeze(input.forbiddenRoots);
   Object.freeze(input.limitProfile);
@@ -456,4 +455,146 @@ export function createTrustedStorageBootstrapInput(
 /** True only for the exact object minted by the gated creator in this process. */
 export function isGenuineTrustedStorageBootstrapInput(value: unknown): value is TrustedStorageBootstrapInput {
   return value !== null && typeof value === 'object' && trustedInputBrand.has(value as object);
+}
+
+// ─── WP-8-L: retention-action provenance and trusted retention request ────
+// Two further semantically distinct private authenticity domains in this
+// module: `StorageRetentionActionProvenance` and `TrustedRetentionRequest`.
+// Same model as the bootstrap/write/recovery domains: separate module-
+// private `WeakSet`s, no structural or own-symbol genuineness, process-local
+// only, cross-kind substitution fails every verifier (CAP-014/015). The
+// retention action is a distinct authority domain from bootstrap, write, and
+// recovery actions; no domain may substitute for another. A recovery
+// capability or recovery action NEVER authorizes retention deletion and vice
+// versa (§15.4/ADR-035).
+
+/** Fields bound into one genuine storage retention action (producer-owned). */
+export interface StorageRetentionActionProvenance {
+  readonly actionIdentity: string;
+  /** Already-resolved absolute trusted-parent locator. */
+  readonly locator: string;
+  readonly serviceUid: number;
+  /** Canonical absolute paths of governed repository/workspace roots. */
+  readonly forbiddenRoots: readonly string[];
+  readonly configurationIdentity: string;
+  readonly limitProfile: SelectedLimitProfile;
+}
+
+/** Accepted immutable trusted retention request (correlated, gated). */
+export interface TrustedRetentionRequest {
+  readonly actionIdentity: string;
+  readonly locator: string;
+  readonly serviceUid: number;
+  readonly forbiddenRoots: readonly string[];
+  readonly configurationIdentity: string;
+  readonly limitProfile: SelectedLimitProfile;
+}
+
+export type RetentionInputRejectionReason =
+  | 'not-genuine-configuration'
+  | 'not-genuine-action-provenance'
+  | 'configuration-identity-mismatch'
+  | 'locator-mismatch'
+  | 'service-uid-mismatch'
+  | 'forbidden-roots-mismatch'
+  | 'limit-profile-mismatch';
+
+export interface RetentionInputResult {
+  readonly ok: boolean;
+  readonly request?: TrustedRetentionRequest;
+  readonly reason?: RetentionInputRejectionReason;
+  readonly message?: string;
+}
+
+const retentionActionProvenanceBrand = new WeakSet<object>();
+const trustedRetentionRequestBrand = new WeakSet<object>();
+
+function freezeRetentionProvenance(fields: StorageRetentionActionProvenance): StorageRetentionActionProvenance {
+  Object.freeze(fields.forbiddenRoots);
+  Object.freeze(fields.limitProfile);
+  return Object.freeze(fields);
+}
+
+function freezeRetentionRequest(request: TrustedRetentionRequest): TrustedRetentionRequest {
+  Object.freeze(request.forbiddenRoots);
+  Object.freeze(request.limitProfile);
+  return Object.freeze(request);
+}
+
+/**
+ * Storage-side retention-action-provenance creator (WP-8-L). The sole future
+ * production consumer is `src/control-plane/storage-retention-action.ts`
+ * (the trusted control-plane retention composition root); that producer does
+ * NOT exist in WP-8-L, so no production module may import the creator
+ * (static-guard enforced); test-only use is permitted from the authorized
+ * storage test files. A recovery plan, assessment, cursor, scan observation,
+ * history result, hold boolean, or caller-supplied `canDelete` fact is NEVER
+ * an authority operand: only a genuine branded provenance is.
+ */
+export function createRetentionActionProvenance(fields: StorageRetentionActionProvenance): StorageRetentionActionProvenance {
+  if (fields.actionIdentity.length === 0) throw new TypeError('actionIdentity must be non-empty');
+  if (!fields.locator.startsWith('/')) throw new TypeError('locator must be absolute');
+  if (!Number.isSafeInteger(fields.serviceUid) || fields.serviceUid < 0) throw new TypeError('serviceUid must be a non-negative safe integer');
+  if (!/^sha-256:[0-9a-f]{64}$/.test(fields.configurationIdentity)) throw new TypeError('configurationIdentity must use sha-256:<64-hex> syntax');
+  const provenance = freezeRetentionProvenance(fields);
+  retentionActionProvenanceBrand.add(provenance);
+  return provenance;
+}
+
+/** True only for the exact object minted by the gated creator in this process. */
+export function isGenuineRetentionActionProvenance(value: unknown): value is StorageRetentionActionProvenance {
+  return value !== null && typeof value === 'object' && retentionActionProvenanceBrand.has(value as object);
+}
+
+/**
+ * Gated trusted-retention-request creator (WP-8-L). Imported only by
+ * `src/storage/retention/execute.ts` (static-guard enforced). Both operands
+ * must be genuine; correlation is verified by exact equality or canonical
+ * identity. Action identity is taken only from the genuine retention-action
+ * provenance, never from WP-6 configuration provenance, plan data, a history
+ * result, a hold boolean, or any structural string.
+ */
+export function createTrustedRetentionRequest(
+  trustedConfiguration: unknown,
+  actionProvenance: unknown,
+  raw: { readonly locator: string; readonly serviceUid: number; readonly forbiddenRoots: readonly string[]; readonly limitProfile: SelectedLimitProfile },
+): RetentionInputResult {
+  if (!isGenuineValidatedTrustedWorkspaceConfiguration(trustedConfiguration)) {
+    return { ok: false, reason: 'not-genuine-configuration', message: 'trusted configuration evidence is not genuine' };
+  }
+  if (!isGenuineRetentionActionProvenance(actionProvenance)) {
+    return { ok: false, reason: 'not-genuine-action-provenance', message: 'storage retention action provenance is not genuine' };
+  }
+  const config = trustedConfiguration as { readonly identity: string };
+  const provenance = actionProvenance as StorageRetentionActionProvenance;
+  if (config.identity !== provenance.configurationIdentity) {
+    return { ok: false, reason: 'configuration-identity-mismatch', message: 'trusted configuration identity does not correlate with the retention action provenance' };
+  }
+  if (raw.locator !== provenance.locator) {
+    return { ok: false, reason: 'locator-mismatch', message: 'locator does not correlate with the retention action provenance' };
+  }
+  if (raw.serviceUid !== provenance.serviceUid) {
+    return { ok: false, reason: 'service-uid-mismatch', message: 'service UID does not correlate with the retention action provenance' };
+  }
+  if (!sameStringSet(raw.forbiddenRoots, provenance.forbiddenRoots)) {
+    return { ok: false, reason: 'forbidden-roots-mismatch', message: 'forbidden-root set does not correlate with the retention action provenance' };
+  }
+  if (!sameLimitProfile(raw.limitProfile, provenance.limitProfile)) {
+    return { ok: false, reason: 'limit-profile-mismatch', message: 'limit profile does not correlate with the retention action provenance' };
+  }
+  const request = freezeRetentionRequest({
+    actionIdentity: provenance.actionIdentity,
+    locator: provenance.locator,
+    serviceUid: provenance.serviceUid,
+    forbiddenRoots: [...provenance.forbiddenRoots],
+    configurationIdentity: provenance.configurationIdentity,
+    limitProfile: { ...provenance.limitProfile },
+  });
+  trustedRetentionRequestBrand.add(request);
+  return { ok: true, request };
+}
+
+/** True only for the exact object minted by the gated creator in this process. */
+export function isGenuineTrustedRetentionRequest(value: unknown): value is TrustedRetentionRequest {
+  return value !== null && typeof value === 'object' && trustedRetentionRequestBrand.has(value as object);
 }

@@ -40,17 +40,18 @@ import { jcsSerialize } from '../../canonical/jcs.js';
 import { computeDomainDigest, isValidDigestSyntax, STORAGE_RECORD_BYTES_DIGEST_DOMAIN } from '../format/envelope.js';
 import { writeAllSync } from '../metadata/bootstrap-persist.js';
 import { comparePrePostStat, verifyRegularFileStat } from '../root/identity.js';
-import { isGenuineWriteCapability, isGenuineRecoveryCapability, type CapabilityCheck, type RecoveryCapability, type WriteCapability } from '../capabilities/authenticity.js';
+import { isGenuineWriteCapability, isGenuineRecoveryCapability, isGenuineRetentionCapability, type CapabilityCheck, type RecoveryCapability, type RetentionCapability, type WriteCapability } from '../capabilities/authenticity.js';
 
 /**
- * WP-8-F: the single-writer lock is shared by the write path and the
- * authorized recovery-mutation path. Both capability kinds are genuine
- * mutation-capable brands; a structural object is rejected before any
- * filesystem access. The checked operation is the caller's closed
- * vocabulary ('record-publish' for writes, 'orphan-removal' for recovery
- * mutations).
+ * WP-8-F/WP-8-L: the single-writer lock is shared by the write path, the
+ * authorized recovery-mutation path, and the authorized retention-mutation
+ * path. All three capability kinds are genuine mutation-capable brands; a
+ * structural object is rejected before any filesystem access. The checked
+ * operation is the caller's closed vocabulary ('record-publish' for writes,
+ * 'orphan-removal' for recovery mutations, 'retention-delete-record' for
+ * retention mutations).
  */
-export type LockAuthority = WriteCapability | RecoveryCapability;
+export type LockAuthority = WriteCapability | RecoveryCapability | RetentionCapability;
 export type LockOperation =
   | 'record-publish'
   | 'orphan-removal'
@@ -60,10 +61,14 @@ export type LockOperation =
   | 'dispose-wpr023d-temporary'
   | 'dispose-quarantined-temporary'
   | 'dispose-conflicting-index'
-  | 'break-writer-lock';
+  | 'break-writer-lock'
+  // WP-8-L: retention deletion uses the normal writer lock (§15.4); it is
+  // never a lock-recovery action and never breaks the lock it acquires.
+  | 'retention-delete-record'
+  | 'retention-delete-audit';
 
 function isGenuineLockAuthority(value: unknown): value is LockAuthority {
-  return isGenuineWriteCapability(value) || isGenuineRecoveryCapability(value);
+  return isGenuineWriteCapability(value) || isGenuineRecoveryCapability(value) || isGenuineRetentionCapability(value);
 }
 import type { LockResult, LockTimeSource, WriterLockRecord } from '../types.js';
 

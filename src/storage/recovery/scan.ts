@@ -255,6 +255,88 @@ export function extractReconstructionEvidenceFacts(raw: string): {
   }
 }
 /**
+ * WP-8-L retention-deletion evidence payload facts (§15.4/ADR-035):
+ * extracted from one canonical store-evidence-record whose payload declares
+ * a `retention-delete-record` or `retention-delete-audit` retention
+ * operation. `retention` is true for every retention evidence claim;
+ * `malformed` is true when the claimed facts are incomplete or the outcome
+ * is outside the closed vocabulary; otherwise `facts` carries the bound
+ * facts. Pure.
+ */
+export function extractRetentionEvidenceFacts(raw: string): {
+  readonly retention?: boolean;
+  readonly malformed?: boolean;
+  readonly facts?: {
+    readonly retentionOperation: 'retention-delete-record' | 'retention-delete-audit';
+    readonly targetRecordClass?: string;
+    readonly targetRecordId: string;
+    readonly targetRecordRevision?: number;
+    readonly targetRecordDigest: string;
+    readonly referencedRecordId?: string;
+    readonly referencedRecordDigest?: string;
+    readonly intentEvidenceId?: string;
+    readonly holdStateGeneration?: string;
+    readonly outcome: string;
+  };
+} {
+  try {
+    const model = parseRawJson(raw, 1024 * 1024).model;
+    if (typeof model !== 'object' || model === null || Array.isArray(model)) return {};
+    const payload = (model as Readonly<Record<string, unknown>>)['payload'];
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return {};
+    const p = payload as Readonly<Record<string, unknown>>;
+    if (p['evidenceKind'] !== 'retention-evidence') return {};
+    const retentionOperation = p['retentionOperation'];
+    const targetRecordId = p['targetRecordId'];
+    const targetRecordDigest = p['targetRecordDigest'];
+    const outcome = p['outcome'];
+    if (retentionOperation !== 'retention-delete-record' && retentionOperation !== 'retention-delete-audit') return {};
+    if (
+      typeof targetRecordId !== 'string' ||
+      typeof targetRecordDigest !== 'string' ||
+      (outcome !== 'deleted' && outcome !== 'already-completed' && outcome !== undefined)
+    ) {
+      return { retention: true, malformed: true };
+    }
+    const referencedRecordId = p['referencedRecordId'];
+    const referencedRecordDigest = p['referencedRecordDigest'];
+    const intentEvidenceId = p['intentEvidenceId'];
+    const holdStateGeneration = p['holdStateGeneration'];
+    const targetRecordRevision = p['targetRecordRevision'];
+    const targetRecordClass = p['targetRecordClass'];
+    if (typeof outcome !== 'string') {
+      return { retention: true, malformed: true };
+    }
+    const facts: {
+      readonly retentionOperation: 'retention-delete-record' | 'retention-delete-audit';
+      readonly targetRecordClass?: string;
+      readonly targetRecordId: string;
+      readonly targetRecordRevision?: number;
+      readonly targetRecordDigest: string;
+      readonly referencedRecordId?: string;
+      readonly referencedRecordDigest?: string;
+      readonly intentEvidenceId?: string;
+      readonly holdStateGeneration?: string;
+      readonly outcome: string;
+    } = {
+      retentionOperation,
+      targetRecordId,
+      targetRecordDigest,
+      ...(typeof targetRecordClass === 'string' ? { targetRecordClass } : {}),
+      ...(typeof targetRecordRevision === 'number' ? { targetRecordRevision } : {}),
+      ...(typeof referencedRecordId === 'string' ? { referencedRecordId } : {}),
+      ...(typeof referencedRecordDigest === 'string' ? { referencedRecordDigest } : {}),
+      ...(typeof intentEvidenceId === 'string' ? { intentEvidenceId } : {}),
+      ...(typeof holdStateGeneration === 'string' ? { holdStateGeneration } : {}),
+      outcome,
+    };
+    return { retention: true, facts };
+  } catch {
+    return {};
+  }
+}
+
+/**
  * WP-8-I disposition-evidence payload facts (ADR-032; §10): extracted from
  * one canonical store-evidence-record whose payload declares an executable
  * disposition recovery operation (`dispose-quarantined-temporary` |
@@ -1566,6 +1648,16 @@ function scanRecordEntry(input: {
             observation: {
               ...observation,
               lockRecoveryEvidenceFacts: lFacts.facts === undefined ? { malformed: true } : { malformed: false, ...lFacts.facts },
+            },
+          };
+        }
+        // WP-8-L: retention deletion evidence facts (§15.4/ADR-035).
+        const rtFacts = extractRetentionEvidenceFacts(bytes.toString('utf8'));
+        if (rtFacts.retention === true) {
+          return {
+            observation: {
+              ...observation,
+              retentionEvidenceFacts: rtFacts.facts === undefined ? { malformed: true } : { malformed: false, ...rtFacts.facts },
             },
           };
         }

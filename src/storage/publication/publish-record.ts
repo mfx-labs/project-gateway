@@ -28,7 +28,7 @@ import { deriveRecordRelativePath, deriveRegistryIndexRelativePath, REGISTRY_IND
 import { parseRegistryIndex, validateRegistryIndexSelfConsistency, REGISTRY_INDEX_MAX_ENTRIES } from '../registry/index-model.js';
 import { writeAllSync } from '../metadata/bootstrap-persist.js';
 import { comparePrePostStat, verifyDirectoryStat, verifyRegularFileStat } from '../root/identity.js';
-import { isGenuineWriteCapability, isGenuineRecoveryPublicationPermit, recoveryPublicationPermitLive, type RecoveryPublicationPermit, type WriteCapability } from '../capabilities/authenticity.js';
+import { isGenuineWriteCapability, isGenuineRecoveryPublicationPermit, recoveryPublicationPermitLive, isGenuineRetentionPublicationPermit, retentionPublicationPermitLive, type RecoveryPublicationPermit, type RetentionPublicationPermit, type WriteCapability } from '../capabilities/authenticity.js';
 import { RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND } from '../audit/write-audit.js';
 import type { PublicationHooks, RecordClassId } from '../types.js';
 
@@ -734,6 +734,142 @@ export function publishRecoveryBoundRecord(input: {
       if (!isGenuineRecoveryPublicationPermit(input.permit)) return { ok: false, message: 'recovery publication permit invalidated before primary publication' };
       if (!recoveryPublicationPermitLive(input.permit)) return { ok: false, message: 'recovery publication permit invalidated before primary publication' };
       if (!capability.verify(binding.operation).ok) return { ok: false, message: 'recovery capability invalidated before primary publication' };
+      return { ok: true };
+    },
+    canonicalUtf8: input.canonicalUtf8,
+    byteLimit: input.byteLimit,
+    tmpPath,
+    tmpDirPath,
+    finalPath,
+    finalDirPath,
+    serviceUid: input.serviceUid,
+    expectedRecordId: binding.recordId,
+    expectedRevision: 1,
+    expectedDigest: binding.recordDigest,
+    syncDirectories: [parentDirPath, `${namespaceRoot}/${topLevel}`],
+    hooks: input.hooks,
+  });
+}
+
+/**
+ * WP-8-L exact-record retention publication entry point (contract §15.4;
+ * ADR-035). Sink-level confinement mirror of `publishRecoveryBoundRecord`:
+ * consumes ONLY a genuine live `RetentionPublicationPermit` minted by the
+ * retention evidence module; the caller can never select a record class,
+ * final path, shard, operation, event kind, or destination. The permit
+ * binds the genuine retention capability, the exact retention operation,
+ * the exact record identity/digest/canonical bytes, and the internally
+ * derived destination; the audit role additionally binds the exact
+ * `authorized-write` event facts. Temp ordinals: retention-delete-record =
+ * 16, retention-delete-audit = 18 (evidence = base, audit = base + 1).
+ */
+export function publishRetentionBoundRecord(input: {
+  readonly permit: RetentionPublicationPermit;
+  readonly canonicalUtf8: string;
+  readonly byteLimit: number;
+  readonly serviceUid: number;
+  readonly hooks?: PublicationHooks;
+}): PublishStageResult {
+  // 1. Genuine permit verification BEFORE any filesystem access.
+  if (!isGenuineRetentionPublicationPermit(input.permit)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'retention publication permit operand is not genuine' };
+  }
+  if (!retentionPublicationPermitLive(input.permit)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'retention publication permit is disposed' };
+  }
+  const binding = input.permit.binding;
+  const capability = binding.capability;
+  if (!capability.verify(binding.operation).ok) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'retention capability is not usable at the retention publication boundary' };
+  }
+  // 2-4. Parse and verify the canonical bytes against the permit.
+  const bytes = Buffer.from(input.canonicalUtf8, 'utf8');
+  if (bytes.length > input.byteLimit) {
+    return { ok: false, code: 'ERR-STO-LIMIT-EXCEEDED', message: 'record exceeds the bounded byte limit' };
+  }
+  const parsed = parsePersistedEnvelope(input.canonicalUtf8, input.byteLimit);
+  if (!parsed.ok || parsed.model === undefined || parsed.bytes === undefined) {
+    return { ok: false, code: 'ERR-STO-MALFORMED', message: 'record bytes are not a canonical record envelope' };
+  }
+  const model = parsed.model as Readonly<Record<string, unknown>>;
+  const expectedKind = binding.recordClass === 'store-evidence-record' ? 'StoreEvidenceRecord' : 'AuthoritativeAuditEvent';
+  if (model['recordKind'] !== expectedKind) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'record kind does not match the permit-bound class' };
+  }
+  if (model['recordId'] !== binding.recordId) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'record identity does not match the permit binding' };
+  }
+  if (parsed.bytes.digest !== binding.recordDigest || parsed.bytes.digest !== binding.canonicalBytesDigest) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'record canonical-byte digest does not match the permit binding' };
+  }
+  const payload = model['payload'];
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return { ok: false, code: 'ERR-STO-MALFORMED', message: 'record payload is malformed' };
+  }
+  const p = payload as Readonly<Record<string, unknown>>;
+  if (binding.role === 'retention-authorized-write-audit') {
+    // Exact audit binding: event kind, referenced evidence identity and
+    // digest, trusted retention action identity, and reference linkage.
+    const audit = binding.audit;
+    if (audit === undefined) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'retention audit permit binding is missing' };
+    }
+    if (p['eventKind'] !== 'authorized-write') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit event kind does not match the retention permit binding' };
+    }
+    if (p['recordId'] !== audit.referencedRecordId) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit referenced record does not match the retention permit binding' };
+    }
+    if (p['recordDigest'] !== audit.referencedRecordDigest) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit referenced digest does not match the retention permit binding' };
+    }
+    if (model['trustedActionId'] !== audit.trustedActionIdentity) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit trusted action identity does not match the retention permit binding' };
+    }
+    const references = model['referenceDigests'];
+    if (!Array.isArray(references) || references[0] !== audit.referencedRecordDigest) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit reference digests do not match the retention permit binding' };
+    }
+  } else {
+    // Exact evidence binding: retention evidence kind and operation.
+    if (p['evidenceKind'] !== 'retention-evidence') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'evidence kind does not match the retention permit binding' };
+    }
+    if (p['retentionOperation'] !== binding.operation) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'retention operation does not match the retention permit binding' };
+    }
+  }
+  // 5-6. Derive the destination internally and verify it matches the permit.
+  const namespaceRoot = `${capability.binding.storeInstance.parentIdentity.canonicalPath}/store-v1`;
+  const derived = deriveRecordRelativePath(binding.recordClass as Parameters<typeof deriveRecordRelativePath>[0], binding.recordId);
+  if (!derived.ok || derived.relativePath === undefined) {
+    return { ok: false, code: 'ERR-STO-CONTAINMENT-DENIED', message: 'record path derivation failed' };
+  }
+  if (derived.relativePath !== binding.destinationDesignation) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'derived destination does not match the retention permit binding' };
+  }
+  const topLevel = derived.relativePath.startsWith('audit/') ? 'audit' : 'records';
+  const finalPath = `${namespaceRoot}/${derived.relativePath}`;
+  const finalDirPath = `${namespaceRoot}/${derived.relativePath.slice(0, derived.relativePath.lastIndexOf('/'))}`;
+  const parentDirPath = `${namespaceRoot}/${topLevel}/${derived.classSegment}`;
+  const tmpDirPath = `${namespaceRoot}/tmp`;
+  // Same deterministic per-operation temp ordinals as the recovery path:
+  // retention-delete-record = 16/17, retention-delete-audit = 18/19.
+  const ordinalBase = binding.operation === 'retention-delete-audit' ? 18 : 16;
+  const ordinal = binding.role === 'retention-authorized-write-audit' ? ordinalBase + 1 : ordinalBase;
+  const tmpPath = `${tmpDirPath}/${publicationTempName(capability.binding.actionIdentity, ordinal)}`;
+  // 7. Provision only the exact bound class/shard (module-private; authority
+  // already verified above).
+  const provisioned = ensureClassShardDirectoriesFor(namespaceRoot, binding.recordClass as Parameters<typeof ensureClassShardDirectoriesFor>[1], binding.recordId, input.serviceUid);
+  if (!provisioned.ok) {
+    return { ok: false, code: provisioned.code ?? 'ERR-STO-IO-FAILURE', message: provisioned.message ?? 'retention record class/shard directories could not be established' };
+  }
+  // 8-9. Publish with the shared immutable hard-link algorithm.
+  return publishImmutableCore({
+    revalidate: (): RevalidationResult => {
+      if (!isGenuineRetentionPublicationPermit(input.permit)) return { ok: false, message: 'retention publication permit invalidated before primary publication' };
+      if (!retentionPublicationPermitLive(input.permit)) return { ok: false, message: 'retention publication permit invalidated before primary publication' };
+      if (!capability.verify(binding.operation).ok) return { ok: false, message: 'retention capability invalidated before primary publication' };
       return { ok: true };
     },
     canonicalUtf8: input.canonicalUtf8,

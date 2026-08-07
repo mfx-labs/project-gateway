@@ -26,7 +26,7 @@
  * results, never retroactive capability bindings. No issuance path exists
  * for write, read, verify, recovery, retention, or migration.
  */
-import { isGenuineTrustedStorageBootstrapInput, isGenuineTrustedWriteRequest, isGenuineTrustedRecoveryRequest, type TrustedRecoveryRequest, type TrustedStorageBootstrapInput, type TrustedWriteRequest } from '../trusted-input/bootstrap-input.js';
+import { isGenuineTrustedStorageBootstrapInput, isGenuineTrustedWriteRequest, isGenuineTrustedRecoveryRequest, isGenuineTrustedRetentionRequest, type TrustedRecoveryRequest, type TrustedRetentionRequest, type TrustedStorageBootstrapInput, type TrustedWriteRequest } from '../trusted-input/bootstrap-input.js';
 import { RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND, type AuditEventKind } from '../audit/write-audit.js';
 import { isValidDigestSyntax } from '../format/envelope.js';
 import { deriveRecordRelativePath, deriveRegistryIndexRelativePath } from '../layout/layout.js';
@@ -751,6 +751,259 @@ export function isGenuineRecoveryPublicationPermit(value: unknown): value is Rec
 export function recoveryPublicationPermitLive(permit: RecoveryPublicationPermit): boolean {
   if (!recoveryPublicationPermitBrand.has(permit)) return false;
   return !recoveryPublicationPermitDisposed.has(permit);
+}
+
+// ─── WP-8-L: retention capability (contract 21.1; separate mutation domain) ──
+// The retention capability is a distinct opaque mutation-capable capability
+// kind (contract 21.1/§15.4), bound to the genuine retention action identity
+// from the verified retention-action provenance. It is SEPARATE from the
+// recovery capability: a recovery authority can never perform retention
+// deletion and a retention authority can never perform recovery mutation.
+// Least authority: the operation set contains exactly the implemented
+// retention operations; no generic deletion operation exists.
+
+export const RETENTION_OPERATION_SET = ['retention-delete-record', 'retention-delete-audit'] as const;
+export type RetentionOperation = (typeof RETENTION_OPERATION_SET)[number];
+
+/** Retention-capability binding (mutation-capable; CAP-001/API-003; §15.4). */
+export interface RetentionCapabilityBinding {
+  readonly storeInstance: VerifiedStoreInstance;
+  readonly configurationIdentity: string;
+  readonly serviceUid: number;
+  readonly limitProfile: Readonly<Record<string, number>>;
+  readonly actionIdentity: string;
+  readonly operationSet: readonly RetentionOperation[];
+  /** Private in-process generation identity; never persisted or serialized. */
+  readonly generation: object;
+}
+
+/** Opaque in-process authorized-retention capability (never serializable). */
+export interface RetentionCapability {
+  /** Informational frozen binding; carries no brand state. */
+  readonly binding: RetentionCapabilityBinding;
+  verify(operation: RetentionOperation): CapabilityCheck;
+  assertExpected(expected: {
+    readonly storeInstance: VerifiedStoreInstance;
+    readonly configurationIdentity: string;
+    readonly serviceUid: number;
+    readonly limitProfile: Readonly<Record<string, number>>;
+  }): CapabilityCheck;
+  dispose(): void;
+}
+
+const retentionCapabilityBrand = new WeakSet<RetentionCapability>();
+
+function freezeRetentionBinding(binding: RetentionCapabilityBinding): RetentionCapabilityBinding {
+  Object.freeze(binding.storeInstance);
+  Object.freeze(binding.storeInstance.namespaces);
+  Object.freeze(binding.storeInstance.limitProfile);
+  Object.freeze(binding.operationSet);
+  Object.freeze(binding.limitProfile);
+  return Object.freeze(binding);
+}
+
+/**
+ * Gated retention-capability creator (WP-8-L). Imported only by
+ * `src/storage/retention/execute.ts` (static-guard enforced). Requires a
+ * genuine branded `TrustedRetentionRequest` plus the verified store instance
+ * produced by the metadata verification pipeline. The genuine action
+ * identity derives only from the verified retention-action provenance bound
+ * into the request. Mutation-capable: like the write/recovery creators, it
+ * may establish the per-process generation registry entry for the store.
+ */
+export function createRetentionCapability(input: {
+  readonly trustedRetentionRequest: unknown;
+  readonly storeInstance: VerifiedStoreInstance;
+}): RetentionCapability | undefined {
+  if (!isGenuineTrustedRetentionRequest(input.trustedRetentionRequest)) return undefined;
+  const request = input.trustedRetentionRequest as TrustedRetentionRequest;
+  if (request.configurationIdentity !== input.storeInstance.configurationIdentity) return undefined;
+  if (request.serviceUid !== input.storeInstance.serviceUid) return undefined;
+  if (!sameProfile(request.limitProfile, input.storeInstance.limitProfile)) return undefined;
+  const key = storeKey(input.storeInstance.parentIdentity);
+  const generation = generationForStore(key, request.configurationIdentity, true);
+  if (generation === undefined) return undefined;
+  const binding = freezeRetentionBinding({
+    storeInstance: input.storeInstance,
+    configurationIdentity: request.configurationIdentity,
+    serviceUid: request.serviceUid,
+    limitProfile: { ...request.limitProfile },
+    actionIdentity: request.actionIdentity,
+    operationSet: [...RETENTION_OPERATION_SET],
+    generation,
+  });
+  const state: CapabilityState = { live: true };
+  const capability: RetentionCapability = {
+    binding,
+    verify(operation) {
+      if (!retentionCapabilityBrand.has(this as RetentionCapability)) return { ok: false, reason: 'not-genuine' };
+      if (!state.live) return { ok: false, reason: 'disposed' };
+      const current = currentGenerationByStore.get(key);
+      if (current === undefined || current.generation !== binding.generation) return { ok: false, reason: 'stale-generation' };
+      if (!binding.operationSet.includes(operation)) return { ok: false, reason: 'wrong-operation' };
+      return { ok: true };
+    },
+    assertExpected(expected) {
+      if (!retentionCapabilityBrand.has(this as RetentionCapability)) return { ok: false, reason: 'not-genuine' };
+      if (!state.live) return { ok: false, reason: 'disposed' };
+      const current = currentGenerationByStore.get(key);
+      if (current === undefined || current.generation !== binding.generation) return { ok: false, reason: 'stale-generation' };
+      if (!sameStoreInstance(expected.storeInstance, binding.storeInstance)) return { ok: false, reason: 'wrong-store-instance' };
+      if (expected.configurationIdentity !== binding.configurationIdentity) return { ok: false, reason: 'wrong-configuration' };
+      if (expected.serviceUid !== binding.serviceUid) return { ok: false, reason: 'wrong-service-uid' };
+      if (!sameProfile(expected.limitProfile, binding.limitProfile)) return { ok: false, reason: 'wrong-limit-profile' };
+      return { ok: true };
+    },
+    dispose() {
+      if (retentionCapabilityBrand.has(this as RetentionCapability)) state.live = false;
+    },
+  };
+  retentionCapabilityBrand.add(capability);
+  return capability;
+}
+
+/** True only for a capability minted by this module in this process. */
+export function isGenuineRetentionCapability(value: unknown): value is RetentionCapability {
+  return value !== null && typeof value === 'object' && retentionCapabilityBrand.has(value as RetentionCapability);
+}
+
+// ─── WP-8-L: exact-record retention publication permit ─────────────────────
+// Sink-level authority confinement (the WP-8-F correction pattern applied to
+// retention): a genuine `RetentionCapability` must never reach the generic
+// immutable-publication substrate. Retention publication is confined to one
+// exact record per permit: the permit binds the genuine retention capability,
+// the exact store and namespace identities (through the capability's store
+// instance), the retention operation, the publication role, the exact record
+// class, record identity, record digest, canonical-byte digest, and the
+// internally derived destination designation; the audit role additionally
+// binds the exact evidence identity, evidence digest, `authorized-write`
+// event kind, and trusted retention action identity.
+
+export type RetentionPublicationRole = 'retention-evidence' | 'retention-authorized-write-audit';
+export type RetentionPublicationRecordClass = 'store-evidence-record' | 'authoritative-audit-event';
+
+/** Exact-record binding of one authorized retention record publication. */
+export interface RetentionPublicationPermitBinding {
+  /** Genuine retention capability (carries the store/namespace identity; never a path). */
+  readonly capability: RetentionCapability;
+  /** Exact retention operation of the authorized mutation. */
+  readonly operation: RetentionOperation;
+  /** Publication role: evidence record or its mechanical audit event. */
+  readonly role: RetentionPublicationRole;
+  /** Exact closed record class for the role (never caller-selected). */
+  readonly recordClass: RetentionPublicationRecordClass;
+  /** Exact record identity. */
+  readonly recordId: string;
+  /** Exact record digest (canonical bytes digest). */
+  readonly recordDigest: string;
+  /** Exact digest of the canonical record bytes (equals recordDigest; bound independently). */
+  readonly canonicalBytesDigest: string;
+  /** Exact internally derived destination designation (relative; never a raw path). */
+  readonly destinationDesignation: string;
+  /** Audit-role binding (present only for `retention-authorized-write-audit`). */
+  readonly audit?: {
+    /** Exact record identity referenced by the audit event (the evidence record). */
+    readonly referencedRecordId: string;
+    /** Exact referenced record digest (evidence digest). */
+    readonly referencedRecordDigest: string;
+    /** Exact audit event kind (`authorized-write`; role-paired). */
+    readonly eventKind: 'authorized-write';
+    /** Exact trusted action identity carried by the audit event (retention action identity). */
+    readonly trustedActionIdentity: string;
+  };
+}
+
+/** Opaque in-process exact-record retention publication permit (never serializable). */
+export interface RetentionPublicationPermit {
+  /** Informational frozen binding; carries no brand state. */
+  readonly binding: RetentionPublicationPermitBinding;
+  dispose(): void;
+}
+
+const retentionPublicationPermitBrand = new WeakSet<RetentionPublicationPermit>();
+const retentionPublicationPermitDisposed = new WeakSet<RetentionPublicationPermit>();
+
+function freezeRetentionPublicationBinding(binding: RetentionPublicationPermitBinding): RetentionPublicationPermitBinding {
+  const audit = binding.audit === undefined ? undefined : Object.freeze(binding.audit);
+  return Object.freeze({ ...binding, ...(audit === undefined ? {} : { audit }) });
+}
+
+/**
+ * Gated exact-record retention-publication permit creator (WP-8-L). Imported
+ * only by `src/storage/retention/evidence.ts` (static-guard enforced); never
+ * exported from any barrel or the package root. Requires a genuine branded
+ * `RetentionCapability` that verifies the exact operation, and an internally
+ * derived destination designation; the binding is validated (digest syntax,
+ * role/class correlation, role/kind pairing, audit binding, destination
+ * derivation) before the permit is branded.
+ */
+export function createRetentionPublicationPermit(input: {
+  readonly capability: unknown;
+  readonly operation: RetentionOperation;
+  readonly role: RetentionPublicationRole;
+  readonly recordId: string;
+  readonly recordDigest: string;
+  readonly canonicalBytesDigest: string;
+  readonly destinationDesignation: string;
+  readonly audit?: {
+    readonly referencedRecordId: string;
+    readonly referencedRecordDigest: string;
+    readonly eventKind: 'authorized-write';
+    readonly trustedActionIdentity: string;
+  };
+}): RetentionPublicationPermit | undefined {
+  if (!isGenuineRetentionCapability(input.capability)) return undefined;
+  const capability = input.capability as RetentionCapability;
+  // Least authority at mint time: the capability must verify the exact
+  // bound operation (a record-only capability can never mint an audit
+  // deletion permit, and vice versa).
+  if (!capability.verify(input.operation).ok) return undefined;
+  if (input.role !== 'retention-evidence' && input.role !== 'retention-authorized-write-audit') return undefined;
+  const recordClass: RetentionPublicationRecordClass = input.role === 'retention-evidence' ? 'store-evidence-record' : 'authoritative-audit-event';
+  if (!isValidDigestSyntax(input.recordDigest) || !isValidDigestSyntax(input.canonicalBytesDigest)) return undefined;
+  if (input.recordDigest !== input.canonicalBytesDigest) return undefined;
+  const derived = deriveRecordRelativePath(recordClass, input.recordId);
+  if (!derived.ok || derived.relativePath !== input.destinationDesignation) return undefined;
+  if (input.role === 'retention-authorized-write-audit') {
+    if (input.audit === undefined) return undefined;
+    if (input.audit.eventKind !== 'authorized-write') return undefined;
+    if (!isValidDigestSyntax(input.audit.referencedRecordDigest)) return undefined;
+    if (!/^pgw:r:[0-9a-f]{32}$/.test(input.audit.referencedRecordId)) return undefined;
+    if (typeof input.audit.trustedActionIdentity !== 'string' || input.audit.trustedActionIdentity.length === 0) return undefined;
+    if (input.audit.referencedRecordId === input.recordId && input.audit.referencedRecordDigest === input.recordDigest) return undefined;
+  } else if (input.audit !== undefined) {
+    return undefined;
+  }
+  const binding = freezeRetentionPublicationBinding({
+    capability,
+    operation: input.operation,
+    role: input.role,
+    recordClass,
+    recordId: input.recordId,
+    recordDigest: input.recordDigest,
+    canonicalBytesDigest: input.canonicalBytesDigest,
+    destinationDesignation: input.destinationDesignation,
+    ...(input.audit === undefined ? {} : { audit: input.audit }),
+  });
+  const permit: RetentionPublicationPermit = {
+    binding,
+    dispose() {
+      if (retentionPublicationPermitBrand.has(this as RetentionPublicationPermit)) retentionPublicationPermitDisposed.add(this as RetentionPublicationPermit);
+    },
+  };
+  retentionPublicationPermitBrand.add(permit);
+  return permit;
+}
+
+/** True only for a permit minted by this module in this process. */
+export function isGenuineRetentionPublicationPermit(value: unknown): value is RetentionPublicationPermit {
+  return value !== null && typeof value === 'object' && retentionPublicationPermitBrand.has(value as RetentionPublicationPermit);
+}
+
+/** Live-state check for a genuine permit (disposed permits are unusable). */
+export function retentionPublicationPermitLive(permit: RetentionPublicationPermit): boolean {
+  if (!retentionPublicationPermitBrand.has(permit)) return false;
+  return !retentionPublicationPermitDisposed.has(permit);
 }
 
 /**

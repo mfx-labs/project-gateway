@@ -52,6 +52,8 @@ import type {
   ReconstructionStateFinding,
   RecordClassId,
   RecordScanObservation,
+  RetentionEvidenceStateFinding,
+  RetentionSurvivorFinding,
   RecoveryAssessment,
   ScanFacts,
   ScanObservation,
@@ -198,6 +200,8 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   const indexArtifacts: IndexScanObservation[] = [];
   let indexMissing = false;
   const lockRecoveryStates: LockRecoveryStateFinding[] = [];
+  const retentionEvidenceStates: RetentionEvidenceStateFinding[] = [];
+  const retentionSurvivors: RetentionSurvivorFinding[] = [...association.retentionSurvivors];
   const quarantineObjects: QuarantineScanObservation[] = [];
   const danglingQuarantineEvidence: { readonly evidenceObservationId: string; readonly quarantineId: string; readonly sourceEntry?: string }[] = [];
   const findings: StorageFinding[] = [...finalized.findings, ...association.findings];
@@ -660,6 +664,100 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   dispositionStates.sort((a, b) => (a.targetDesignation < b.targetDesignation ? -1 : a.targetDesignation > b.targetDesignation ? 1 : a.state < b.state ? -1 : 1));
   indexArtifacts.sort((a, b) => (a.entry < b.entry ? -1 : a.entry > b.entry ? 1 : 0));
   lockRecoveryStates.sort((a, b) => (a.lockInstanceId < b.lockInstanceId ? -1 : a.lockInstanceId > b.lockInstanceId ? 1 : a.state < b.state ? -1 : 1));
+
+  // WP-8-L: deterministic retention-deletion state classification (§15.4;
+  // ADR-035 §9). Derived purely from durable facts: every scanned retention
+  // evidence record is checked against the CURRENT verified target surface
+  // (content-verified record observations). A malformed/incomplete payload
+  // is dangling; completion evidence with the exact target still present is
+  // a conflicting integrity inconsistency; completion evidence with the
+  // target absent is completed; intent evidence with the target present is
+  // intent-pending (in-flight or crashed pre-unlink); intent evidence with
+  // the target absent is roll-forward-eligible (the safe completion
+  // roll-forward state); multiple distinct completions for one target are
+  // conflicting. Absence without intent is never labeled completed.
+  const verifiedTargets = new Map<string, Set<string>>();
+  for (const rec of verifiedDurableRecords) {
+    const digests = verifiedTargets.get(rec.recordId) ?? new Set<string>();
+    digests.add(rec.recordDigest);
+    verifiedTargets.set(rec.recordId, digests);
+  }
+  const retentionConflicts = new Map<string, string[]>();
+  for (const item of obs) {
+    if (item.kind !== 'record' || item.recordClass !== 'store-evidence-record' || item.retentionEvidenceFacts === undefined) continue;
+    const d = item.retentionEvidenceFacts;
+    const targetRecordId = d.targetRecordId ?? '';
+    const targetRecordDigest = d.targetRecordDigest ?? '';
+    const retentionOperation = d.retentionOperation;
+    if (
+      d.malformed ||
+      retentionOperation === undefined ||
+      targetRecordId === '' ||
+      targetRecordDigest === '' ||
+      (d.outcome !== 'deleted' && d.outcome !== 'already-completed')
+    ) {
+      retentionEvidenceStates.push({
+        targetRecordId,
+        retentionOperation: retentionOperation ?? 'retention-delete-record',
+        state: 'dangling-evidence',
+        evidenceObservationIds: [item.id],
+        reason: 'retention evidence payload is incomplete or outside the closed vocabulary',
+      });
+      findings.push(finding('ERR-STO-MALFORMED', 'malformed or dangling retention evidence record'));
+      continue;
+    }
+    const targetDigests = verifiedTargets.get(targetRecordId);
+    const targetPresent = targetDigests !== undefined && targetDigests.has(targetRecordDigest);
+    const isCompletion = d.intentEvidenceId !== undefined && d.intentEvidenceId !== '';
+    if (isCompletion) {
+      if (targetPresent) {
+        retentionEvidenceStates.push({
+          targetRecordId,
+          retentionOperation,
+          state: 'evidence-with-live-target',
+          evidenceObservationIds: [item.id],
+          reason: 'retention deletion completion evidence is durable while the exact referenced target is still present; integrity inconsistency',
+        });
+        findings.push(finding('ERR-STO-INTEGRITY', 'retention deletion completion evidence references a live target; integrity inconsistency'));
+        continue;
+      }
+      const conflicts = retentionConflicts.get(targetRecordId) ?? [];
+      conflicts.push(item.id);
+      retentionConflicts.set(targetRecordId, conflicts);
+      continue;
+    }
+    // Intent evidence (no completion binding).
+    retentionEvidenceStates.push({
+      targetRecordId,
+      retentionOperation,
+      state: targetPresent ? 'intent-pending' : 'roll-forward-eligible',
+      evidenceObservationIds: [item.id],
+      reason: targetPresent
+        ? 'durable deletion intent with the exact target still present; pre-unlink or crashed in-flight state'
+        : 'durable deletion intent with the exact target absent; safe completion roll-forward state',
+    });
+  }
+  for (const [targetRecordId, evidenceIds] of retentionConflicts) {
+    if (evidenceIds.length > 1) {
+      retentionEvidenceStates.push({
+        targetRecordId,
+        retentionOperation: 'retention-delete-record',
+        state: 'conflicting',
+        evidenceObservationIds: [...evidenceIds],
+        reason: 'multiple distinct retention deletion completion evidences contest the same target',
+      });
+    } else {
+      retentionEvidenceStates.push({
+        targetRecordId,
+        retentionOperation: 'retention-delete-record',
+        state: 'completed',
+        evidenceObservationIds: [...evidenceIds],
+        reason: 'matching retention deletion intent and completion are durable and the target is absent',
+      });
+    }
+  }
+  retentionEvidenceStates.sort((a, b) => (a.targetRecordId < b.targetRecordId ? -1 : a.targetRecordId > b.targetRecordId ? 1 : a.state < b.state ? -1 : 1));
+  retentionSurvivors.sort((a, b) => (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0));
   findings.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
 
   return {
@@ -680,6 +778,8 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
     indexArtifacts,
     indexMissing,
     lockRecoveryStates,
+    retentionEvidenceStates,
+    retentionSurvivors,
     findings,
   };
 }

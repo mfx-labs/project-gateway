@@ -70,6 +70,10 @@ const STORAGE_FS_DELEGATED_MODULES: ReadonlySet<string> = new Set([
   // reads); the pure index model and the index-rebuild builder remain under
   // this blanket no-I/O assertion.
   'storage/registry/index-store.js',
+  // WP-8-L: the exact retention-deletion mutation owner (unlink + fsync;
+  // §15.4/ADR-035). The retention evidence and execution modules remain
+  // under this blanket no-I/O assertion.
+  'storage/retention/delete.js',
 ]);
 
 /**

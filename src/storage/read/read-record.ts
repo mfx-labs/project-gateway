@@ -216,6 +216,10 @@ export interface VerifiedRecordObject {
   readonly digest?: string;
   readonly canonicalUtf8?: string;
   readonly byteLength?: number;
+  /** WP-8-L: descriptor facts captured during the verified read (retention unlink binding). */
+  readonly dev?: number;
+  readonly ino?: number;
+  readonly nlink?: number;
   readonly code?: string;
   readonly message?: string;
 }
@@ -266,7 +270,7 @@ export function verifyRecordObjectAt(input: {
     if (typeof recordId !== 'string' || typeof revision !== 'number') {
       return { ok: false, code: 'ERR-STO-MALFORMED', message: 'record identity fields are malformed' };
     }
-    return { ok: true, recordId, revision, digest: parsed.bytes.digest, canonicalUtf8: parsed.bytes.canonicalUtf8, byteLength: parsed.bytes.byteLength };
+    return { ok: true, recordId, revision, digest: parsed.bytes.digest, canonicalUtf8: parsed.bytes.canonicalUtf8, byteLength: parsed.bytes.byteLength, dev: Number(pre.dev), ino: Number(pre.ino), nlink: Number(pre.nlink) };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       return { ok: false, code: 'ERR-STO-NOT-FOUND', message: 'record is absent' };

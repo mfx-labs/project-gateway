@@ -21,7 +21,7 @@ export type { RecoveryMutationRequest, RecoveryMutationResult } from '../types.j
 export { buildQuarantineEvidenceRecord, buildRecoveryEvidenceRecord, computeQuarantineEvidenceIdentity, computeQuarantineTemporaryId, computeRecoveryEvidenceIdentity, isoFromEpochMs, quarantineDestinationDesignation, recoveryEvidencePayload, buildDispositionEvidenceRecord, computeDispositionEvidenceIdentity, verifyExistingDispositionEvidence, dispositionEvidencePayload, STORAGE_QUARANTINE_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN, STORAGE_INDEX_DISPOSITION_EVIDENCE_IDENTITY_DOMAIN, buildLockRecoveryEvidenceRecord, computeLockRecoveryEvidenceIdentity, verifyExistingLockRecoveryEvidence, lockRecoveryEvidencePayload, STORAGE_LOCK_RECOVERY_EVIDENCE_IDENTITY_DOMAIN } from './evidence.js';
 export { executeQuarantineTemporary } from './quarantine.js';
 export { reverifyQuarantineSource, verifyQuarantineObjectDigest, reverifyReconstructionTarget } from './reverify.js';
-export { isPublicationTemporaryName, temporaryObservationId, recordObservationId, auditEventsForRecord, reconstructionEvidenceForTarget, extractReconstructionEvidenceFacts } from './scan.js';
+export { isPublicationTemporaryName, temporaryObservationId, recordObservationId, auditEventsForRecord, reconstructionEvidenceForTarget, extractReconstructionEvidenceFacts, extractRetentionEvidenceFacts } from './scan.js';
 // WP-8-I: the external-disposition adjudication foundation re-verification
 // helpers (current-state single-entry classification with the committed
 // scanner logic; read-only). No capability or mutation primitive is

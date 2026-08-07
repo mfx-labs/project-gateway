@@ -54,6 +54,7 @@ import type {
   MissingAuditFinding,
   RecordScanObservation,
   RegistryView,
+  RetentionSurvivorFinding,
   ScanFacts,
   ScanObservation,
   StorageFinding,
@@ -235,7 +236,40 @@ export interface AuditAssociationResult {
   readonly auditByPrimary: Readonly<Record<string, readonly AuditEventView[]>>;
   readonly missingAudit: readonly MissingAuditFinding[];
   readonly danglingAudit: readonly DanglingAuditFinding[];
+  /** WP-8-L: dangling audits explained by a durable retention-delete-record completion evidence (§15.4). */
+  readonly retentionSurvivors: readonly RetentionSurvivorFinding[];
   readonly findings: readonly StorageFinding[];
+}
+
+/**
+ * WP-8-L retention-survivor lookup (§15.4/ADR-035): a dangling audit event
+ * whose referenced primary has a durable retention deletion completion
+ * evidence (exact class/identity/digest, completed outcome) is an
+ * intentionally retained historical event — never a corruption signal, a
+ * disposition candidate, or a conflicting-reconstruction state. Derived
+ * purely from verified observations.
+ */
+function retentionCompletionEvidence(
+  observations: readonly ScanObservation[],
+): ReadonlyMap<string, { readonly evidenceId: string; readonly primaryRecordId: string; readonly primaryRecordDigest: string }> {
+  const byKey = new Map<string, { readonly evidenceId: string; readonly primaryRecordId: string; readonly primaryRecordDigest: string }>();
+  for (const obs of observations) {
+    if (obs.kind !== 'record' || obs.recordClass !== 'store-evidence-record' || obs.retentionEvidenceFacts === undefined) continue;
+    const d = obs.retentionEvidenceFacts;
+    if (d.malformed || d.retentionOperation !== 'retention-delete-record') continue;
+    if (d.targetRecordId === undefined || d.targetRecordDigest === undefined) continue;
+    if (d.outcome !== 'deleted' && d.outcome !== 'already-completed') continue;
+    const key = `${d.targetRecordId}\u0000${d.targetRecordDigest}`;
+    const existing = byKey.get(key);
+    if (existing !== undefined && existing.evidenceId !== obs.envelope?.recordId) {
+      // Conflicting completions for one primary: not a clean survivor
+      // explanation; the audit stays classified as dangling.
+      byKey.delete(key);
+      continue;
+    }
+    byKey.set(key, { evidenceId: obs.envelope?.recordId ?? '', primaryRecordId: d.targetRecordId, primaryRecordDigest: d.targetRecordDigest });
+  }
+  return byKey;
 }
 
 /**
@@ -251,6 +285,8 @@ export function auditAssociation(observations: readonly ScanObservation[]): Audi
   const matchedEventIds = new Set<string>();
   const primaries = contentVerifiedPrimaries(observations);
   const events = verifiedAuditEventViews(observations);
+  const survivors = retentionCompletionEvidence(observations);
+  const survivorFindings: RetentionSurvivorFinding[] = [];
   for (const event of events) {
     if (event.primaryRecordId === undefined || event.primaryDigest === undefined) {
       findings.push(finding('ERR-STO-MALFORMED', 'audit event association payload is malformed'));
@@ -259,6 +295,21 @@ export function auditAssociation(observations: readonly ScanObservation[]): Audi
     const digests = primaries.get(event.primaryRecordId);
     const matched = digests !== undefined && digests.has(event.primaryDigest);
     if (!matched) {
+      // WP-8-L: a durable retention-delete-record completion evidence for
+      // the exact referenced primary explains the orphaned audit as an
+      // intentional retention survivor (never corruption, never a
+      // disposition candidate).
+      const explanation = survivors.get(`${event.primaryRecordId}\u0000${event.primaryDigest}`);
+      if (explanation !== undefined) {
+        survivorFindings.push({
+          eventId: event.eventId,
+          primaryRecordId: event.primaryRecordId,
+          primaryRecordDigest: event.primaryDigest,
+          completionEvidenceId: explanation.evidenceId,
+          reason: 'audit event intentionally retained after the referenced primary was deleted under retention (durable deletion completion evidence)',
+        });
+        continue;
+      }
       findings.push(finding('ERR-STO-INTEGRITY', 'audit event references no verified primary record'));
       continue;
     }
@@ -288,6 +339,7 @@ export function auditAssociation(observations: readonly ScanObservation[]): Audi
   const dangling: DanglingAuditFinding[] = [];
   for (const event of events) {
     if (matchedEventIds.has(event.eventId)) continue;
+    if (survivorFindings.some((s) => s.eventId === event.eventId)) continue;
     dangling.push({
       observationId: event.observationId,
       eventId: event.eventId,
@@ -298,7 +350,8 @@ export function auditAssociation(observations: readonly ScanObservation[]): Audi
     });
   }
   dangling.sort((a, b) => (a.eventId < b.eventId ? -1 : 1));
-  return { auditByPrimary, missingAudit: missing, danglingAudit: dangling, findings: [...findings].sort(compareFindings) };
+  survivorFindings.sort((a, b) => (a.eventId < b.eventId ? -1 : 1));
+  return { auditByPrimary, missingAudit: missing, danglingAudit: dangling, retentionSurvivors: survivorFindings, findings: [...findings].sort(compareFindings) };
 }
 
 /**

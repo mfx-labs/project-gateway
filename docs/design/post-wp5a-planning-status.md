@@ -310,12 +310,61 @@ reported as operational annotations with verified linkage. The
 implementation is a read-only fs owner (strict read-only allowlist; no
 capability/provenance/permit/lock imports; zero mutation). The contract
 gained §13.4/HST-001…010 and AUD-014 and its pinned SHA-256 was
-updated.
-Deletion, retention, migration, disposition of the
-remaining adjudication-only classes, WP-9, and WP-12 remain out of
+updated. WP-8-L also root-cause corrected the reported-event ordering
+(HST-005): the page slice and resume boundary now follow the normative
+audit ordering tuple instead of surface scan order (the previous
+scan-ordered pagination disagreed with the tuple whenever shard prefixes
+differed from creation order, a latent defect that made the budget tests
+depend on shard-prefix luck).
+
+**WP-8-L (retention, legal hold, and exact deletion; ADR-035; contract
+§15.4/RNT-011…020) is implemented**: the first policy-bound deletion path
+for immutable storage as a **separate private branded retention authority
+domain** — retention-action provenance, trusted-retention request,
+retention capability (`retention-delete-record` / `retention-delete-audit`;
+no generic deletion operation), and exact-record retention publication
+permit, with zero production provenance producers; recovery authority can
+never perform retention deletion and vice versa. The **legal-hold gate
+uses a generation-bound freshness model** (`PGAP-STORAGE-RETENTION-HOLD-
+STATE-GENERATION-v1` over the exact configuration identity/version the
+authority adjudicated; re-derived at every mutation boundary; never
+wall-clock TTL): `active-hold`/`unknown-hold-state`/`stale-hold-decision`
+prohibit deletion, `clear-current-hold-state` permits evaluation, and a
+hold appearing after intent fails the post-intent revalidation before the
+unlink (the durable intent is never self-executing authority). The narrow
+retention-deletable primary classes are the eight immutable lifecycle
+fact classes; evidence/metadata/index/configuration/lock/quarantine/
+foreign/malformed/tamper and revocable-usability classes are excluded.
+Primary deletion binds the committed WP-8-K history to a deterministic
+digest (`PGAP-STORAGE-RETENTION-HISTORY-BINDING-v1`); only a clean
+complete original lineage is eligible and reconstructed gaps fail closed.
+The mutation publishes durable deletion-intent evidence BEFORE the exact
+unlink and deletion-completion evidence AFTER the unlink and
+containing-directory fsync (deterministic domains; `retention-evidence`
+kind), under the normal writer lock with under-lock re-derivation,
+descriptor-bound exact unlink, absence verification, the full §15.4
+idempotency table (already-completed, safe roll-forward,
+absence-without-intent fail-closed, target-live-with-completion
+integrity failure, conflicting intent/completion fail-closed,
+hold/policy change after intent `hold-blocked`/`policy-blocked`), and a
+fixed 14-stage crash inventory for both target classes. Audit deletion is
+stricter: the referenced primary must be absent AND its durable
+retention-delete-record completion evidence must exist; each audit
+deletion is exact, independently authorized, and never a cascade. The
+recovery scanner distinguishes intentional retention survivors (via
+durable completion evidence) from corruption and never proposes their
+disposition, and classifies retention evidence states deterministically.
+The implementation adds one fs-bearing module (`retention/delete.ts`)
+plus fs-free execution/evidence modules; static-guard and global-security
+boundaries are extended (no generic deletion vocabulary; retention
+creators never re-exported). The contract gained §15.4/RNT-011…020 and
+its pinned SHA-256 was updated.
+Compaction, migration, configuration-namespace recovery, disposition of
+the remaining adjudication-only classes, WP-9, and WP-12 remain out of
 scope. The **implementation report
-(`docs/reports/wp-8k-audit-history-inspection-implementation-report.md`)
-is complete**; **WP-8-F, WP-8-G, WP-8-H, WP-8-I, WP-8-J, and WP-8-K are
+(`docs/reports/wp-8l-retention-legal-hold-deletion-implementation-report.md`)
+is complete**; **WP-8-F, WP-8-G, WP-8-H, WP-8-I, WP-8-J, WP-8-K, and
+WP-8-L are
 not yet closed**
 — implementation review pending; WP-8 implementation is **not closed**.
 WP-9 and later

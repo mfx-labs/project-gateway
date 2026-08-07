@@ -438,7 +438,6 @@ export function inspectAuditHistoryByIdentity(input: {
   const reportedEvents: HistoryAuditEvent[] = [];
   const reportedFindings: AuditHistoryFinding[] = [];
   let findingsReported = 0;
-  let eventsReported = 0;
   let auditTruncated = false;
   const lastAuditReported = resume !== undefined ? { shard: resume.lastAuditShard ?? '', entry: resume.lastAuditEntry ?? '' } : undefined;
   // Position of the last item that produced a reported finding or event on
@@ -634,17 +633,8 @@ export function inspectAuditHistoryByIdentity(input: {
         }
         continue;
       }
-      if (shouldReport && eventsReported >= limits.resultsLimit) {
-        auditTruncated = true;
-        break;
-      }
       const evOriginal: HistoryAuditEvent = { eventId: recordId, eventKind: AUTHORIZED_WRITE_EVENT_KIND, digest: read.digest ?? '', createdAt: eventCreatedAt, trustedActionId: trustedEventAction, isOriginalWrite: true };
       auditEventsAll.push(evOriginal);
-      if (shouldReport) {
-        reportedEvents.push(evOriginal);
-        eventsReported++;
-        lastReportedAuditPosition = position;
-      }
       continue;
     }
     if (eventKind === RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND) {
@@ -692,17 +682,8 @@ export function inspectAuditHistoryByIdentity(input: {
         }
         continue;
       }
-      if (shouldReport && eventsReported >= limits.resultsLimit) {
-        auditTruncated = true;
-        break;
-      }
       const evRecon: HistoryAuditEvent = { eventId: recordId, eventKind: RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND, digest: read.digest ?? '', createdAt: eventCreatedAt, trustedActionId: trustedEventAction, isOriginalWrite: false, gapMarker: { missingEventKind: 'authorized-write' } };
       auditEventsAll.push(evRecon);
-      if (shouldReport) {
-        reportedEvents.push(evRecon);
-        eventsReported++;
-        lastReportedAuditPosition = position;
-      }
       continue;
     }
     if (shouldReport && findingsReported >= limits.resultsLimit) {
@@ -827,6 +808,32 @@ export function inspectAuditHistoryByIdentity(input: {
     hooks.stage?.('after-evidence-verification');
   }
 
+  // D-8 ordering tuple: primary logical creation time, primary record identity, event identity.
+  const tupleOrder = (a: HistoryAuditEvent, b: HistoryAuditEvent): number => {
+    const ta = a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0;
+    if (ta !== 0) return ta;
+    if (a.eventId !== b.eventId) return a.eventId < b.eventId ? -1 : 1;
+    return 0;
+  };
+  // WP-8-L correction (root cause, HST-005): the REPORTED event slice is
+  // populated in surface scan order (shard/entry); it must be delivered in
+  // the normative audit ordering tuple, and pagination must resume in tuple
+  // order too — scan order is deterministic but is not the tuple order
+  // whenever shard prefixes disagree with creation time, so a scan-ordered
+  // page sequence previously violated HST-005 and made the budget tests
+  // depend on shard-prefix luck. The page slice is therefore derived from
+  // the tuple-sorted full set, after the last reported event's tuple
+  // position (the cursor carries `lastReportedEventTuple`).
+  auditEventsAll.sort(tupleOrder);
+  const eventResume = resume?.lastReportedEventTuple;
+  const unreportedEvents = eventResume === undefined
+    ? auditEventsAll
+    : auditEventsAll.filter((e) => e.createdAt > eventResume.createdAt || (e.createdAt === eventResume.createdAt && e.eventId > eventResume.eventId));
+  reportedEvents.push(...unreportedEvents.slice(0, limits.resultsLimit));
+  if (unreportedEvents.length > limits.resultsLimit) {
+    auditTruncated = true;
+  }
+
   const truncated = auditTruncated || evidenceTruncated;
 
   // ── Summary derivation (final pages only; HST-003/004/007) ───────────────
@@ -891,13 +898,6 @@ export function inspectAuditHistoryByIdentity(input: {
     if (ea !== eb) return ea < eb ? -1 : 1;
     return (a.eventId ?? '') < (b.eventId ?? '') ? -1 : 1;
   });
-  // D-8 ordering tuple: primary logical creation time, primary record identity, event identity.
-  auditEventsAll.sort((a, b) => {
-    const ta = a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0;
-    if (ta !== 0) return ta;
-    if (a.eventId !== b.eventId) return a.eventId < b.eventId ? -1 : 1;
-    return 0;
-  });
   evidenceAnnotations.sort((a, b) => (a.evidenceId < b.evidenceId ? -1 : a.evidenceId > b.evidenceId ? 1 : 0));
 
   // ── Snapshot re-verification (HST-009): no two generations merged ────────
@@ -944,6 +944,10 @@ export function inspectAuditHistoryByIdentity(input: {
   }
   hooks.stage?.('after-surface-recheck');
 
+  const lastReportedEventTuple =
+    reportedEvents.length > 0
+      ? { createdAt: reportedEvents[reportedEvents.length - 1]!.createdAt, eventId: reportedEvents[reportedEvents.length - 1]!.eventId }
+      : undefined;
   const continuation: AuditHistoryCursor | undefined = truncated
     ? auditTruncated
       ? {
@@ -957,6 +961,7 @@ export function inspectAuditHistoryByIdentity(input: {
           phase: 'audit',
           lastAuditShard: lastReportedAuditPosition?.shard ?? '',
           lastAuditEntry: lastReportedAuditPosition?.entry ?? '',
+          ...(lastReportedEventTuple !== undefined ? { lastReportedEventTuple } : {}),
         }
       : {
           storeIdentity,
@@ -970,6 +975,7 @@ export function inspectAuditHistoryByIdentity(input: {
           ...(auditEndPosition !== undefined ? { lastAuditShard: auditEndPosition.shard, lastAuditEntry: auditEndPosition.entry } : {}),
           lastEvidenceShard: lastReportedEvidencePosition?.shard ?? '',
           lastEvidenceEntry: lastReportedEvidencePosition?.entry ?? '',
+          ...(lastReportedEventTuple !== undefined ? { lastReportedEventTuple } : {}),
         }
     : undefined;
   const reconstruction = { present: auditEventsAll.some((e) => e.eventKind === RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND), events: auditEventsAll.filter((e) => e.eventKind === RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND) };

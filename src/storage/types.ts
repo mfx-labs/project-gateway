@@ -417,9 +417,11 @@ export interface AuditHistoryCursor {
   readonly queryShape: string;
   /** Resume phase: the audit surface pass or the evidence-surface pass. */
   readonly phase: 'audit' | 'evidence';
-  /** Last reported audit-surface position (layout components; resume boundary). */
+  /** Last reported audit-surface position (layout components; findings resume boundary). */
   readonly lastAuditShard?: string;
   readonly lastAuditEntry?: string;
+  /** WP-8-L: last reported event's normative tuple position (HST-005; events resume in tuple order). */
+  readonly lastReportedEventTuple?: { readonly createdAt: string; readonly eventId: string };
   /** Last reported evidence-surface position (layout components; resume boundary). */
   readonly lastEvidenceShard?: string;
   readonly lastEvidenceEntry?: string;
@@ -777,6 +779,21 @@ export interface RecordScanObservation extends ScanObservationBase {
     /** True when the payload claims break-writer-lock but the facts are incomplete/invalid. */
     readonly malformed: boolean;
   };
+  /** WP-8-L: retention deletion evidence payload facts (§15.4/ADR-035). */
+  readonly retentionEvidenceFacts?: {
+    readonly retentionOperation?: 'retention-delete-record' | 'retention-delete-audit';
+    readonly targetRecordClass?: string;
+    readonly targetRecordId?: string;
+    readonly targetRecordRevision?: number;
+    readonly targetRecordDigest?: string;
+    readonly referencedRecordId?: string;
+    readonly referencedRecordDigest?: string;
+    readonly intentEvidenceId?: string;
+    readonly holdStateGeneration?: string;
+    readonly outcome?: string;
+    /** True when the payload claims a retention operation but the facts are incomplete/invalid. */
+    readonly malformed: boolean;
+  };
 }
 
 export interface AuditScanObservation extends ScanObservationBase {
@@ -1124,15 +1141,49 @@ export interface LockRecoveryStateFinding {
   /** Exact pre-break lock-record digest referenced by the evidence (empty when malformed). */
   readonly lockRecordDigest: string;
   readonly state:
-    /** Evidence durable and the referenced writer lock is absent. */
+    /** Lock-recovery evidence durable and the exact referenced writer lock is absent. */
     | 'completed-lock-recovery'
-    /** Evidence durable while the exact referenced lock is still present (integrity inconsistency). */
+    /** Lock-recovery evidence durable while the exact referenced writer lock is still present (integrity inconsistency). */
     | 'conflicting-lock-recovery-evidence'
-    /** Evidence durable while a DIFFERENT writer lock is present (the evidence does not authorize it). */
+    /** Lock-recovery evidence references a different lock instance than the current writer lock. */
     | 'evidence-with-different-lock'
-    /** Evidence payload is incomplete or outside the closed vocabulary. */
+    /** Lock-recovery evidence payload is incomplete or outside the closed vocabulary. */
     | 'dangling-lock-recovery-evidence';
   readonly evidenceObservationId: string;
+  readonly reason: string;
+}
+
+/** WP-8-L: one deterministic retention-deletion state classification (§15.4/ADR-035). */
+export interface RetentionEvidenceStateFinding {
+  /** Exact target record identity referenced by the retention evidence. */
+  readonly targetRecordId: string;
+  readonly retentionOperation: 'retention-delete-record' | 'retention-delete-audit';
+  readonly state:
+    /** Matching durable deletion intent + completion and the target is absent (the deletion is completed). */
+    | 'completed'
+    /** Durable deletion completion exists but the exact target is still present (integrity inconsistency). */
+    | 'evidence-with-live-target'
+    /** Durable deletion intent exists, the target is present, no completion (pre-unlink or crashed in-flight state). */
+    | 'intent-pending'
+    /** Durable deletion intent exists, the target is absent, no completion (safe completion roll-forward state). */
+    | 'roll-forward-eligible'
+    /** Multiple distinct retention intents/completions contest the same target (fail closed). */
+    | 'conflicting'
+    /** Retention evidence payload is incomplete or outside the closed vocabulary. */
+    | 'dangling-evidence';
+  readonly evidenceObservationIds: readonly string[];
+  readonly reason: string;
+}
+
+/** WP-8-L: one intentionally retained audit event of a retention-deleted primary (§15.4; scanner distinction). */
+export interface RetentionSurvivorFinding {
+  /** Surviving audit event identity. */
+  readonly eventId: string;
+  /** Referenced (deleted) primary record identity. */
+  readonly primaryRecordId: string;
+  readonly primaryRecordDigest: string;
+  /** Deterministic retention deletion completion evidence that explains the orphaned state. */
+  readonly completionEvidenceId: string;
   readonly reason: string;
 }
 
@@ -1162,6 +1213,10 @@ export interface RecoveryAssessment {
   readonly indexMissing: boolean;
   /** WP-8-J: deterministic lock-recovery evidence states (12.3.1/ADR-033; §14). */
   readonly lockRecoveryStates: readonly LockRecoveryStateFinding[];
+  /** WP-8-L: deterministic retention deletion evidence states (§15.4/ADR-035). */
+  readonly retentionEvidenceStates: readonly RetentionEvidenceStateFinding[];
+  /** WP-8-L: audit events intentionally retained after a retention deletion (§15.4; never disposition candidates). */
+  readonly retentionSurvivors: readonly RetentionSurvivorFinding[];
   readonly findings: readonly StorageFinding[];
 }
 
@@ -1464,5 +1519,112 @@ export interface RecoveryMutationResult {
   readonly evidenceId?: string;
   /** WP-8-H: deterministic registry-index identity when an index is published/current. */
   readonly indexId?: string;
+  readonly findings?: readonly StorageFinding[];
+}
+
+// ─── WP-8-L: retention deletion and legal hold (contract §15.4, RNT-011…020; ADR-035) ───
+
+/** Closed legal-hold adjudication vocabulary carried by the trusted retention action (§15.4). */
+export type RetentionHoldResult = 'active-hold' | 'unknown-hold-state' | 'stale-hold-decision' | 'clear-current-hold-state';
+
+/** Closed history-status eligibility for retention deletion (only `complete` is eligible in this slice). */
+export type RetentionHistoryEligibility = 'complete';
+
+/** Retention evidence outcome vocabulary (the recorded fact, never a decision). */
+export type RetentionEvidenceOutcome = 'deleted' | 'already-completed';
+
+/** WP-8-L: narrow structured retention action (never a path, descriptor, nonce, callback, or plan action). */
+export interface RetentionMutationAction {
+  /** Closed category vocabulary: exactly the implemented retention operations; no generic deletion exists. */
+  readonly category: 'retention-delete-record' | 'retention-delete-audit';
+  /** Closed retention-deletable target class (record flow: lifecycle fact classes; audit flow: authoritative-audit-event). */
+  readonly targetRecordClass: RecordClassId;
+  /** Canonical target identity (record flow `pgw:r:<32-hex>`; audit flow `pgw:l:<32-hex>`). */
+  readonly targetRecordId: string;
+  /** Exact revision of the durable target (verified from the envelope). */
+  readonly expectedTargetRevision: number;
+  /** Record-bytes digest of the durable target. */
+  readonly targetRecordDigest: string;
+  /** Retention policy identity adjudicated by the trusted authority (opaque control-plane vocabulary). */
+  readonly expectedPolicyIdentity: string;
+  /** Retention policy version adjudicated by the trusted authority. */
+  readonly expectedPolicyVersion: string;
+  /** Exact retention decision identity issued by the trusted authority. */
+  readonly expectedDecisionId: string;
+  /** Hold-state generation/snapshot the authority adjudicated (PGAP-STORAGE-RETENTION-HOLD-STATE-GENERATION-v1 digest over the current configuration identity/version). */
+  readonly expectedHoldStateGeneration: string;
+  /** Explicit hold adjudication result from the trusted authority (never a caller boolean). */
+  readonly expectedHoldResult: RetentionHoldResult;
+  /** Audit-delete only: referenced primary record identity bound by the exact audit event. */
+  readonly referencedRecordId?: string;
+  /** Audit-delete only: referenced primary record digest bound by the exact audit event. */
+  readonly referencedRecordDigest?: string;
+  /** Audit-delete only: exact retention-deletable class of the referenced primary record. */
+  readonly referencedRecordClass?: RecordClassId;
+  /** Audit-delete only: durable retention-delete-record completion evidence identity for the referenced primary. */
+  readonly expectedPrimaryDeletionCompletionEvidenceId?: string;
+  /** Record-delete only: deterministic history-binding digest over the WP-8-K inspection result (§15.4). */
+  readonly expectedHistoryDigest?: string;
+  /** Record-delete only: history status observed by the trusted decision (`complete` only; reconstructed gaps fail closed). */
+  readonly expectedHistoryStatus?: RetentionHistoryEligibility;
+  /** Registry-mode scan-generation token of the decision snapshot (recomputed and compared). */
+  readonly expectedGeneration: string;
+  /** Registry-mode surface-structure token of the decision snapshot (recomputed and compared). */
+  readonly expectedSurfaceGeneration: string;
+}
+
+/** WP-8-L: authorized retention-mutation request (composition boundary). */
+export interface RetentionMutationRequest {
+  /** Genuine WP-6 validated trusted configuration (runtime-branded). */
+  readonly trustedConfiguration: unknown;
+  /** Genuine branded `StorageRetentionActionProvenance` (zero production producers). */
+  readonly retentionActionProvenance: unknown;
+  /** Genuine branded `TrustedStorageBootstrapInput` (read-side correlation for history derivation). */
+  readonly trustedInput: unknown;
+  /** Correlated raw fields (verified for exact equality against the provenance). */
+  readonly locator: string;
+  readonly serviceUid: number;
+  readonly forbiddenRoots: readonly string[];
+  readonly limitProfile: Readonly<Record<string, number>>;
+  /** Narrow structured action; no path, descriptor, nonce, callback, or fs function. */
+  readonly action: RetentionMutationAction;
+  readonly timeSource: LockTimeSource;
+  /** Test-only crash/fsync injection. */
+  readonly hooks?: RetentionMutationHooks;
+}
+
+/** WP-8-L: fixed crash-stage vocabulary (asserted in order; §15.4). */
+export type RetentionMutationStage =
+  | 'before-writer-lock'
+  | 'after-writer-lock'
+  | 'before-intent-publication'
+  | 'after-intent-publication'
+  | 'after-intent-audit-publication'
+  | 'after-post-intent-revalidation'
+  | 'before-target-unlink'
+  | 'after-target-unlink'
+  | 'before-directory-fsync'
+  | 'after-directory-fsync'
+  | 'before-completion-publication'
+  | 'after-completion-publication'
+  | 'after-completion-audit-publication'
+  | 'before-writer-lock-release';
+
+export interface RetentionMutationHooks {
+  /** Runs at each fixed stage; throwing simulates a crash at that stage. */
+  readonly stage?: (stage: RetentionMutationStage) => void;
+  readonly fsyncFile?: (fd: number) => void;
+  readonly fsyncDirectory?: (path: string) => void;
+}
+
+/** WP-8-L: retention-mutation result (pure factual outcomes; no capability, path, or nonce). */
+export interface RetentionMutationResult {
+  readonly ok: boolean;
+  /** `deleted` | `already-completed` (success); `hold-blocked` | `policy-blocked` | `history-incomplete` (factual refusals). */
+  readonly outcome?: 'deleted' | 'already-completed' | 'hold-blocked' | 'policy-blocked' | 'history-incomplete';
+  /** Deterministic deletion-intent evidence identity when durable. */
+  readonly intentEvidenceId?: string;
+  /** Deterministic deletion-completion evidence identity when durable. */
+  readonly completionEvidenceId?: string;
   readonly findings?: readonly StorageFinding[];
 }

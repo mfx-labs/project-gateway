@@ -18,7 +18,7 @@ import {
 } from '../../../src/storage/trusted-input/bootstrap-input.js';
 import { initializeTrustedStore } from '../../../src/storage/initialization/initialize.js';
 import { publishRecord } from '../../../src/storage/publication/index.js';
-import { readRecord, inspectAuditHistory } from '../../../src/storage/read/index.js';
+import { readRecord, inspectAuditHistory, verifyRecord, enumerateClass } from '../../../src/storage/read/index.js';
 import { deriveRegistryView } from '../../../src/storage/registry/compose.js';
 import { validateArtifactInput, createSchemaRegistry } from '../../../src/api/validate.js';
 import { computePayloadDigest, canonicalEnvelopeBytes } from '../../../src/storage/format/envelope.js';
@@ -325,10 +325,18 @@ function writeProvenance(locator: string) {
 }
 
 function publishApproval(env: TestEnv, recordId: string, payload: Readonly<Record<string, unknown>> = { approved: true }): void {
+  const provenance = createStorageWriteActionProvenance({
+    actionIdentity: WRITE_ACTION,
+    locator: env.dir,
+    serviceUid: UID,
+    forbiddenRoots: [],
+    configurationIdentity: CONFIG_IDENTITY,
+    limitProfile: env.limitProfile,
+  });
   const result = publishRecord({
     trustedConfiguration: env.config,
     bootstrapInput: env.trustedInput,
-    writeActionProvenance: writeProvenance(env.dir),
+    writeActionProvenance: provenance,
     locator: env.dir,
     serviceUid: UID,
     forbiddenRoots: [],
@@ -1263,5 +1271,321 @@ test('mcp: history inspection never mutates the store (clean, paginated, stale, 
   } finally {
     rmSync(env.dir, { recursive: true, force: true });
     rmSync(plain.dir, { recursive: true, force: true });
+  }
+});
+
+// ── WP-9 Slice 3: verify-record and enumerate-class ────────────────────────
+
+test('mcp: verify-record domain equivalence (exact match, absent, malformed, digest and identity mismatch)', () => {
+  const env = makeStore();
+  try {
+    publishApproval(env, RECORD_ID_A);
+    // Exact match.
+    let r = inspect(env, 'verify-record', { recordClass: 'approval-record', recordId: RECORD_ID_A }, 'req-verify');
+    assert.equal(r.ok, true, JSON.stringify(r.error));
+    const result = r.result as { verified: boolean; recordClass: string; recordId: string };
+    assert.equal(result.verified, true);
+    assert.equal(result.recordId, RECORD_ID_A);
+    assert.equal((r as { requestId?: string }).requestId, 'req-verify');
+    assert.equal('record' in result, false, 'verify never returns record content');
+    const direct = verifyRecord({ trustedConfiguration: env.config, trustedInput: env.trustedInput, recordClass: 'approval-record', recordId: RECORD_ID_A });
+    assert.equal(direct.ok, result.verified, 'MCP conclusion must equal the direct domain conclusion');
+    // Absent target.
+    r = inspect(env, 'verify-record', { recordClass: 'approval-record', recordId: 'pgw:r:' + 'c'.repeat(32) });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'not-found');
+    // Malformed stored bytes.
+    const recordPath = `${env.storeRoot}/records/approval/aaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.rec`;
+    writeFileSync(recordPath, '{broken', { mode: 0o600 });
+    chmodSync(recordPath, 0o600);
+    r = inspect(env, 'verify-record', { recordClass: 'approval-record', recordId: RECORD_ID_A });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'integrity-conflict', 'a malformed stored object is a storage integrity condition, never a client error');
+    // Identity mismatch: a canonical envelope at A's derived location that
+    // declares a DIFFERENT identity fails closed (location/identity binding).
+    const canonical = canonicalEnvelopeBytes({ recordKind: 'ApprovalRecord', formatVersion: '1.0', recordId: RECORD_ID_B, revision: 1, createdAt: '2026-01-01T00:00:00.000Z', trustedActionId: WRITE_ACTION, payload: { approved: true }, payloadDigest: computePayloadDigest({ approved: true }) });
+    writeFileSync(recordPath, canonical.canonicalUtf8, { mode: 0o600 });
+    chmodSync(recordPath, 0o600);
+    r = inspect(env, 'verify-record', { recordClass: 'approval-record', recordId: RECORD_ID_A });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'integrity-conflict', 'a stored identity that does not match its derived location is a fail-closed integrity condition');
+    // Direct-domain equivalence of the same condition.
+    const directMismatch = verifyRecord({ trustedConfiguration: env.config, trustedInput: env.trustedInput, recordClass: 'approval-record', recordId: RECORD_ID_A });
+    assert.equal(directMismatch.ok, false);
+    assert.equal(directMismatch.findings[0]?.code, 'ERR-STO-INTEGRITY');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: verify-record schema boundary and requestId echo on error paths', () => {
+  const env = makeStore();
+  try {
+    publishApproval(env, RECORD_ID_A);
+    // Unknown field.
+    let r = inspect(env, 'verify-record', { recordClass: 'approval-record', recordId: RECORD_ID_A, digest: 'sha-256:' + '0'.repeat(64) });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-request');
+    // Missing required.
+    r = inspect(env, 'verify-record', { recordClass: 'approval-record' });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-request');
+    // Wrong types / malformed IDs / unsupported class.
+    r = inspect(env, 'verify-record', { recordClass: 'approval-record', recordId: 42 });
+    assert.equal(r.ok, false);
+    for (const bad of ['/abs/path', '../escape', 'pgw:r:' + 'Z'.repeat(32), 'sha-256:' + 'a'.repeat(64)]) {
+      r = inspect(env, 'verify-record', { recordClass: 'approval-record', recordId: bad });
+      assert.equal(r.ok, false);
+      assert.equal(r.error?.code, 'invalid-request');
+    }
+    r = inspect(env, 'verify-record', { recordClass: 'not-a-class', recordId: RECORD_ID_A });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-request');
+    // requestId echo on success (covered above) and errors.
+    r = inspect(env, 'verify-record', { recordClass: 'approval-record', recordId: 'pgw:r:' + 'c'.repeat(32) }, 'req-vnf');
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'not-found');
+    assert.equal(r.error?.requestId, 'req-vnf');
+    r = inspect(env, 'verify-record', { recordClass: 'approval-record', recordId: 'bad' }, 'req-vbad');
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.requestId, 'req-vbad');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: enumerate-class domain equivalence (membership, findings, truncation, continuation)', () => {
+  const env = makeStore(profile({ enumerationResults: 2 }));
+  try {
+    const ids = ['a', 'b', 'c', 'd', 'e'].map((h) => `pgw:r:${h.repeat(32)}`);
+    for (const id of ids) publishApproval(env, id);
+    // Walk MCP pages and the direct domain walk; compare.
+    const mcpIds: string[] = [];
+    const mcpFindings: string[] = [];
+    let mcpTruncatedPages = 0;
+    let cursor: string | undefined;
+    for (let i = 0; i < 64; i++) {
+      const r = inspect(env, 'enumerate-class', { recordClass: 'approval-record', ...(cursor !== undefined ? { continuation: cursor } : {}) });
+      assert.equal(r.ok, true, JSON.stringify(r.error));
+      const result = r.result as { items: Array<{ recordId?: string; finding?: { code: string } }>; truncated: boolean; continuation?: string; scannedEntries: number };
+      for (const item of result.items) {
+        if (item.recordId !== undefined) mcpIds.push(item.recordId);
+        if (item.finding !== undefined) mcpFindings.push(item.finding.code);
+      }
+      if (result.truncated) mcpTruncatedPages++;
+      if (result.continuation === undefined) break;
+      cursor = result.continuation;
+    }
+    assert.ok(mcpTruncatedPages >= 2, 'the results budget must force a multi-page walk');
+    assert.deepEqual([...mcpIds].sort(), [...ids].sort(), 'every record exactly once, no omissions, no duplicates');
+    // Direct domain walk.
+    const directIds: string[] = [];
+    let directCursor: { readonly shard: string; readonly entry: string } | undefined;
+    for (let i = 0; i < 64; i++) {
+      const page = enumerateClass({ trustedConfiguration: env.config, trustedInput: env.trustedInput, recordClass: 'approval-record', ...(directCursor !== undefined ? { continuation: directCursor } : {}) });
+      assert.equal(page.ok, true);
+      for (const item of page.items) {
+        if (item.recordId !== undefined) directIds.push(item.recordId);
+      }
+      if (page.continuation === undefined) break;
+      directCursor = page.continuation;
+    }
+    assert.deepEqual([...mcpIds].sort(), [...directIds].sort(), 'concatenated MCP enumeration must equal the direct domain walk');
+    assert.deepEqual(mcpFindings, [], 'a clean store produces no finding items');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: enumerate-class reports bounded foreign-entry findings instead of failing', () => {
+  const env = makeStore();
+  try {
+    publishApproval(env, RECORD_ID_A);
+    // A junk file inside the class shard directory.
+    writeFileSync(`${env.storeRoot}/records/approval/aaaa/junk.txt`, 'not a record', { mode: 0o600 });
+    chmodSync(`${env.storeRoot}/records/approval/aaaa/junk.txt`, 0o600);
+    const r = inspect(env, 'enumerate-class', { recordClass: 'approval-record' });
+    assert.equal(r.ok, true, 'foreign entries are bounded findings, never an adapter failure');
+    const result = r.result as { items: Array<{ recordId?: string; finding?: { code: string } }> };
+    assert.equal(result.items.some((i) => i.finding?.code === 'ERR-STO-MALFORMED'), true, 'the foreign-entry finding must be visible');
+    assert.equal(result.items.some((i) => i.recordId === RECORD_ID_A), true, 'verified records are still reported');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: enumerate-class empty result is a successful empty enumeration; truncation never collapses into it', () => {
+  const env = makeStore();
+  try {
+    // No records in the class: authoritative empty success.
+    let r = inspect(env, 'enumerate-class', { recordClass: 'approval-record' });
+    assert.equal(r.ok, true);
+    let result = r.result as { items: unknown[]; truncated: boolean; continuation?: string };
+    assert.equal(result.items.length, 0);
+    assert.equal(result.truncated, false);
+    assert.equal('continuation' in result, false);
+    // A malformed continuation is NOT an empty success.
+    r = inspect(env, 'enumerate-class', { recordClass: 'approval-record', continuation: '!!!' });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-cursor');
+    // A shape-broken decoded cursor (NaN-tolerant domain parse) is rejected
+    // at the adapter instead of degrading into a domain empty success.
+    const badShard = Buffer.from(JSON.stringify({ shard: 'zzzz', entry: 'x.rec' }), 'utf8').toString('base64url');
+    r = inspect(env, 'enumerate-class', { recordClass: 'approval-record', continuation: badShard });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-cursor');
+    // Empty store with a truncated... cannot be forced without records; the
+    // truncation path is covered by the multi-page walk test.
+    void result;
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: enumerate-class cursor tamper matrix and between-page mutation semantics', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    publishApproval(env, 'pgw:r:' + 'a'.repeat(32));
+    publishApproval(env, 'pgw:r:' + 'b'.repeat(32));
+    const page1 = inspect(env, 'enumerate-class', { recordClass: 'approval-record' });
+    assert.equal(page1.ok, true);
+    const page1Result = page1.result as { truncated: boolean; continuation: string };
+    assert.equal(page1Result.truncated, true);
+    const cursor = page1Result.continuation;
+    // Tamper matrix: the adapter shape-checks the decoded position tuple.
+    const cases: Array<{ name: string; payload: unknown }> = [
+      { name: 'bad shard letters', payload: { shard: 'zzzz', entry: 'x.rec' } },
+      { name: 'short shard', payload: { shard: 'abc', entry: 'x.rec' } },
+      { name: 'long shard', payload: { shard: '12345', entry: 'x.rec' } },
+      { name: 'missing entry', payload: { shard: 'aaaa' } },
+      { name: 'empty entry', payload: { shard: 'aaaa', entry: '' } },
+      { name: 'oversized entry', payload: { shard: 'aaaa', entry: 'x'.repeat(129) } },
+      { name: 'wrong types', payload: { shard: 42, entry: [] } },
+      { name: 'array payload', payload: [] },
+    ];
+    for (const c of cases) {
+      const encoded = Buffer.from(JSON.stringify(c.payload), 'utf8').toString('base64url');
+      const r = inspect(env, 'enumerate-class', { recordClass: 'approval-record', continuation: encoded });
+      assert.equal(r.ok, false, `${c.name} must fail closed`);
+      assert.equal(r.error?.code, 'invalid-cursor');
+    }
+    // Between-page mutation: the domain's EnumerationCursor is a POSITION
+    // tuple (RDS-004/LMT-006) with no snapshot binding; the adapter mirrors
+    // the domain. A record published after the resume position appears on
+    // later pages; a record published before the position is not re-reported.
+    publishApproval(env, 'pgw:r:' + 'e'.repeat(32)); // shard eeee: after aaaa/bbbb positions
+    publishApproval(env, 'pgw:r:' + '0'.repeat(32)); // shard 0000: before the resume position
+    const mcpIds: string[] = [];
+    let resume: string | undefined = cursor;
+    for (let i = 0; i < 64; i++) {
+      const r = inspect(env, 'enumerate-class', { recordClass: 'approval-record', ...(resume !== undefined ? { continuation: resume } : {}) });
+      assert.equal(r.ok, true, JSON.stringify(r.error));
+      const result = r.result as { items: Array<{ recordId?: string }>; continuation?: string };
+      for (const item of result.items) {
+        if (item.recordId !== undefined) mcpIds.push(item.recordId);
+      }
+      if (result.continuation === undefined) break;
+      resume = result.continuation;
+    }
+    assert.equal(mcpIds.includes('pgw:r:' + 'e'.repeat(32)), true, 'a later-shard record appears on the resumed walk (domain position semantics)');
+    assert.equal(mcpIds.includes('pgw:r:' + '0'.repeat(32)), false, 'an earlier-shard record is not re-reported (no duplicates)');
+    // Irrelevant non-authoritative index object does not affect enumeration.
+    mkdirSync(`${env.storeRoot}/index`, { recursive: true, mode: 0o700 });
+    writeFileSync(`${env.storeRoot}/index/registry-index`, 'junk', { mode: 0o600 });
+    chmodSync(`${env.storeRoot}/index/registry-index`, 0o600);
+    const afterIndex = inspect(env, 'enumerate-class', { recordClass: 'approval-record', continuation: cursor });
+    assert.equal(afterIndex.ok, true, 'a non-authoritative index change must not invalidate enumeration');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: enumeration cursor is position-only per domain contract (cross-store reuse mirrors the domain)', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  const other = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    publishApproval(env, 'pgw:r:' + 'a'.repeat(32));
+    publishApproval(env, 'pgw:r:' + 'b'.repeat(32));
+    const page1 = inspect(env, 'enumerate-class', { recordClass: 'approval-record' });
+    const page1Result = page1.result as { items: Array<{ recordId?: string }>; continuation?: string };
+    const cursor = page1Result.continuation;
+    assert.ok(cursor !== undefined);
+    // The domain defines the enumeration cursor as a position tuple without
+    // a store binding; using it on another context resumes THAT store's walk
+    // at the same position. The adapter mirrors the domain exactly (no
+    // cross-store data is ever visible; no store-A item leaks).
+    const direct = enumerateClass({ trustedConfiguration: other.config, trustedInput: other.trustedInput, recordClass: 'approval-record', continuation: { shard: 'aaaa', entry: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.rec' } });
+    assert.equal(direct.ok, true);
+    const r = inspect(other, 'enumerate-class', { recordClass: 'approval-record', continuation: cursor });
+    assert.equal(r.ok, true, 'position resume is domain-owned; the MCP result must equal the direct domain result');
+    assert.deepEqual((r.result as { items: Array<{ recordId?: string }> }).items.map((i) => i.recordId), direct.items.map((i) => i.recordId), 'MCP and direct domain resume are identical');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+    rmSync(other.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: enumerate-class schema boundary, requestId echo, and redaction', () => {
+  const env = makeStore();
+  try {
+    publishApproval(env, RECORD_ID_A);
+    // Unknown field / missing / wrong type / unsupported class.
+    let r = inspect(env, 'enumerate-class', { recordClass: 'approval-record', filter: 'x' });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-request');
+    r = inspect(env, 'enumerate-class', {});
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-request');
+    r = inspect(env, 'enumerate-class', { recordClass: 42 });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-request');
+    r = inspect(env, 'enumerate-class', { recordClass: 'configuration' });
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-request');
+    // requestId echo on success and errors.
+    r = inspect(env, 'enumerate-class', { recordClass: 'approval-record' }, 'req-enum');
+    assert.equal(r.ok, true);
+    assert.equal((r as { requestId?: string }).requestId, 'req-enum');
+    r = inspect(env, 'enumerate-class', { recordClass: 'approval-record', continuation: '!!!' }, 'req-enumbad');
+    assert.equal(r.ok, false);
+    assert.equal(r.error?.code, 'invalid-cursor');
+    assert.equal(r.error?.requestId, 'req-enumbad');
+    // Redaction: items are logical identities only; no paths or entries leak.
+    const serialized = JSON.stringify(r = inspect(env, 'enumerate-class', { recordClass: 'approval-record' }));
+    assert.equal(serialized.includes(env.dir), false, 'no absolute path may leak');
+    assert.equal(/\.rec|\.aud|shard|entry/.test(serialized), false, 'no filesystem entry names or shard components may leak in results');
+    assert.ok(serialized.includes(RECORD_ID_A), 'normative record identities remain public facts');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('mcp: verify and enumeration results/cursors grant zero authority; inspection never mutates', () => {
+  const env = makeStore(profile({ enumerationResults: 1 }));
+  try {
+    publishApproval(env, 'pgw:r:' + 'a'.repeat(32));
+    publishApproval(env, 'pgw:r:' + 'b'.repeat(32));
+    const before = snapshotStore(env.storeRoot) + snapshotStore(env.configRoot);
+    // verify-record success + failure.
+    inspect(env, 'verify-record', { recordClass: 'approval-record', recordId: 'pgw:r:' + 'a'.repeat(32) });
+    inspect(env, 'verify-record', { recordClass: 'approval-record', recordId: 'pgw:r:' + 'c'.repeat(32) });
+    // enumerate-class: single page, resumed pages, tampered cursor, malformed cursor.
+    const page1 = inspect(env, 'enumerate-class', { recordClass: 'approval-record' });
+    assert.equal(page1.ok, true);
+    const cursor = (page1.result as { continuation?: string }).continuation;
+    if (cursor !== undefined) {
+      inspect(env, 'enumerate-class', { recordClass: 'approval-record', continuation: cursor });
+    }
+    inspect(env, 'enumerate-class', { recordClass: 'approval-record', continuation: 'tampered!' });
+    inspect(env, 'enumerate-class', { recordClass: 'approval-record', continuation: Buffer.from(JSON.stringify({ shard: 'zz', entry: 'x' }), 'utf8').toString('base64url') });
+    const after = snapshotStore(env.storeRoot) + snapshotStore(env.configRoot);
+    assert.equal(after, before, 'no store object may be created, modified, or removed by verify or enumeration inspection');
+    // Non-escalation: verification/enumeration results are data only.
+    const verifyResult = inspect(env, 'verify-record', { recordClass: 'approval-record', recordId: 'pgw:r:' + 'a'.repeat(32) });
+    const asInput = { configurationIdentity: CONFIG_IDENTITY, serviceUid: UID, forbiddenRoots: [], locator: env.dir, limitProfile: env.limitProfile, actionIdentity: 'replay', result: verifyResult };
+    const context = createInspectionContext({ trustedConfiguration: env.config, trustedInput: asInput });
+    assert.equal(context.ok, false, 'structural replay of verification data must never become a trusted input');
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
   }
 });

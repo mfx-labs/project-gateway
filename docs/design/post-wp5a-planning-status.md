@@ -462,7 +462,8 @@ evidence.
 > remains WP-9.
 
 **WP-9 (MCP inspection surface) — Slice 1 committed at
-`b3cde8bdf853452b57401812708fb3096a65da45`; Slice 2 candidate ready for
+`b3cde8bdf853452b57401812708fb3096a65da45`; Slice 2 committed at
+`0f3ac3ae2fcae7deb4bd167659e5d9b1256e764e`; Slice 3 candidate ready for
 independent review**
 (`docs/reports/wp-9-mcp-inspection-surface-implementation-report.md`): the
 **transport-free MCP inspection protocol/tool layer**
@@ -472,13 +473,20 @@ correction): `validate-artifact` (pure WP-4 validation),
 `inspect-stored-record` (exact verified WP-8 read), `inspect-registry`
 (authoritative WP-8 registry view with opaque self-validating
 continuation and optional verified persistent-index fast path).
-**Slice 2 (candidate): `inspect-audit-history`** — bounded read-only
+Slice 2 (committed): `inspect-audit-history` — bounded read-only
 audit-history inspection routing the assurance-revalidated WP-8K
 `inspectAuditHistory` API through the committed adapter boundary;
 normative tuple ordering, snapshot-bound continuation
 (invalid-cursor/stale-cursor distinction), status/completeness,
 reconstruction and event-without-evidence findings preserved verbatim;
 closed WP-8K target vocabulary; no package-export change; no WP-8K
+production change.
+**Slice 3 (candidate): `verify-record` and `enumerate-class`** — WP-8
+verify-by-identity (`verifyRecord`) and bounded deterministic class
+enumeration (`enumerateClass`) through the committed adapter boundary;
+exact stored-identity verification (never content validation, never a
+lifecycle claim), truthful truncation, opaque position continuation,
+foreign-entry findings preserved; no package-export change; no domain
 production change. Strict closed-field request
 validation; deterministic public error taxonomy (invalid-request /
 not-found / unsupported / limit-exceeded / invalid-cursor / stale-cursor /
@@ -495,8 +503,7 @@ was accepted and committed at `b3cde8bdf853452b57401812708fb3096a65da45`**;
 acceptance of Slice 2 is not declared by the implementation.
 Remaining WP-9 work: transport/runtime ownership (no MCP transport is
 normatively selected — exact open decision, out of this slice),
-verify-by-identity / enumeration MCP tools, multi-store surface
-registration, and WP-9 generation seeding.
+multi-store surface registration, and WP-9 generation seeding.
 
 - **WP-8-N configuration migration DEFERRED** (human decision (c)
   Deferral) under DS-13 / §23.2 (DCS-002): the live configuration
@@ -520,9 +527,9 @@ registration, and WP-9 generation seeding.
 - **Later packages**: WP-9 generation seeding rides with WP-9; WP-12
   integration later-owned.
 - **Current work package: WP-9 (MCP inspection surface)** —
-  prerequisites WP-7 and WP-4 satisfied; inspection-only; slice 1
-  committed; slice 2 (audit-history inspection tool) candidate ready
-  for independent review (see the WP-9 section above).
+  prerequisites WP-7 and WP-4 satisfied; inspection-only; slices 1-2
+  committed; slice 3 (verify-record + enumerate-class tools) candidate
+  ready for independent review (see the WP-9 section above).
 
 WP-9 and later
 packages are **not authorized**. No push, release, publication,

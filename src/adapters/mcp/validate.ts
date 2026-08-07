@@ -140,6 +140,50 @@ export function validateStoredRecordParams(params: Readonly<Record<string, unkno
   return { ok: true, value: { recordClass, recordId } };
 }
 
+/** Validate `verify-record` params: `{ recordClass, recordId }` (logical identifiers only; exact WP-8 verify vocabulary). */
+export function validateVerifyRecordParams(params: Readonly<Record<string, unknown>>): { readonly ok: true; readonly value: { readonly recordClass: string; readonly recordId: string } } | { readonly ok: false; readonly issue: ValidationIssue } {
+  const unknown = rejectUnknownFields(params, ['recordClass', 'recordId']);
+  if (unknown !== undefined) return { ok: false, issue: unknown };
+  const recordClass = params['recordClass'];
+  if (typeof recordClass !== 'string' || recordClass.length === 0 || recordClass.length > 64) {
+    return { ok: false, issue: { code: 'invalid-request', message: 'recordClass must be a non-empty string within the size bound' } };
+  }
+  if (!isAcceptedRecordClass(recordClass)) {
+    return { ok: false, issue: { code: 'invalid-request', message: 'recordClass is outside the closed accepted record-class vocabulary' } };
+  }
+  const recordId = params['recordId'];
+  if (typeof recordId !== 'string' || recordId.length === 0 || recordId.length > 128) {
+    return { ok: false, issue: { code: 'invalid-request', message: 'recordId must be a non-empty string within the size bound' } };
+  }
+  if (!isCanonicalTypedIdentifier(recordId)) {
+    return { ok: false, issue: { code: 'invalid-request', message: 'recordId is not a canonical typed identifier' } };
+  }
+  return { ok: true, value: { recordClass, recordId } };
+}
+
+/** Validate `enumerate-class` params: `{ recordClass, continuation? }` (closed; bounded). */
+export function validateEnumerateClassParams(params: Readonly<Record<string, unknown>>): { readonly ok: true; readonly value: { readonly recordClass: string; readonly continuation?: string } } | { readonly ok: false; readonly issue: ValidationIssue } {
+  const unknown = rejectUnknownFields(params, ['recordClass', 'continuation']);
+  if (unknown !== undefined) return { ok: false, issue: unknown };
+  const recordClass = params['recordClass'];
+  if (typeof recordClass !== 'string' || recordClass.length === 0 || recordClass.length > 64) {
+    return { ok: false, issue: { code: 'invalid-request', message: 'recordClass must be a non-empty string within the size bound' } };
+  }
+  // The exact WP-8 enumeration vocabulary (read composition predicate).
+  if (!isAcceptedRecordClass(recordClass)) {
+    return { ok: false, issue: { code: 'invalid-request', message: 'recordClass is outside the closed accepted record-class vocabulary' } };
+  }
+  let continuation: string | undefined;
+  if (params['continuation'] !== undefined) {
+    const raw = params['continuation'];
+    if (typeof raw !== 'string' || raw.length === 0 || raw.length > CURSOR_MAX_ENCODED_BYTES) {
+      return { ok: false, issue: { code: 'invalid-cursor', message: 'continuation must be a bounded opaque string' } };
+    }
+    continuation = raw;
+  }
+  return { ok: true, value: { recordClass, ...(continuation !== undefined ? { continuation } : {}) } };
+}
+
 /** Validate `inspect-registry` params: `{ continuation?, usePersistentIndex? }` (closed; bounded). */
 export function validateRegistryParams(params: Readonly<Record<string, unknown>>): { readonly ok: true; readonly value: { readonly continuation?: string; readonly usePersistentIndex: boolean } } | { readonly ok: false; readonly issue: ValidationIssue } {
   const unknown = rejectUnknownFields(params, ['continuation', 'usePersistentIndex']);
@@ -161,6 +205,23 @@ export function validateRegistryParams(params: Readonly<Record<string, unknown>>
     usePersistentIndex = flag;
   }
   return { ok: true, value: { ...(continuation !== undefined ? { continuation } : {}), usePersistentIndex } };
+}
+
+/** Shape-validate a decoded enumeration cursor (`{ shard, entry }`; RDS-004/LMT-006). */
+export function validateEnumerationCursorShape(cursor: unknown): { readonly ok: true; readonly shard: string; readonly entry: string } | { readonly ok: false; readonly issue: ValidationIssue } {
+  if (typeof cursor !== 'object' || cursor === null || Array.isArray(cursor)) {
+    return { ok: false, issue: { code: 'invalid-cursor', message: 'continuation payload must be an enumeration cursor object' } };
+  }
+  const c = cursor as Readonly<Record<string, unknown>>;
+  const shard = c['shard'];
+  const entry = c['entry'];
+  if (typeof shard !== 'string' || !/^[0-9a-f]{4}$/.test(shard)) {
+    return { ok: false, issue: { code: 'invalid-cursor', message: 'continuation shard must be a four-hex-digit position component' } };
+  }
+  if (typeof entry !== 'string' || entry.length === 0 || entry.length > 128) {
+    return { ok: false, issue: { code: 'invalid-cursor', message: 'continuation entry must be a bounded non-empty string' } };
+  }
+  return { ok: true, shard, entry };
 }
 
 /** Validate `inspect-audit-history` params: `{ recordClass, recordId, revision?, continuation? }` (logical identifiers only; WP-8K target vocabulary). */
@@ -211,6 +272,8 @@ export function validateToolParams(tool: string, params: unknown): { readonly ok
     case 'inspect-stored-record':
     case 'inspect-registry':
     case 'inspect-audit-history':
+    case 'verify-record':
+    case 'enumerate-class':
       return validateToolSpecific(tool, record);
     default:
       return { ok: false, issue: { code: 'invalid-request', message: 'tool is outside the closed inspection vocabulary' } };
@@ -227,6 +290,10 @@ function validateToolSpecific(tool: string, record: Readonly<Record<string, unkn
       return validateRegistryParams(record);
     case 'inspect-audit-history':
       return validateAuditHistoryParams(record);
+    case 'verify-record':
+      return validateVerifyRecordParams(record);
+    case 'enumerate-class':
+      return validateEnumerateClassParams(record);
     default:
       return { ok: false, issue: { code: 'invalid-request', message: 'tool is outside the closed inspection vocabulary' } };
   }

@@ -107,9 +107,9 @@ test('mcp static guard: package export maps ./mcp to the adapter entry point onl
   assert.equal(pkg.exports?.['./mcp']?.types, './dist/adapters/mcp/index.d.ts');
 });
 
-test('mcp static guard: the closed tool inventory includes exactly the four committed tools', () => {
+test('mcp static guard: the closed tool inventory includes exactly the six committed tools', () => {
   const types = readFileSync(join(MCP_SRC, 'types.ts'), 'utf8');
-  assert.equal(/MCP_INSPECTION_TOOLS = \['validate-artifact', 'inspect-stored-record', 'inspect-registry', 'inspect-audit-history'\]/.test(types), true, 'the closed tool inventory must be exactly the four-tool vocabulary');
+  assert.equal(/MCP_INSPECTION_TOOLS = \['validate-artifact', 'inspect-stored-record', 'inspect-registry', 'inspect-audit-history', 'verify-record', 'enumerate-class'\]/.test(types), true, 'the closed tool inventory must be exactly the six-tool vocabulary');
 });
 
 test('mcp static guard: the adapter is transport-free (no server/runtime imports) and dependency-free', () => {

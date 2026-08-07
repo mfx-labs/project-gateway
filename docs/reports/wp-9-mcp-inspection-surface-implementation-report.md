@@ -265,15 +265,69 @@ exactly: `validate-artifact`, `inspect-stored-record`, `inspect-registry`,
 - **Package/export changes:** none — the committed `./mcp` subpath is
   extended only.
 
+
+## 12c. Slice 3 — Verify-by-identity and enumeration inspection
+
+Slice 3 adds exactly two bounded, read-only MCP inspection operations over
+the existing accepted WP-8 read composition (slice-coherence decision A:
+both operations are contract-defined, prerequisite-satisfied, and share the
+same read-only adapter boundary):
+
+- **`verify-record`** — WP-8 verify-by-identity (`verifyRecord` →
+  `verifyRecordByIdentity`; RDS-003): verifies the exact stored identity
+  relationship for one logical class + canonical typed identity. Request:
+  `{ recordClass, recordId }` (closed accepted class vocabulary, canonical
+  typed identifiers only; no paths). Response on exact verified match:
+  `{ verified: true, recordClass, recordId }` — never record content, never
+  a lifecycle/approval/activation claim. Fail-closed stored conditions
+  (absent → `not-found`; malformed / identity-at-wrong-location / digest
+  self-inconsistency → `integrity-conflict`; limits → `limit-exceeded`)
+  map through the committed taxonomy and are NEVER flattened to
+  `verified: false` or empty success. Distinct from `validate-artifact`:
+  supplied-content validation vs stored-identity verification.
+- **`enumerate-class`** — WP-8 bounded deterministic class enumeration
+  (`enumerateClass` → `enumerateClassByIdentity`; RDS-004/LMT-006): verified
+  record identities plus bounded findings for foreign/malformed entries,
+  deterministic shard order, `scannedEntries`/`truncated` reported
+  truthfully, opaque position continuation through the committed base64url
+  cursor convention. Request: `{ recordClass, continuation? }`. Not a
+  registry view (`inspect-registry` keeps the authoritative derived
+  semantics) and not a filesystem listing: the adapter imports no
+  filesystem API and no generic enumeration vocabulary.
+
+Cursor model: the domain `EnumerationCursor` is a plain position tuple
+(`{ shard, entry }`) with no snapshot/generation binding — the adapter
+shape-checks the decoded opaque payload (4-hex shard, bounded entry) so a
+malformed shard can never degrade into the domain's NaN-tolerant
+empty-success, then passes the position to the domain unchanged
+(between-page mutations and cross-store position reuse follow the exact
+domain position-resume semantics; an irrelevant non-authoritative index
+change never affects enumeration). Error mapping reuses the committed
+shared mapper unchanged (no new codes were required; no mapper expansion
+was made in this slice).
+
+Read-only/non-escalation: both tools route through the committed read
+composition (same `read/index.js` import already allowed by the static
+guard — no new domain dependency, no package-export change); results and
+cursors are plain frozen data (replay against the trusted-input brand
+boundary confers zero authority); the runtime mutation watchdog covers
+verify + enumeration calls including resumed walks and tampered cursors.
+
+Focused tests (9 new): verify domain equivalence (exact/absent/malformed/
+identity-mismatch + schema boundary + requestId echo), enumeration domain
+equivalence (multi-page walk, every entry exactly once, concatenation
+equals the direct domain walk), foreign-entry findings, empty-enumeration
+semantics (empty success never confused with truncation or malformed
+cursors), cursor tamper matrix, between-page mutation semantics, cross-store
+position-resume equivalence, redaction, and read-only/non-escalation.
 ## 13. Remaining WP-9 Work (not in this slice)
 
 - **Transport/runtime ownership — exact open decision:** no MCP transport is
   normatively selected; a transport shim (MCP server runtime, stdio/SSE/SDK
   ownership, host process wiring) requires a product decision and is
   explicitly out of this slice.
-- Verify-by-identity and enumeration MCP tools.
 - Multi-store surface registration (currently one verified store per
   surface instance).
 - WP-9 generation seeding (rides with WP-9 per the WP-8 planning note).
 - Transport/runtime ownership remains the exact open product decision
-  (unchanged; not part of Slice 1 or Slice 2).
+  (unchanged; not part of Slice 1, Slice 2, or Slice 3).

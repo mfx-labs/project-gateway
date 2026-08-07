@@ -54,6 +54,13 @@ const STORAGE_FS_DELEGATED_MODULES: ReadonlySet<string> = new Set([
   // allowlist; every other registry/recovery module is fs-free and remains
   // subject to this blanket assertion).
   'storage/recovery/scan.js',
+  // WP-8-F: the two exact recovery-mutation fs owners (descriptor-bound
+  // re-verification and the exact-own-temporary unlink). The pure evidence,
+  // execution, assessment, and plan modules remain under this blanket
+  // no-I/O assertion.
+  'storage/recovery/reverify.js',
+  'storage/recovery/cleanup.js',
+  'storage/recovery/quarantine.js',
 ]);
 
 /**
@@ -200,6 +207,9 @@ test('security: storage fs-module delegation is exact and fail-closed', () => {
     'dist/storage/probe/scratch.js',
     'dist/storage/metadata/bootstrap-persist.js',
     'dist/storage/recovery/scan.js',
+    'dist/storage/recovery/reverify.js',
+    'dist/storage/recovery/cleanup.js',
+    'dist/storage/recovery/quarantine.js',
   ];
   for (const path of accepted) {
     assert.equal(isStorageFsDelegatedModule(path), true, `expected delegation for ${path}`);

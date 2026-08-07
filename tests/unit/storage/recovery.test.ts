@@ -216,7 +216,9 @@ test('recovery: orphan temporaries classify per WPR-023 (a)-(d)', () => {
     assert.equal(removal.safety, 'safe');
     assert.equal(removal.requiredCapability, 'recovery');
     assert.equal(removal.verifyImmediatelyBeforeMutation, true);
-    assert.equal(removal.targetLogicalIdentity, twinName);
+    // WP-8-F: the (a) observation now carries the twin's envelope facts, so
+    // the plan target is the twin's logical identity (never a path).
+    assert.equal(removal.targetLogicalIdentity, 'pgw:r:11110000000000000000000000000001');
     // (b) and (c) quarantine safely; (d) is disposition-led quarantine.
     const quarantines = plan.actions.filter((a) => a.category === 'quarantine');
     assert.equal(quarantines.length, 3);

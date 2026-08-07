@@ -27,7 +27,7 @@ import { classifyExistingTarget, type ExistingTargetClass } from '../errors/prec
 import { deriveRecordRelativePath } from '../layout/layout.js';
 import { writeAllSync } from '../metadata/bootstrap-persist.js';
 import { comparePrePostStat, verifyDirectoryStat, verifyRegularFileStat } from '../root/identity.js';
-import type { WriteCapability } from '../capabilities/authenticity.js';
+import { isGenuineWriteCapability, isGenuineRecoveryPublicationPermit, recoveryPublicationPermitLive, type RecoveryPublicationPermit, type WriteCapability } from '../capabilities/authenticity.js';
 import type { PublicationHooks, RecordClassId } from '../types.js';
 
 const { O_CREAT, O_EXCL, O_WRONLY, O_RDONLY, O_NOFOLLOW, O_DIRECTORY } = constants;
@@ -122,11 +122,26 @@ export function ensureClassShardDirectories(input: {
   readonly rawIdentifier: string;
   readonly serviceUid: number;
 }): PublishStageResult {
+  // WP-8-F correction: the generic substrate accepts WRITE authority only;
+  // a recovery capability (or any other brand) is rejected before any
+  // filesystem access. Recovery publication provisions through the exact
+  // permit-bound entry point only.
+  if (!isGenuineWriteCapability(input.capability)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'write capability operand is not genuine' };
+  }
   const check = input.capability.verify('record-publish');
   if (!check.ok) {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'write capability is not usable at the class/shard boundary' };
   }
-  const derived = deriveRecordRelativePath(input.recordClass, input.rawIdentifier);
+  return ensureClassShardDirectoriesFor(input.namespaceRoot, input.recordClass, input.rawIdentifier, input.serviceUid);
+}
+
+/**
+ * Module-private class/shard provisioning (write path and the exact-record
+ * recovery entry point; authority is checked by the caller before this runs).
+ */
+function ensureClassShardDirectoriesFor(namespaceRoot: string, recordClass: RecordClassId, rawIdentifier: string, serviceUid: number): PublishStageResult {
+  const derived = deriveRecordRelativePath(recordClass, rawIdentifier);
   if (!derived.ok) {
     return { ok: false, code: 'ERR-STO-CONTAINMENT-DENIED', message: 'record path derivation failed' };
   }
@@ -134,7 +149,7 @@ export function ensureClassShardDirectories(input: {
   // `audit/<segment>/<shard>/<file>`; the top-level `records`/`audit`
   // directories are provisioned by the phase-3 top-level step.
   const topLevel = derived.relativePath.startsWith('audit/') ? 'audit' : 'records';
-  const classDir = `${input.namespaceRoot}/${topLevel}/${derived.classSegment}`;
+  const classDir = `${namespaceRoot}/${topLevel}/${derived.classSegment}`;
   const shardDir = `${classDir}/${derived.shard}`;
   const dirs = [classDir, shardDir];
   for (const dir of dirs) {
@@ -152,12 +167,12 @@ export function ensureClassShardDirectories(input: {
     try {
       fd = openSync(dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
       const stat = fstatSync(fd);
-      const verified = verifyDirectoryStat(stat, input.serviceUid);
+      const verified = verifyDirectoryStat(stat, serviceUid);
       if (!verified.ok) return { ok: false, code: verified.code, message: verified.message };
       if (created) {
         fchmodSync(fd, 0o700);
         const after = fstatSync(fd);
-        const modeCheck = verifyDirectoryStat(after, input.serviceUid);
+        const modeCheck = verifyDirectoryStat(after, serviceUid);
         if (!modeCheck.ok) return { ok: false, code: modeCheck.code, message: modeCheck.message };
         fsyncSync(fd);
       }
@@ -276,13 +291,15 @@ export function classifyExistingTargetObject(input: {
 }
 
 /**
- * Publish one immutable record via the hard-link protocol (10.1/WPR). The
- * caller supplies the canonical bytes and all derived fixed paths. On
+ * Publish one immutable record via the hard-link protocol (10.1/WPR) under
+ * WRITE authority only (WP-8-F correction: the generic substrate never
+ * accepts a recovery capability or any caller-supplied recovery operation).
+ * The caller supplies the canonical bytes and all derived fixed paths. On
  * `EEXIST` at the final target the existing object is verified and
  * classified; on `EEXIST` at the temporary name the object is inspected
  * without adoption and the caller must run the retry classification. Every
- * mutation boundary revalidates the capability. Injectable hooks enable
- * deterministic per-stage failure tests (WPR-022).
+ * mutation boundary revalidates the genuine write capability. Injectable
+ * hooks enable deterministic per-stage failure tests (WPR-022).
  */
 export function publishImmutableRecord(input: {
   readonly capability: WriteCapability;
@@ -300,10 +317,63 @@ export function publishImmutableRecord(input: {
   readonly syncDirectories?: readonly string[];
   readonly hooks?: PublicationHooks;
 }): PublishStageResult {
+  // WP-8-F correction: genuine brand verification before any method call or
+  // filesystem access (CAP-007) — a recovery capability, forged structural
+  // object, or lookalike never reaches the generic sink.
+  if (!isGenuineWriteCapability(input.capability)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'write capability operand is not genuine' };
+  }
   const check = input.capability.verify('record-publish');
   if (!check.ok) {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'write capability is not usable at the publication boundary' };
   }
+  return publishImmutableCore({
+    revalidate: (): RevalidationResult => {
+      const again = input.capability.verify('record-publish');
+      return again.ok ? { ok: true } : { ok: false, message: 'write capability invalidated before primary publication' };
+    },
+    canonicalUtf8: input.canonicalUtf8,
+    byteLimit: input.byteLimit,
+    tmpPath: input.tmpPath,
+    tmpDirPath: input.tmpDirPath,
+    finalPath: input.finalPath,
+    finalDirPath: input.finalDirPath,
+    serviceUid: input.serviceUid,
+    expectedRecordId: input.expectedRecordId,
+    expectedRevision: input.expectedRevision,
+    expectedDigest: input.expectedDigest,
+    syncDirectories: input.syncDirectories,
+    hooks: input.hooks,
+  });
+}
+
+interface RevalidationResult {
+  readonly ok: boolean;
+  readonly message?: string;
+}
+
+/**
+ * Shared immutable hard-link publication core (10.1/WPR). Authority is
+ * verified by the caller BEFORE this runs, and `revalidate` re-verifies it
+ * immediately before the primary link (CAP-009 boundary 2). Never exposed;
+ * both production entry points (write path and the exact-record recovery
+ * permit entry point) live in this module.
+ */
+function publishImmutableCore(input: {
+  readonly revalidate: () => RevalidationResult;
+  readonly canonicalUtf8: string;
+  readonly byteLimit: number;
+  readonly tmpPath: string;
+  readonly tmpDirPath: string;
+  readonly finalPath: string;
+  readonly finalDirPath: string;
+  readonly serviceUid: number;
+  readonly expectedRecordId: string;
+  readonly expectedRevision: number;
+  readonly expectedDigest: string;
+  readonly syncDirectories?: readonly string[];
+  readonly hooks?: PublicationHooks;
+}): PublishStageResult {
   const bytes = Buffer.from(input.canonicalUtf8, 'utf8');
   if (bytes.length > input.byteLimit) {
     return { ok: false, code: 'ERR-STO-LIMIT-EXCEEDED', message: 'record exceeds the bounded byte limit' };
@@ -345,11 +415,11 @@ export function publishImmutableRecord(input: {
       return { ok: false, outcome: 'failed', code: 'ERR-STO-INTEGRITY', message: 'temporary size does not match canonical bytes' };
     }
     syncFile(tempFd);
-    // Capability revalidation immediately before primary publication (CAP-009 boundary 2).
-    const beforeLink = input.capability.verify('record-publish');
+    // Authority revalidation immediately before primary publication (CAP-009 boundary 2).
+    const beforeLink = input.revalidate();
     if (!beforeLink.ok) {
       unlinkPath(input.tmpPath);
-      return { ok: false, outcome: 'failed', code: 'ERR-STO-REQ-INVALID', message: 'write capability invalidated before primary publication' };
+      return { ok: false, outcome: 'failed', code: 'ERR-STO-REQ-INVALID', message: beforeLink.message ?? 'authority invalidated before primary publication' };
     }
     const tempInode = { dev: Number(preStat.dev), ino: Number(preStat.ino) };
     try {
@@ -427,4 +497,141 @@ export function publishImmutableRecord(input: {
   } finally {
     if (tmpFd !== undefined) closeSync(tmpFd);
   }
+}
+
+/**
+ * WP-8-F correction: dedicated exact-record recovery publication entry
+ * point. Consumes ONLY a genuine branded `RecoveryPublicationPermit`; no
+ * record class, final path, shard, operation, evidence kind, or audit
+ * payload is accepted from the caller. Verifies the genuine permit and its
+ * live state, parses and verifies the canonical record bytes (class, record
+ * kind, identity, canonical-byte digest) against the permit binding,
+ * derives the destination internally and verifies it against the permit,
+ * provisions only the exact bound class/shard, and publishes with the
+ * shared immutable hard-link no-replace algorithm (same durability and
+ * idempotency behavior as the write path). A permit for one exact record
+ * can never publish another record, even within the same class.
+ */
+export function publishRecoveryBoundRecord(input: {
+  readonly permit: RecoveryPublicationPermit;
+  readonly canonicalUtf8: string;
+  readonly byteLimit: number;
+  readonly serviceUid: number;
+  readonly hooks?: PublicationHooks;
+}): PublishStageResult {
+  // 1. Genuine permit verification BEFORE any filesystem access.
+  if (!isGenuineRecoveryPublicationPermit(input.permit)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery publication permit operand is not genuine' };
+  }
+  if (!recoveryPublicationPermitLive(input.permit)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery publication permit is disposed' };
+  }
+  const binding = input.permit.binding;
+  const capability = binding.capability;
+  if (!capability.verify(binding.operation).ok) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery capability is not usable at the recovery publication boundary' };
+  }
+  // 2-4. Parse and verify the canonical record bytes against the permit.
+  const bytes = Buffer.from(input.canonicalUtf8, 'utf8');
+  if (bytes.length > input.byteLimit) {
+    return { ok: false, code: 'ERR-STO-LIMIT-EXCEEDED', message: 'record exceeds the bounded byte limit' };
+  }
+  const parsed = parsePersistedEnvelope(input.canonicalUtf8, input.byteLimit);
+  if (!parsed.ok || parsed.model === undefined || parsed.bytes === undefined) {
+    return { ok: false, code: 'ERR-STO-MALFORMED', message: 'record bytes are not a canonical record envelope' };
+  }
+  const model = parsed.model as Readonly<Record<string, unknown>>;
+  const expectedKind = binding.recordClass === 'store-evidence-record' ? 'StoreEvidenceRecord' : 'AuthoritativeAuditEvent';
+  if (model['recordKind'] !== expectedKind) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'record kind does not match the permit-bound class' };
+  }
+  if (model['recordId'] !== binding.recordId) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'record identity does not match the permit binding' };
+  }
+  if (parsed.bytes.digest !== binding.recordDigest || parsed.bytes.digest !== binding.canonicalBytesDigest) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'record canonical-byte digest does not match the permit binding' };
+  }
+  const payload = model['payload'];
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return { ok: false, code: 'ERR-STO-MALFORMED', message: 'record payload is malformed' };
+  }
+  const p = payload as Readonly<Record<string, unknown>>;
+  if (binding.role === 'recovery-authorized-write-audit') {
+    // Exact audit binding: event kind, referenced evidence identity and
+    // digest, trusted recovery action identity.
+    const audit = binding.audit;
+    if (audit === undefined) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit permit binding is missing' };
+    }
+    if (p['eventKind'] !== 'authorized-write') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit event kind does not match the permit binding' };
+    }
+    if (p['recordId'] !== audit.evidenceRecordId) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit referenced record does not match the permit binding' };
+    }
+    if (p['recordDigest'] !== audit.evidenceRecordDigest) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit referenced digest does not match the permit binding' };
+    }
+    if (model['trustedActionId'] !== audit.trustedActionIdentity) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit trusted action identity does not match the permit binding' };
+    }
+    const references = model['referenceDigests'];
+    if (!Array.isArray(references) || references[0] !== audit.evidenceRecordDigest) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'audit reference digests do not match the permit binding' };
+    }
+  } else {
+    // Exact evidence binding: evidence kind and recovery operation.
+    if (p['evidenceKind'] !== 'recovery-evidence') {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'evidence kind does not match the permit binding' };
+    }
+    if (p['recoveryOperation'] !== binding.operation) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery operation does not match the permit binding' };
+    }
+  }
+  // 5-6. Derive the destination internally and verify it matches the permit.
+  const derived = deriveRecordRelativePath(binding.recordClass, binding.recordId);
+  if (!derived.ok) {
+    return { ok: false, code: 'ERR-STO-CONTAINMENT-DENIED', message: 'record path derivation failed' };
+  }
+  if (derived.relativePath !== binding.destinationDesignation) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'derived destination does not match the permit binding' };
+  }
+  const namespaceRoot = `${capability.binding.storeInstance.parentIdentity.canonicalPath}/store-v1`;
+  const topLevel = derived.relativePath.startsWith('audit/') ? 'audit' : 'records';
+  const classDir = `${namespaceRoot}/${topLevel}/${derived.classSegment}`;
+  const finalPath = `${namespaceRoot}/${derived.relativePath}`;
+  const finalDirPath = `${namespaceRoot}/${derived.relativePath.slice(0, derived.relativePath.lastIndexOf('/'))}`;
+  const tmpDirPath = `${namespaceRoot}/tmp`;
+  // Same deterministic per-operation temp ordinals as the recovery evidence
+  // path: evidence = base, audit = base + 1 (2/3 orphan-removal, 4/5 quarantine).
+  const ordinalBase = binding.operation === 'quarantine-temporary' ? 4 : 2;
+  const ordinal = binding.role === 'recovery-authorized-write-audit' ? ordinalBase + 1 : ordinalBase;
+  const tmpPath = `${tmpDirPath}/${publicationTempName(capability.binding.actionIdentity, ordinal)}`;
+  // 7. Provision only the exact bound class/shard (module-private; authority
+  // already verified above).
+  const provisioned = ensureClassShardDirectoriesFor(namespaceRoot, binding.recordClass, binding.recordId, input.serviceUid);
+  if (!provisioned.ok) {
+    return { ok: false, code: provisioned.code ?? 'ERR-STO-IO-FAILURE', message: provisioned.message ?? 'recovery record class/shard directories could not be established' };
+  }
+  // 8-9. Publish with the shared immutable hard-link algorithm.
+  return publishImmutableCore({
+    revalidate: (): RevalidationResult => {
+      if (!isGenuineRecoveryPublicationPermit(input.permit)) return { ok: false, message: 'recovery publication permit invalidated before primary publication' };
+      if (!recoveryPublicationPermitLive(input.permit)) return { ok: false, message: 'recovery publication permit invalidated before primary publication' };
+      if (!capability.verify(binding.operation).ok) return { ok: false, message: 'recovery capability invalidated before primary publication' };
+      return { ok: true };
+    },
+    canonicalUtf8: input.canonicalUtf8,
+    byteLimit: input.byteLimit,
+    tmpPath,
+    tmpDirPath,
+    finalPath,
+    finalDirPath,
+    serviceUid: input.serviceUid,
+    expectedRecordId: binding.recordId,
+    expectedRevision: 1,
+    expectedDigest: binding.recordDigest,
+    syncDirectories: [classDir, `${namespaceRoot}/${topLevel}`],
+    hooks: input.hooks,
+  });
 }

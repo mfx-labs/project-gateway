@@ -26,7 +26,9 @@
  * results, never retroactive capability bindings. No issuance path exists
  * for write, read, verify, recovery, retention, or migration.
  */
-import { isGenuineTrustedStorageBootstrapInput, isGenuineTrustedWriteRequest, type TrustedStorageBootstrapInput, type TrustedWriteRequest } from '../trusted-input/bootstrap-input.js';
+import { isGenuineTrustedStorageBootstrapInput, isGenuineTrustedWriteRequest, isGenuineTrustedRecoveryRequest, type TrustedRecoveryRequest, type TrustedStorageBootstrapInput, type TrustedWriteRequest } from '../trusted-input/bootstrap-input.js';
+import { isValidDigestSyntax } from '../format/envelope.js';
+import { deriveRecordRelativePath } from '../layout/layout.js';
 import type { RootIdentity, VerifiedStoreInstance } from '../types.js';
 
 export const INITIALIZATION_OPERATION_SET = ['namespace-initialize', 'provision-phase3'] as const;
@@ -420,6 +422,261 @@ export function createVerifyCapability(input: {
 /** True only for a capability minted by this module in this process. */
 export function isGenuineVerifyCapability(value: unknown): value is VerifyCapability {
   return value !== null && typeof value === 'object' && verifyCapabilityBrand.has(value as VerifyCapability);
+}
+
+// ─── WP-8-F: recovery capability (contract 21.1; separate mutation domain) ──
+// The recovery capability is a distinct opaque mutation-capable capability
+// kind (contract 21.1), bound to the genuine recovery action identity from
+// the verified recovery-action provenance. Least authority: the operation
+// set contains exactly the executable recovery operation(s) of this slice;
+// quarantine/audit-reconstruction/lock-recovery/disposition operations join
+// the set only when implemented. The capability NEVER derives from a
+// RecoveryPlan, assessment, cursor, observation, path, or caller boolean.
+
+export const RECOVERY_OPERATION_SET = ['orphan-removal', 'quarantine-temporary'] as const;
+export type RecoveryOperation = (typeof RECOVERY_OPERATION_SET)[number];
+
+/** Recovery-capability binding (mutation-capable; CAP-001/API-003). */
+export interface RecoveryCapabilityBinding {
+  readonly storeInstance: VerifiedStoreInstance;
+  readonly configurationIdentity: string;
+  readonly serviceUid: number;
+  readonly limitProfile: Readonly<Record<string, number>>;
+  readonly actionIdentity: string;
+  readonly operationSet: readonly RecoveryOperation[];
+  /** Private in-process generation identity; never persisted or serialized. */
+  readonly generation: object;
+}
+
+/** Opaque in-process authorized-recovery capability (never serializable). */
+export interface RecoveryCapability {
+  /** Informational frozen binding; carries no brand state. */
+  readonly binding: RecoveryCapabilityBinding;
+  verify(operation: RecoveryOperation): CapabilityCheck;
+  assertExpected(expected: {
+    readonly storeInstance: VerifiedStoreInstance;
+    readonly configurationIdentity: string;
+    readonly serviceUid: number;
+    readonly limitProfile: Readonly<Record<string, number>>;
+  }): CapabilityCheck;
+  dispose(): void;
+}
+
+const recoveryCapabilityBrand = new WeakSet<RecoveryCapability>();
+
+function freezeRecoveryBinding(binding: RecoveryCapabilityBinding): RecoveryCapabilityBinding {
+  Object.freeze(binding.storeInstance);
+  Object.freeze(binding.storeInstance.namespaces);
+  Object.freeze(binding.storeInstance.limitProfile);
+  Object.freeze(binding.operationSet);
+  Object.freeze(binding.limitProfile);
+  return Object.freeze(binding);
+}
+
+/**
+ * Gated recovery-capability creator (WP-8-F). Imported only by
+ * `src/storage/recovery/execute.ts` (static-guard enforced). Requires a
+ * genuine branded `TrustedRecoveryRequest` plus the verified store instance
+ * produced by the metadata verification pipeline. The genuine action
+ * identity derives only from the verified recovery-action provenance bound
+ * into the request. Mutation-capable: like the write creator, it may
+ * establish the per-process generation registry entry for the store.
+ */
+export function createRecoveryCapability(input: {
+  readonly trustedRecoveryRequest: unknown;
+  readonly storeInstance: VerifiedStoreInstance;
+}): RecoveryCapability | undefined {
+  if (!isGenuineTrustedRecoveryRequest(input.trustedRecoveryRequest)) return undefined;
+  const request = input.trustedRecoveryRequest as TrustedRecoveryRequest;
+  if (request.configurationIdentity !== input.storeInstance.configurationIdentity) return undefined;
+  if (request.serviceUid !== input.storeInstance.serviceUid) return undefined;
+  if (!sameProfile(request.limitProfile, input.storeInstance.limitProfile)) return undefined;
+  const key = storeKey(input.storeInstance.parentIdentity);
+  const generation = generationForStore(key, request.configurationIdentity, true);
+  if (generation === undefined) return undefined;
+  const binding = freezeRecoveryBinding({
+    storeInstance: input.storeInstance,
+    configurationIdentity: request.configurationIdentity,
+    serviceUid: request.serviceUid,
+    limitProfile: { ...request.limitProfile },
+    actionIdentity: request.actionIdentity,
+    operationSet: [...RECOVERY_OPERATION_SET],
+    generation,
+  });
+  const state: CapabilityState = { live: true };
+  const capability: RecoveryCapability = {
+    binding,
+    verify(operation) {
+      if (!recoveryCapabilityBrand.has(this as RecoveryCapability)) return { ok: false, reason: 'not-genuine' };
+      if (!state.live) return { ok: false, reason: 'disposed' };
+      const current = currentGenerationByStore.get(key);
+      if (current === undefined || current.generation !== binding.generation) return { ok: false, reason: 'stale-generation' };
+      if (!binding.operationSet.includes(operation)) return { ok: false, reason: 'wrong-operation' };
+      return { ok: true };
+    },
+    assertExpected(expected) {
+      if (!recoveryCapabilityBrand.has(this as RecoveryCapability)) return { ok: false, reason: 'not-genuine' };
+      if (!state.live) return { ok: false, reason: 'disposed' };
+      const current = currentGenerationByStore.get(key);
+      if (current === undefined || current.generation !== binding.generation) return { ok: false, reason: 'stale-generation' };
+      if (!sameStoreInstance(expected.storeInstance, binding.storeInstance)) return { ok: false, reason: 'wrong-store-instance' };
+      if (expected.configurationIdentity !== binding.configurationIdentity) return { ok: false, reason: 'wrong-configuration' };
+      if (expected.serviceUid !== binding.serviceUid) return { ok: false, reason: 'wrong-service-uid' };
+      if (!sameProfile(expected.limitProfile, binding.limitProfile)) return { ok: false, reason: 'wrong-limit-profile' };
+      return { ok: true };
+    },
+    dispose() {
+      if (recoveryCapabilityBrand.has(this as RecoveryCapability)) state.live = false;
+    },
+  };
+  recoveryCapabilityBrand.add(capability);
+  return capability;
+}
+
+/** True only for a capability minted by this module in this process. */
+export function isGenuineRecoveryCapability(value: unknown): value is RecoveryCapability {
+  return value !== null && typeof value === 'object' && recoveryCapabilityBrand.has(value as RecoveryCapability);
+}
+
+// ─── WP-8-F correction: exact-record recovery publication permit ──────────
+// Sink-level authority confinement (review finding): a genuine
+// `RecoveryCapability` must never reach the generic immutable-publication
+// substrate, because the generic sink accepts a caller-selected record class
+// and destination. Recovery publication is confined to one exact record per
+// permit: the permit binds the genuine recovery capability, the exact store
+// and namespace identities (through the capability's store instance), the
+// recovery operation, the publication role, the exact record class, record
+// identity, record digest, canonical-byte digest, the internally derived
+// destination designation, and (audit role) the exact evidence identity,
+// evidence digest, `authorized-write` event kind, and trusted recovery action
+// identity. The permit is process-local and structurally unforgeable
+// (module-private `WeakSet`); it contains no raw filesystem path, descriptor,
+// device/inode data, callback, or caller-selected class/destination. The
+// creator is imported only by `src/storage/recovery/evidence.ts`; the brand
+// verifier only by `src/storage/publication/publish-record.ts` (static-guard
+// enforced).
+
+export type RecoveryPublicationRole = 'recovery-evidence' | 'recovery-authorized-write-audit';
+export type RecoveryPublicationRecordClass = 'store-evidence-record' | 'authoritative-audit-event';
+
+/** Exact-record binding of one authorized recovery record publication. */
+export interface RecoveryPublicationPermitBinding {
+  /** Genuine recovery capability (carries the store/namespace identity; never a path). */
+  readonly capability: RecoveryCapability;
+  /** Exact recovery operation of the authorized mutation. */
+  readonly operation: RecoveryOperation;
+  /** Publication role: evidence record or its mechanical audit event. */
+  readonly role: RecoveryPublicationRole;
+  /** Exact closed record class for the role (never caller-selected). */
+  readonly recordClass: RecoveryPublicationRecordClass;
+  /** Exact record identity. */
+  readonly recordId: string;
+  /** Exact record digest (canonical bytes digest). */
+  readonly recordDigest: string;
+  /** Exact digest of the canonical record bytes (equals recordDigest; bound independently). */
+  readonly canonicalBytesDigest: string;
+  /** Exact internally derived destination designation (relative; never a raw path). */
+  readonly destinationDesignation: string;
+  /** Audit-role binding (present only for `recovery-authorized-write-audit`). */
+  readonly audit?: {
+    /** Exact evidence record identity referenced by the audit event. */
+    readonly evidenceRecordId: string;
+    /** Exact evidence record digest referenced by the audit event. */
+    readonly evidenceRecordDigest: string;
+    /** The only implemented audit event kind. */
+    readonly eventKind: 'authorized-write';
+    /** Exact trusted recovery action identity carried by the audit event. */
+    readonly trustedActionIdentity: string;
+  };
+}
+
+/** Opaque in-process exact-record recovery publication permit (never serializable). */
+export interface RecoveryPublicationPermit {
+  /** Informational frozen binding; carries no brand state. */
+  readonly binding: RecoveryPublicationPermitBinding;
+  dispose(): void;
+}
+
+const recoveryPublicationPermitBrand = new WeakSet<RecoveryPublicationPermit>();
+const recoveryPublicationPermitDisposed = new WeakSet<RecoveryPublicationPermit>();
+
+function freezeRecoveryPublicationBinding(binding: RecoveryPublicationPermitBinding): RecoveryPublicationPermitBinding {
+  const audit = binding.audit === undefined ? undefined : Object.freeze(binding.audit);
+  return Object.freeze({ ...binding, ...(audit === undefined ? {} : { audit }) });
+}
+
+/**
+ * Gated exact-record recovery-publication permit creator (WP-8-F). Imported
+ * only by `src/storage/recovery/evidence.ts` (static-guard enforced); never
+ * exported from any barrel or the package root. Requires a genuine branded
+ * `RecoveryCapability` and an internally derived destination designation; the
+ * binding is validated (digest syntax, role/class correlation, audit
+ * binding, destination derivation) before the permit is branded.
+ */
+export function createRecoveryPublicationPermit(input: {
+  readonly capability: unknown;
+  readonly operation: RecoveryOperation;
+  readonly role: RecoveryPublicationRole;
+  readonly recordId: string;
+  readonly recordDigest: string;
+  readonly canonicalBytesDigest: string;
+  readonly destinationDesignation: string;
+  readonly audit?: {
+    readonly evidenceRecordId: string;
+    readonly evidenceRecordDigest: string;
+    readonly eventKind: 'authorized-write';
+    readonly trustedActionIdentity: string;
+  };
+}): RecoveryPublicationPermit | undefined {
+  if (!isGenuineRecoveryCapability(input.capability)) return undefined;
+  const capability = input.capability as RecoveryCapability;
+  if (input.operation !== 'orphan-removal' && input.operation !== 'quarantine-temporary') return undefined;
+  if (input.role !== 'recovery-evidence' && input.role !== 'recovery-authorized-write-audit') return undefined;
+  const recordClass: RecoveryPublicationRecordClass = input.role === 'recovery-evidence' ? 'store-evidence-record' : 'authoritative-audit-event';
+  if (!isValidDigestSyntax(input.recordDigest) || !isValidDigestSyntax(input.canonicalBytesDigest)) return undefined;
+  if (input.recordDigest !== input.canonicalBytesDigest) return undefined;
+  const derived = deriveRecordRelativePath(recordClass, input.recordId);
+  if (!derived.ok || derived.relativePath !== input.destinationDesignation) return undefined;
+  if (input.role === 'recovery-authorized-write-audit') {
+    if (input.audit === undefined) return undefined;
+    if (input.audit.eventKind !== 'authorized-write') return undefined;
+    if (!isValidDigestSyntax(input.audit.evidenceRecordDigest)) return undefined;
+    if (!/^pgw:r:[0-9a-f]{32}$/.test(input.audit.evidenceRecordId)) return undefined;
+    if (typeof input.audit.trustedActionIdentity !== 'string' || input.audit.trustedActionIdentity.length === 0) return undefined;
+    if (input.audit.evidenceRecordId === input.recordId && input.audit.evidenceRecordDigest === input.recordDigest) return undefined;
+  } else if (input.audit !== undefined) {
+    return undefined;
+  }
+  const binding = freezeRecoveryPublicationBinding({
+    capability,
+    operation: input.operation,
+    role: input.role,
+    recordClass,
+    recordId: input.recordId,
+    recordDigest: input.recordDigest,
+    canonicalBytesDigest: input.canonicalBytesDigest,
+    destinationDesignation: input.destinationDesignation,
+    ...(input.audit === undefined ? {} : { audit: input.audit }),
+  });
+  const permit: RecoveryPublicationPermit = {
+    binding,
+    dispose() {
+      if (recoveryPublicationPermitBrand.has(this as RecoveryPublicationPermit)) recoveryPublicationPermitDisposed.add(this as RecoveryPublicationPermit);
+    },
+  };
+  recoveryPublicationPermitBrand.add(permit);
+  return permit;
+}
+
+/** True only for a permit minted by this module in this process. */
+export function isGenuineRecoveryPublicationPermit(value: unknown): value is RecoveryPublicationPermit {
+  return value !== null && typeof value === 'object' && recoveryPublicationPermitBrand.has(value as RecoveryPublicationPermit);
+}
+
+/** Live-state check for a genuine permit (disposed permits are unusable). */
+export function recoveryPublicationPermitLive(permit: RecoveryPublicationPermit): boolean {
+  if (!recoveryPublicationPermitBrand.has(permit)) return false;
+  return !recoveryPublicationPermitDisposed.has(permit);
 }
 
 /**

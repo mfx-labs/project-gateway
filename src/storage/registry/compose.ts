@@ -26,8 +26,9 @@ function failResult(code: string, message: string): RegistryViewResult {
   return { ok: false, findings: [{ code, message, phase: 'request-validation', state: NO_STATE }] };
 }
 
-function scanFactsOf(scan: { readonly scannedEntries: number; readonly scannedBytes: number; readonly truncated: boolean }, generation: string, failClosed: boolean): ScanFacts {
-  return { generation, scannedEntries: scan.scannedEntries, scannedBytes: scan.scannedBytes, truncated: scan.truncated, failClosed };
+function scanFactsOf(scan: { readonly scannedEntries: number; readonly scannedBytes: number; readonly truncated: boolean; readonly surfaceGeneration?: string }, generation: string, failClosed: boolean): ScanFacts {
+  if (scan.surfaceGeneration === undefined) throw new Error('registry scan produced no surface-generation token');
+  return { generation, surfaceGeneration: scan.surfaceGeneration, scannedEntries: scan.scannedEntries, scannedBytes: scan.scannedBytes, truncated: scan.truncated, failClosed };
 }
 
 /**

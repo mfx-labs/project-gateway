@@ -594,6 +594,8 @@ export interface RecordScanObservation extends ScanObservationBase {
   readonly shard: string;
   readonly classification: RecordCandidateClassification;
   readonly envelope?: RecordObservationFacts;
+  /** WP-8-F: quarantine-temporary evidence payload facts (store-evidence-record class only). */
+  readonly quarantineEvidenceFacts?: { readonly quarantineId: string; readonly sourceDigest: string; readonly sourceEntry: string };
 }
 
 export interface AuditScanObservation extends ScanObservationBase {
@@ -609,6 +611,8 @@ export interface TemporaryScanObservation extends ScanObservationBase {
   readonly kind: 'temporary-object';
   readonly classification: TemporaryObjectClassification;
   readonly envelope?: RecordObservationFacts;
+  /** Deterministic digest of the raw temporary bytes (record-bytes digest domain; WP-8-F evidence binding). */
+  readonly contentDigest?: string;
   /** True when the temporary name and a verified published record share one inode (WPR-023 (a)). */
   readonly sharesInodeWithPublished: boolean;
 }
@@ -625,12 +629,40 @@ export interface ForeignScanObservation extends ScanObservationBase {
   readonly classification: 'foreign-entry';
 }
 
+/** Closed quarantine-object classification vocabulary (WP-8-F; §16.5). */
+export type QuarantineObjectClassification =
+  | 'quarantined-valid'
+  | 'quarantined-missing-evidence'
+  | 'quarantine-interrupted-link'
+  | 'quarantine-conflict'
+  | 'quarantine-malformed'
+  | 'foreign-entry'
+  | 'wrong-type'
+  | 'wrong-uid-or-mode'
+  | 'unexpected-hard-link';
+
+export interface QuarantineScanObservation extends ScanObservationBase {
+  readonly kind: 'quarantine-object';
+  /** 4-hex quarantine shard (empty for malformed/foreign entries). */
+  readonly shard: string;
+  readonly classification: QuarantineObjectClassification;
+  /** Quarantine-ID filename stem when the name grammar holds. */
+  readonly quarantineId?: string;
+  /** Source temporary entry designation (from matching evidence; interrupted-link/conflict states). */
+  readonly sourceEntry?: string;
+  readonly contentDigest?: string;
+  readonly envelope?: RecordObservationFacts;
+  /** True when a tmp/ object shares the quarantine inode (interrupted link). */
+  readonly sharesInodeWithTemporary?: boolean;
+}
+
 export type ScanObservation =
   | RecordScanObservation
   | AuditScanObservation
   | TemporaryScanObservation
   | LockScanObservation
-  | ForeignScanObservation;
+  | ForeignScanObservation
+  | QuarantineScanObservation;
 
 /** Stored lock-record facts observable without disclosure (no nonce; 18.3/ERM-004). */
 export interface LockFacts {
@@ -685,6 +717,8 @@ export interface ScanBounds {
 export interface ScanFacts {
   /** Deterministic generation token: domain digest over store identity + bounds. */
   readonly generation: string;
+  /** Deterministic cross-page surface-structure token (F3-G; binds parent structure and class identities). */
+  readonly surfaceGeneration: string;
   readonly scannedEntries: number;
   readonly scannedBytes: number;
   readonly truncated: boolean;
@@ -764,6 +798,8 @@ export interface OrphanTemporaryFinding {
   readonly classification: TemporaryObjectClassification;
   readonly recordId?: string;
   readonly recordDigest?: string;
+  /** Deterministic digest of the raw temporary bytes (WP-8-F quarantine source binding). */
+  readonly contentDigest?: string;
   readonly sharesInodeWithPublished: boolean;
 }
 
@@ -821,6 +857,10 @@ export interface RecoveryAssessment {
   readonly quarantineEligible: readonly ObjectFinding[];
   readonly requiresDisposition: readonly DispositionFinding[];
   readonly reconstructionCandidates: readonly ReconstructionCandidateFinding[];
+  /** WP-8-F: scanned quarantine objects (recovery mode only). */
+  readonly quarantineObjects: readonly QuarantineScanObservation[];
+  /** WP-8-F: quarantine evidence referencing no present quarantine object. */
+  readonly danglingQuarantineEvidence: readonly { readonly evidenceObservationId: string; readonly quarantineId: string; readonly sourceEntry?: string }[];
   readonly findings: readonly StorageFinding[];
 }
 
@@ -897,7 +937,7 @@ export interface RecoveryScanResult {
 export interface ScanHooks {
   /** Runs after each directory readdir, before the post-snapshot identity check. */
   readonly afterReaddir?: (location: {
-    readonly surface: 'records' | 'audit' | 'tmp' | 'locks';
+    readonly surface: 'records' | 'audit' | 'tmp' | 'locks' | 'quarantine' | 'quarantine-temporary';
     readonly recordClass?: RecordClassId;
     readonly shard?: string;
   }) => void;
@@ -923,4 +963,99 @@ export interface StoreScanResult {
   readonly continuation?: ScanCursor;
   /** Deterministic generation digest of this scan (present on success). */
   readonly generation?: string;
+  /** Deterministic cross-page surface-structure token (present on success; F3-G). */
+  readonly surfaceGeneration?: string;
+}
+
+// ─── WP-8-F: authorized recovery mutation (authority-gated, re-verified) ──
+// This slice performs exactly one mutation: safe orphan-temporary cleanup of
+// WPR-023 (a) inode twins with durable recovery evidence. Quarantine
+// execution requires a contract decision (destination layout undefined; D-7)
+// and is rejected fail-closed at the boundary. No raw path, descriptor,
+// nonce, callback, capability, or filesystem function is accepted in a
+// request; every location is re-derived internally from verified store
+// configuration and closed vocabularies.
+
+/** Fixed crash-stage inventory for recovery mutations (asserted in tests). */
+export type RecoveryMutationStage =
+  | 'before-lock-acquisition'
+  | 'after-lock-acquisition'
+  | 'after-target-verification'
+  | 'before-source-unlink'
+  | 'after-source-unlink'
+  | 'before-directory-fsync'
+  | 'after-directory-fsync'
+  | 'before-evidence-publication'
+  | 'after-evidence-publication'
+  | 'before-lock-release'
+  // WP-8-F quarantine-temporary stages.
+  | 'after-source-verification'
+  | 'after-quarantine-directory-provisioning'
+  | 'before-destination-link'
+  | 'after-destination-link'
+  | 'before-destination-directory-fsync'
+  | 'after-destination-directory-fsync'
+  | 'before-tmp-directory-fsync'
+  | 'after-tmp-directory-fsync';
+
+/** Test-only crash/fsync injection hooks (same pattern as `PublicationHooks`). */
+export interface RecoveryMutationHooks {
+  /** Runs at each fixed stage; throwing simulates a crash at that stage. */
+  readonly stage?: (stage: RecoveryMutationStage) => void;
+  readonly fsyncFile?: (fd: number) => void;
+  readonly fsyncDirectory?: (path: string) => void;
+}
+
+/** Narrow structured recovery-mutation action (never a plan action, never a path). */
+export interface RecoveryMutationAction {
+  /** Closed category vocabulary: exactly the implemented recovery operations; no generic `quarantine` exists. */
+  readonly category: 'orphan-removal' | 'quarantine-temporary';
+  /** Deterministic entry designation (temporary name; never a path). */
+  readonly targetEntry: string;
+  /** Orphan-removal only: verified durable publication sharing the temporary's inode (WPR-023 (a)). */
+  readonly expectedTwinRecordId?: string;
+  /** Orphan-removal only: closed-vocabulary class of the durable publication. */
+  readonly expectedTwinRecordClass?: RecordClassId;
+  /** Orphan-removal only: record-bytes digest of the durable publication (pre-mutation evidence digest). */
+  readonly expectedTwinDigest?: string;
+  /** Orphan-removal only: link count observed at assessment (exact re-verification requirement). */
+  readonly expectedLinkCount?: number;
+  /** Evidence identifiers from the recovery assessment (exactly one per mutation). */
+  readonly expectedObservationIds: readonly string[];
+  /** Assessment scan-generation token (recomputed and compared before mutation). */
+  readonly expectedGeneration: string;
+  /** Assessment surface-structure token (recomputed and compared before mutation). */
+  readonly expectedSurfaceGeneration: string;
+  /** Quarantine-temporary only: the assessed WPR-023 classification of the source (b or c). */
+  readonly expectedClassification?: 'incomplete-unpublished' | 'malformed-temporary';
+  /** Quarantine-temporary only: exact source content digest (the pre-mutation evidence digest). */
+  readonly expectedSourceDigest?: string;
+}
+
+/** Authorized recovery-mutation request (WP-8-F composition boundary). */
+export interface RecoveryMutationRequest {
+  /** Genuine WP-6 validated trusted configuration (runtime-branded). */
+  readonly trustedConfiguration: unknown;
+  /** Genuine branded `StorageRecoveryActionProvenance` (zero production producers). */
+  readonly recoveryActionProvenance: unknown;
+  /** Correlated raw fields (verified for exact equality against the provenance). */
+  readonly locator: string;
+  readonly serviceUid: number;
+  readonly forbiddenRoots: readonly string[];
+  readonly limitProfile: Readonly<Record<string, number>>;
+  /** Narrow structured action; no path, descriptor, nonce, callback, or fs function. */
+  readonly action: RecoveryMutationAction;
+  readonly timeSource: LockTimeSource;
+  /** Test-only crash/fsync injection. */
+  readonly hooks?: RecoveryMutationHooks;
+}
+
+/** Recovery-mutation result (advisory data; no capability, path, or nonce). */
+export interface RecoveryMutationResult {
+  readonly ok: boolean;
+  /** `removed` (orphan removed), `quarantined` (temporary quarantined), `already-completed`: no work needed. */
+  readonly outcome?: 'removed' | 'quarantined' | 'already-completed';
+  /** Deterministic evidence record identity when evidence is durable. */
+  readonly evidenceId?: string;
+  readonly findings?: readonly StorageFinding[];
 }

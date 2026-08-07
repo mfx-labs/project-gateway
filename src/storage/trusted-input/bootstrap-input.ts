@@ -212,6 +212,145 @@ export function isGenuineTrustedWriteRequest(value: unknown): value is TrustedWr
 const actionProvenanceBrand = new WeakSet<object>();
 const trustedInputBrand = new WeakSet<object>();
 
+// ─── WP-8-F: recovery-action provenance and trusted recovery request ─────
+// Two further semantically distinct private authenticity domains in this
+// module: `StorageRecoveryActionProvenance` and `TrustedRecoveryRequest`.
+// Same model as the bootstrap/write domains: separate module-private
+// `WeakSet`s, no structural or own-symbol genuineness, process-local only,
+// cross-kind substitution fails every verifier (CAP-014/015). The recovery
+// action is a distinct authority domain from bootstrap and write actions;
+// no domain may substitute for another.
+
+/** Fields bound into one genuine storage recovery action (producer-owned). */
+export interface StorageRecoveryActionProvenance {
+  readonly actionIdentity: string;
+  /** Already-resolved absolute trusted-parent locator. */
+  readonly locator: string;
+  readonly serviceUid: number;
+  /** Canonical absolute paths of governed repository/workspace roots. */
+  readonly forbiddenRoots: readonly string[];
+  readonly configurationIdentity: string;
+  readonly limitProfile: SelectedLimitProfile;
+}
+
+/** Accepted immutable trusted recovery request (correlated, gated). */
+export interface TrustedRecoveryRequest {
+  readonly actionIdentity: string;
+  readonly locator: string;
+  readonly serviceUid: number;
+  readonly forbiddenRoots: readonly string[];
+  readonly configurationIdentity: string;
+  readonly limitProfile: SelectedLimitProfile;
+}
+
+export type RecoveryInputRejectionReason =
+  | 'not-genuine-configuration'
+  | 'not-genuine-action-provenance'
+  | 'configuration-identity-mismatch'
+  | 'locator-mismatch'
+  | 'service-uid-mismatch'
+  | 'forbidden-roots-mismatch'
+  | 'limit-profile-mismatch';
+
+export interface RecoveryInputResult {
+  readonly ok: boolean;
+  readonly request?: TrustedRecoveryRequest;
+  readonly reason?: RecoveryInputRejectionReason;
+  readonly message?: string;
+}
+
+const recoveryActionProvenanceBrand = new WeakSet<object>();
+const trustedRecoveryRequestBrand = new WeakSet<object>();
+
+function freezeRecoveryProvenance(fields: StorageRecoveryActionProvenance): StorageRecoveryActionProvenance {
+  Object.freeze(fields.forbiddenRoots);
+  Object.freeze(fields.limitProfile);
+  return Object.freeze(fields);
+}
+
+function freezeRecoveryRequest(request: TrustedRecoveryRequest): TrustedRecoveryRequest {
+  Object.freeze(request.forbiddenRoots);
+  Object.freeze(request.limitProfile);
+  return Object.freeze(request);
+}
+
+/**
+ * Storage-side recovery-action-provenance creator (WP-8-F). The sole future
+ * production consumer is `src/control-plane/storage-recovery-action.ts` (the
+ * trusted control-plane recovery composition root); that producer does NOT
+ * exist in WP-8-F, so no production module may import the creator (static-
+ * guard enforced); test-only use is permitted from the authorized storage
+ * test files. A recovery plan, assessment, cursor, or scan observation is
+ * NEVER an authority operand: only a genuine branded provenance is.
+ */
+export function createRecoveryActionProvenance(fields: StorageRecoveryActionProvenance): StorageRecoveryActionProvenance {
+  if (fields.actionIdentity.length === 0) throw new TypeError('actionIdentity must be non-empty');
+  if (!fields.locator.startsWith('/')) throw new TypeError('locator must be absolute');
+  if (!Number.isSafeInteger(fields.serviceUid) || fields.serviceUid < 0) throw new TypeError('serviceUid must be a non-negative safe integer');
+  if (!/^sha-256:[0-9a-f]{64}$/.test(fields.configurationIdentity)) throw new TypeError('configurationIdentity must use sha-256:<64-hex> syntax');
+  const provenance = freezeRecoveryProvenance(fields);
+  recoveryActionProvenanceBrand.add(provenance);
+  return provenance;
+}
+
+/** True only for the exact object minted by the gated creator in this process. */
+export function isGenuineRecoveryActionProvenance(value: unknown): value is StorageRecoveryActionProvenance {
+  return value !== null && typeof value === 'object' && recoveryActionProvenanceBrand.has(value as object);
+}
+
+/**
+ * Gated trusted-recovery-request creator (WP-8-F). Imported only by
+ * `src/storage/recovery/execute.ts` (static-guard enforced). Both operands
+ * must be genuine; correlation is verified by exact equality or canonical
+ * identity. Action identity is taken only from the genuine recovery-action
+ * provenance, never from WP-6 configuration provenance, plan data, or any
+ * structural string.
+ */
+export function createTrustedRecoveryRequest(
+  trustedConfiguration: unknown,
+  actionProvenance: unknown,
+  raw: { readonly locator: string; readonly serviceUid: number; readonly forbiddenRoots: readonly string[]; readonly limitProfile: SelectedLimitProfile },
+): RecoveryInputResult {
+  if (!isGenuineValidatedTrustedWorkspaceConfiguration(trustedConfiguration)) {
+    return { ok: false, reason: 'not-genuine-configuration', message: 'trusted configuration evidence is not genuine' };
+  }
+  if (!isGenuineRecoveryActionProvenance(actionProvenance)) {
+    return { ok: false, reason: 'not-genuine-action-provenance', message: 'storage recovery action provenance is not genuine' };
+  }
+  const config = trustedConfiguration as { readonly identity: string };
+  const provenance = actionProvenance as StorageRecoveryActionProvenance;
+  if (config.identity !== provenance.configurationIdentity) {
+    return { ok: false, reason: 'configuration-identity-mismatch', message: 'trusted configuration identity does not correlate with the recovery action provenance' };
+  }
+  if (raw.locator !== provenance.locator) {
+    return { ok: false, reason: 'locator-mismatch', message: 'locator does not correlate with the recovery action provenance' };
+  }
+  if (raw.serviceUid !== provenance.serviceUid) {
+    return { ok: false, reason: 'service-uid-mismatch', message: 'service UID does not correlate with the recovery action provenance' };
+  }
+  if (!sameStringSet(raw.forbiddenRoots, provenance.forbiddenRoots)) {
+    return { ok: false, reason: 'forbidden-roots-mismatch', message: 'forbidden-root set does not correlate with the recovery action provenance' };
+  }
+  if (!sameLimitProfile(raw.limitProfile, provenance.limitProfile)) {
+    return { ok: false, reason: 'limit-profile-mismatch', message: 'limit profile does not correlate with the recovery action provenance' };
+  }
+  const request = freezeRecoveryRequest({
+    actionIdentity: provenance.actionIdentity,
+    locator: provenance.locator,
+    serviceUid: provenance.serviceUid,
+    forbiddenRoots: [...provenance.forbiddenRoots],
+    configurationIdentity: provenance.configurationIdentity,
+    limitProfile: { ...provenance.limitProfile },
+  });
+  trustedRecoveryRequestBrand.add(request);
+  return { ok: true, request };
+}
+
+/** True only for the exact object minted by the gated creator in this process. */
+export function isGenuineTrustedRecoveryRequest(value: unknown): value is TrustedRecoveryRequest {
+  return value !== null && typeof value === 'object' && trustedRecoveryRequestBrand.has(value as object);
+}
+
 function freezeProvenance(fields: StorageBootstrapActionProvenance): StorageBootstrapActionProvenance {
   Object.freeze(fields.forbiddenRoots);
   Object.freeze(fields.limitProfile);

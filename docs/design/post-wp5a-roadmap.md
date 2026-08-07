@@ -20,8 +20,8 @@ addressed; the final focused closure rereview identified a final zero-test
 issue plus follow-on items (Z-01…Z-05), all addressed by the final
 correction; the **final closure rereview accepted** WP-7-C with **zero open
 findings**; WP-7-C is **closed** and WP-7 is **closed** at
-`6b94d811dac8c41062ea4cbd57e56b1fe39b6419`. Current state: WP-8-E
-(read-only registry and recovery slice; contract §29 phase 4; see the
+`6b94d811dac8c41062ea4cbd57e56b1fe39b6419`. Current state: WP-8-F
+(authorized recovery mutation foundation; contract §29 phase 4; see the
 narrative below). Prior state: WP-8-A (Foundation and Contract
 Consolidation) was **human-authorized** as a
 **documentation-only contract phase** and is **closed**: the senior contract review required corrections
@@ -143,8 +143,10 @@ accepted**; the **post-commit baseline verification and closure report
 records the verification and prepares the closure documentation**;
 **WP-8-D is closed** at commit
 `23a30b212dbe1f2ffa05e2b69314754730aeb222` (subject `docs: close WP-8-D
-durable storage operations`); the **next gate is the WP-8-E
-implementation acceptance**; WP-8
+durable storage operations`); **WP-8-E was implemented and accepted** at
+commit `f3677e61c3ce048f9dde7ac7dc6de5ad8f2c9f8e` (subject `feat: add
+WP-8-E registry recovery read slice`); the **next gate is the WP-8-F
+implementation review**; WP-8
 implementation is **not closed**; WP-9 and later
 packages are **not authorized**. No release,
 publication, installation, or deployment action has occurred for WP-8.
@@ -166,10 +168,43 @@ delegation); the **implementation report
 is complete** with the full verification evidence; the slice **performs no
 mutation of any kind** (no quarantine, deletion, lock breaking, audit
 publication, or capability minting); **retention and migration remain out
-of scope**; the **next gate is the WP-8-E implementation acceptance and
-review**; **WP-8-E is not closed**; WP-8 implementation remains **not
+of scope**; **WP-8-E is closed** at commit
+`f3677e61c3ce048f9dde7ac7dc6de5ad8f2c9f8e` (subject `feat: add WP-8-E
+registry recovery read slice`); WP-8 implementation remains **not
 closed**; WP-9 and later packages remain **not authorized**. No release,
 publication, installation, or deployment action has occurred for WP-8.
+
+**WP-8-F (contract §29 phase 4 — authorized recovery mutation
+foundation) is implemented**: WP-8-E is **closed** at commit
+`f3677e61c3ce048f9dde7ac7dc6de5ad8f2c9f8e` (subject `feat: add WP-8-E
+registry recovery read slice`); the **WP-8-F recovery mutation
+foundation** is implemented under `src/storage/recovery/` (execute,
+reverify, cleanup, quarantine, evidence) plus the private recovery
+capability and recovery-action-provenance authority domains: an
+authority-gated recovery-mutation composition boundary with genuine
+branded recovery capability and recovery-action provenance (zero
+production producers); descriptor-bound immediate re-verification before
+any mutation; safe WPR-023 (a) orphan-temporary cleanup; the authorized
+**`quarantine-temporary` operation** (ADR-030; contract §16.5, QRN-001…
+006): WPR-023 (b)/(c) regular temporaries moved by hard-link plus unlink
+to the deterministic `quarantine/temporary/<shard>/<quarantineId>.qtn`
+destination with exact provisioning, no-overwrite, idempotency and
+collision states, durable `StoreEvidenceRecord` evidence and its
+authorized-write audit, recovery-scanner classification of every
+quarantine state (recovery-mode surface generation binds the quarantine
+structure; registry mode excludes it), and a fixed 15-stage crash
+inventory; deterministic already-completed idempotency; and exact
+static-guard and global-security boundaries (three new fs owners,
+exact allowlists, no blanket recovery delegation). **Not begun**:
+stale-lock breaking, primary/audit deletion, WPR-023 (d) disposition,
+retention, migration, index rebuild, WP-9 generation seeding, WP-12
+integration. The **implementation report
+(`docs/reports/wp-8f-recovery-mutation-foundation-implementation-report.md`)
+is complete** with the verification evidence; the **next gate is the
+WP-8-F implementation review**; **WP-8-F is not closed**; WP-8
+implementation remains **not closed**; WP-9 and later packages remain
+**not authorized**. No release, publication, installation, or deployment
+action has occurred for WP-8.
 
 **Normative cross-references:** `project-gateway-scope-and-principles.md`
 (WP-0), ADR-002, ADR-003, ADR-006, ADR-020, ADR-022, ADR-023 (sequencing

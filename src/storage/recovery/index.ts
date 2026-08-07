@@ -13,3 +13,13 @@ export type { StoreScanInput, StoreScanResult, ScanHooks } from '../types.js';
 export { assessRecovery, parseLockRecordFacts } from './assess.js';
 export type { LockRecordParseResult } from './assess.js';
 export { buildRecoveryPlan } from './plan.js';
+// WP-8-F: the authorized recovery-mutation composition boundary (private
+// barrel; never a package-root export). No capability or provenance creator
+// is re-exported; the plan remains advisory data.
+export { executeRecoveryMutation } from './execute.js';
+export type { RecoveryMutationRequest, RecoveryMutationResult } from '../types.js';
+export { buildQuarantineEvidenceRecord, buildRecoveryEvidenceRecord, computeQuarantineEvidenceIdentity, computeQuarantineTemporaryId, computeRecoveryEvidenceIdentity, isoFromEpochMs, quarantineDestinationDesignation, recoveryEvidencePayload } from './evidence.js';
+export { executeQuarantineTemporary } from './quarantine.js';
+export { reverifyQuarantineSource, verifyQuarantineObjectDigest } from './reverify.js';
+export { isPublicationTemporaryName, temporaryObservationId } from './scan.js';
+export type { RecoveryEvidenceInput, RecoveryEvidenceBuild } from './evidence.js';

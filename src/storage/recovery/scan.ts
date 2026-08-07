@@ -103,6 +103,9 @@ import { readdirSync, openSync, closeSync, fstatSync, readFileSync } from 'node:
 import { constants } from 'node:fs';
 import { jcsSerialize } from '../../canonical/jcs.js';
 import { computeDomainDigest, isValidDigestSyntax, STORAGE_RECORD_BYTES_DIGEST_DOMAIN } from '../format/envelope.js';
+import { parseRawJson } from '../../json/scanner.js';
+import { verifyObjectBytesAt } from '../publication/publish-record.js';
+import { computeQuarantineEvidenceIdentity } from './evidence.js';
 import { deriveRecordRelativePath } from '../layout/layout.js';
 import { RECORD_CLASS_BY_ID, RECORD_CLASS_PROFILES } from '../format/taxonomy.js';
 import { comparePrePostStat } from '../root/identity.js';
@@ -115,6 +118,8 @@ import type {
   AuditScanObservation,
   ForeignScanObservation,
   LockScanObservation,
+  QuarantineObjectClassification,
+  QuarantineScanObservation,
   RecordClassId,
   RecordObservationFacts,
   RecordScanObservation,
@@ -134,6 +139,46 @@ const { O_RDONLY, O_DIRECTORY, O_NOFOLLOW, O_NONBLOCK } = constants;
 
 /** Domain-separated scan-observation identity domain. */
 const SCAN_OBSERVATION_ID_DOMAIN = 'PGAP-STORAGE-SCAN-OBSERVATION-v1\u0000';
+
+/** Publication temporary-name grammar (WPR-003): `pub-<16 hex>-<ordinal hex>` (WP-8-F re-derivation). */
+export function isPublicationTemporaryName(name: string): boolean {
+  return TEMP_NAME_RE.test(name);
+}
+
+/** Deterministic temporary-object observation id (WP-8-F evidence binding; matches the WP-8-E scan). */
+export function temporaryObservationId(entry: string): string {
+  return observationId('temporary-object', undefined, undefined, entry);
+}
+
+/** Deterministic quarantine-object observation id (WP-8-F). */
+export function quarantineObservationId(shard: string, entry: string): string {
+  return observationId('quarantine-object', shard, undefined, entry);
+}
+
+/**
+ * Extract quarantine-temporary evidence payload facts from one canonical
+ * store-evidence-record (WP-8-F §8): quarantine ID, source digest, and
+ * source entry. Used for dangling-evidence detection. Pure.
+ */
+export function extractQuarantineEvidenceFacts(raw: string): { readonly quarantineId?: string; readonly sourceDigest?: string; readonly sourceEntry?: string } {
+  try {
+    const model = parseRawJson(raw, 1024 * 1024).model;
+    if (typeof model !== 'object' || model === null || Array.isArray(model)) return {};
+    const payload = (model as Readonly<Record<string, unknown>>)['payload'];
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return {};
+    const p = payload as Readonly<Record<string, unknown>>;
+    if (p['recoveryOperation'] !== 'quarantine-temporary') return {};
+    const quarantineId = p['quarantineId'];
+    const sourceDigest = p['sourceDigest'];
+    const sourceEntry = p['targetEntry'];
+    if (typeof quarantineId !== 'string' || !/^[0-9a-f]{64}$/.test(quarantineId)) return {};
+    if (typeof sourceDigest !== 'string' || !isValidDigestSyntax(sourceDigest)) return {};
+    if (typeof sourceEntry !== 'string' || sourceEntry.length === 0) return {};
+    return { quarantineId, sourceDigest, sourceEntry };
+  } catch {
+    return {};
+  }
+}
 /** Domain-separated scan-generation token domain (request compatibility; F2). */
 export const SCAN_GENERATION_DOMAIN = 'PGAP-STORAGE-SCAN-GENERATION-v1\u0000';
 /** Domain-separated cross-page surface-generation token domain (F3-G). */
@@ -146,6 +191,9 @@ export const SCAN_SURFACE_GENERATION_DOMAIN = 'PGAP-STORAGE-SCAN-SURFACE-v1\u000
 const SCAN_MODEL_VERSION = 'v1' as const;
 
 const SHARD_RE = /^[0-9a-f]{4}$/;
+/** Quarantine object filename: `<64-hex>.qtn` (ADR-030; §16.5). */
+const QUARANTINE_NAME_RE = /^[0-9a-f]{64}\.qtn$/;
+const QUARANTINE_SUFFIX = '.qtn';
 const COMPONENT_RE = /^[0-9a-f]{32}$/;
 /** Publication temporary-name grammar (WPR-003): `pub-<16 hex>-<ordinal hex>`. */
 const TEMP_NAME_RE = /^pub-[0-9a-f]{16}-[0-9a-f]{1,4}$/;
@@ -220,6 +268,10 @@ interface SurfaceStructure {
   readonly auditEventPresent: boolean;
   /** Identities of every present class directory (records classes and audit-event). */
   readonly classIdentities: ReadonlyMap<RecordClassId, DirectoryIdentity>;
+  /** WP-8-F quarantine structure (recovery mode only). */
+  readonly quarantineParent: DirectoryIdentity | undefined;
+  readonly quarantineTemporaryPresent: boolean;
+  readonly quarantineShards: readonly { readonly shard: string; readonly dev: number; readonly ino: number }[];
 }
 
 /**
@@ -230,17 +282,50 @@ interface SurfaceStructure {
  * digest and fail closed on resume with ERR-STO-ROOT-IDENTITY-CHANGED.
  */
 function computeSurfaceGeneration(structure: SurfaceStructure): string {
+  // The store-evidence-record class is excluded from the structural token:
+  // evidence directories legitimately appear as the direct result of
+  // recovery-mutation execution itself (WP-8-F), so their appearance must
+  // not be treated as structural drift by later recovery steps or resumed
+  // pages. The class is still enumerated and verified by the scan.
+  // Quarantine structure is bound in recovery mode only (QRN/WP-8-F §8).
+  const recordClasses = structure.recordClasses.filter((c) => c !== 'store-evidence-record');
+  const classIdentities = [...structure.classIdentities.entries()]
+    .filter(([recordClass]) => recordClass !== 'store-evidence-record')
+    .map(([recordClass, identity]) => ({ recordClass, dev: identity.dev, ino: identity.ino }))
+    .sort((a, b) => (a.recordClass < b.recordClass ? -1 : a.recordClass > b.recordClass ? 1 : 0));
+  const quarantineShards = [...structure.quarantineShards]
+    .map((q) => ({ shard: q.shard, dev: q.dev, ino: q.ino }))
+    .sort((a, b) => (a.shard < b.shard ? -1 : a.shard > b.shard ? 1 : 0));
   const tuple = jcsSerialize({
     modelVersion: SCAN_MODEL_VERSION,
     recordsParent: structure.recordsParent ?? null,
     auditParent: structure.auditParent ?? null,
-    recordClasses: structure.recordClasses,
+    recordClasses,
     auditEventPresent: structure.auditEventPresent,
-    classIdentities: [...structure.classIdentities.entries()]
-      .map(([recordClass, identity]) => ({ recordClass, dev: identity.dev, ino: identity.ino }))
-      .sort((a, b) => (a.recordClass < b.recordClass ? -1 : a.recordClass > b.recordClass ? 1 : 0)),
+    classIdentities,
+    quarantineParent: structure.quarantineParent ?? null,
+    quarantineTemporaryPresent: structure.quarantineTemporaryPresent,
+    quarantineShards,
   });
   return computeDomainDigest(SCAN_SURFACE_GENERATION_DOMAIN, tuple);
+}
+
+/**
+ * Recompute the current cross-page surface-structure token (WP-8-F): the
+ * mutation boundary re-reads the structural snapshot and compares it with
+ * the assessment-bound token before any mutation (F3-G drift rule).
+ */
+export function recomputeSurfaceGeneration(input: {
+  readonly namespaceRoot: string;
+  readonly serviceUid: number;
+  readonly mode: ScanMode;
+  readonly hooks?: ScanHooks;
+}): { readonly ok: boolean; readonly generation?: string; readonly code?: string; readonly message?: string } {
+  const structureRead = readSurfaceStructure({ namespaceRoot: input.namespaceRoot, serviceUid: input.serviceUid, hooks: input.hooks, report: false, mode: input.mode });
+  if (!structureRead.ok || structureRead.structure === undefined) {
+    return { ok: false, code: structureRead.code ?? 'ERR-STO-IO-FAILURE', message: structureRead.message ?? 'surface structure could not be re-read' };
+  }
+  return { ok: true, generation: computeSurfaceGeneration(structureRead.structure) };
 }
 
 /** Deterministic scan class order: the 15 `.rec` classes (taxonomy order), then the audit class. */
@@ -390,6 +475,8 @@ function readSurfaceStructure(input: {
   readonly serviceUid: number;
   readonly hooks: ScanHooks | undefined;
   readonly report: boolean;
+  /** Registry mode excludes quarantine structure; recovery mode binds it (WP-8-F §8). */
+  readonly mode: ScanMode;
 }): { readonly ok: boolean; readonly structure?: SurfaceStructure; readonly observations?: readonly ForeignScanObservation[]; readonly findings?: readonly StorageFinding[]; readonly code?: string; readonly message?: string } {
   const recordsBracket = readdirVerified(`${input.namespaceRoot}/records`, input.serviceUid, input.hooks, { surface: 'records' });
   if (!recordsBracket.ok || recordsBracket.bracket === undefined) {
@@ -411,6 +498,42 @@ function readSurfaceStructure(input: {
     return profile !== undefined && profile.suffix === '.rec' && recordsNameSet.has(profile.segment);
   });
   const auditEventPresent = auditNameSet.has('audit-event');
+
+  // WP-8-F quarantine structure (recovery mode only): the quarantine
+  // parent, the temporary class directory, and every 4-hex shard identity.
+  let quarantineParent: DirectoryIdentity | undefined;
+  let quarantineTemporaryPresent = false;
+  const quarantineShards: { readonly shard: string; readonly dev: number; readonly ino: number }[] = [];
+  if (input.mode === 'recovery') {
+    const quarantineBracket = readdirVerified(`${input.namespaceRoot}/quarantine`, input.serviceUid, input.hooks, { surface: 'quarantine' });
+    if (!quarantineBracket.ok || quarantineBracket.bracket === undefined) {
+      return { ok: false, code: quarantineBracket.code ?? 'ERR-STO-IO-FAILURE', message: quarantineBracket.message ?? 'quarantine parent scan failed' };
+    }
+    if (!quarantineBracket.bracket.absent) {
+      quarantineParent = quarantineBracket.bracket.identity;
+      const temporaryNames = quarantineBracket.bracket.names.filter((n) => n === 'temporary');
+      if (temporaryNames.length === 1) {
+        const temporaryBracket = readdirVerified(`${input.namespaceRoot}/quarantine/temporary`, input.serviceUid, input.hooks, { surface: 'quarantine-temporary' });
+        if (!temporaryBracket.ok || temporaryBracket.bracket === undefined) {
+          return { ok: false, code: temporaryBracket.code ?? 'ERR-STO-IO-FAILURE', message: temporaryBracket.message ?? 'quarantine temporary class scan failed' };
+        }
+        if (!temporaryBracket.bracket.absent) {
+          quarantineTemporaryPresent = true;
+          for (const shardName of temporaryBracket.bracket.names) {
+            if (!SHARD_RE.test(shardName)) continue;
+            const identity = statDirectoryIdentity(`${input.namespaceRoot}/quarantine/temporary/${shardName}`);
+            if (!identity.ok) {
+              return { ok: false, code: identity.code ?? 'ERR-STO-IO-FAILURE', message: identity.message ?? 'quarantine shard identity could not be read' };
+            }
+            if (identity.identity === undefined) {
+              return { ok: false, code: 'ERR-STO-ROOT-IDENTITY-CHANGED', message: 'quarantine shard disappeared during the scan' };
+            }
+            quarantineShards.push({ shard: shardName, dev: identity.identity.dev, ino: identity.identity.ino });
+          }
+        }
+      }
+    }
+  }
 
   const observations: ForeignScanObservation[] = [];
   const findings: StorageFinding[] = [];
@@ -459,6 +582,9 @@ function readSurfaceStructure(input: {
       recordClasses,
       auditEventPresent,
       classIdentities,
+      quarantineParent,
+      quarantineTemporaryPresent,
+      quarantineShards,
     },
     observations,
     findings,
@@ -541,7 +667,14 @@ function scanRecordEntry(input: {
         ...extracted,
       };
       const classified = classifyCandidate(facts);
-      return { observation: recordObservation(input.recordClass, input.shard, input.name, stat, classified, extracted.envelope, extracted.auditAssociation) };
+      const observation = recordObservation(input.recordClass, input.shard, input.name, stat, classified, extracted.envelope, extracted.auditAssociation);
+      if (input.recordClass === 'store-evidence-record' && observation.kind === 'record' && observation.envelope !== undefined && classified.classification === 'valid-immutable-record') {
+        const qFacts = extractQuarantineEvidenceFacts(bytes.toString('utf8'));
+        if (qFacts.quarantineId !== undefined && qFacts.sourceDigest !== undefined && qFacts.sourceEntry !== undefined) {
+          return { observation: { ...observation, quarantineEvidenceFacts: { quarantineId: qFacts.quarantineId, sourceDigest: qFacts.sourceDigest, sourceEntry: qFacts.sourceEntry } } };
+        }
+      }
+      return { observation };
     }
     // Non-regular, policy-violating, hard-linked, or over-limit content:
     // classification without reading (precedence inside classifyCandidate).
@@ -645,6 +778,25 @@ function scanTemporaryEntry(input: {
       return { observation };
     }
     if (sharesInodeWithPublished) {
+      // WP-8-F: the crash-twin observation carries the twin's envelope
+      // facts (the temporary IS the published bytes). Bounded descriptor
+      // read with pre/post revalidation; a read or parse failure still
+      // classifies (a) from the inode relationship but attaches no
+      // envelope (the recovery executor then requires disposition).
+      let envelope: RecordObservationFacts | undefined;
+      if (stat.size <= input.recordBytes) {
+        try {
+          const bytes = readFileSync(fd);
+          const post = fstatSync(fd);
+          const revalidated = comparePrePostStat(pre, post);
+          if (revalidated.ok && post.size === bytes.length) {
+            const extracted = extractEnvelopeFacts({ raw: bytes.toString('utf8'), byteLimit: input.recordBytes, component: '' });
+            if (extracted.rawParses && extracted.canonicalOk && extracted.envelope !== undefined) envelope = extracted.envelope;
+          }
+        } catch {
+          envelope = undefined;
+        }
+      }
       closeSync(fd);
       fd = undefined;
       const observation: TemporaryScanObservation = {
@@ -654,6 +806,7 @@ function scanTemporaryEntry(input: {
         code: '',
         sharesInodeWithPublished: true,
         stat,
+        ...(envelope !== undefined ? { envelope } : {}),
       };
       return { observation };
     }
@@ -687,6 +840,10 @@ function scanTemporaryEntry(input: {
       return { observation };
     }
     const raw = bytes.toString('utf8');
+    // Deterministic content digest over the raw bytes (WP-8-F: the source
+    // content digest is the pre-mutation evidence digest for (b)/(c)
+    // quarantine sources).
+    const contentDigest = computeDomainDigest(STORAGE_RECORD_BYTES_DIGEST_DOMAIN, raw);
     // The temporary's record class is unknown from its name; parse without
     // the class-label check. Complete canonical records → (b) incomplete
     // unpublished; anything else → (c) malformed temporary.
@@ -704,6 +861,7 @@ function scanTemporaryEntry(input: {
       kind: 'temporary-object',
       classification: parsed ? 'incomplete-unpublished' : 'malformed-temporary',
       code: parsed ? '' : 'ERR-STO-MALFORMED',
+      contentDigest,
       sharesInodeWithPublished: false,
       stat,
       ...(envelope !== undefined ? { envelope } : {}),
@@ -804,6 +962,192 @@ function scanLockEntry(input: {
 }
 
 /**
+ * Scan the `quarantine/` surface (WP-8-F; recovery mode only). The surface
+ * layout is fixed: `quarantine/temporary/<shard>/<quarantineId>.qtn`
+ * (ADR-030). Foreign entries, malformed names, wrong types, wrong
+ * UID/mode, unexpected link counts, and unknown shards/classes are
+ * classified deterministically; every valid `.qtn` object is matched
+ * against its identity-derived recovery evidence and against `tmp/`
+ * objects sharing its inode (interrupted-link / conflict states).
+ */
+function scanQuarantineSurface(input: {
+  readonly namespaceRoot: string;
+  readonly serviceUid: number;
+  readonly hooks: ScanHooks | undefined;
+  readonly storeInstance: VerifiedStoreInstance;
+  readonly temporaryBytes: number;
+  readonly tmpObservations: readonly TemporaryScanObservation[];
+}): { readonly ok: boolean; readonly observations: readonly QuarantineScanObservation[]; readonly findings: readonly StorageFinding[]; readonly code?: string; readonly message?: string } {
+  const observations: QuarantineScanObservation[] = [];
+  const findings: StorageFinding[] = [];
+  const quarantineDir = `${input.namespaceRoot}/quarantine`;
+  const quarantineBracket = readdirVerified(quarantineDir, input.serviceUid, input.hooks, { surface: 'quarantine' });
+  if (!quarantineBracket.ok || quarantineBracket.bracket === undefined) {
+    return { ok: false, observations, findings, code: quarantineBracket.code ?? 'ERR-STO-IO-FAILURE', message: quarantineBracket.message ?? 'quarantine parent scan failed' };
+  }
+  if (quarantineBracket.bracket.absent) return { ok: true, observations, findings };
+  for (const name of quarantineBracket.bracket.names) {
+    if (name === 'temporary') continue;
+    observations.push({
+      id: quarantineObservationId('', name),
+      entry: name,
+      kind: 'quarantine-object',
+      shard: '',
+      classification: 'foreign-entry',
+      code: 'ERR-STO-MALFORMED',
+    });
+  }
+  if (!quarantineBracket.bracket.names.includes('temporary')) return { ok: true, observations, findings };
+  const temporaryBracket = readdirVerified(`${quarantineDir}/temporary`, input.serviceUid, input.hooks, { surface: 'quarantine-temporary' });
+  if (!temporaryBracket.ok || temporaryBracket.bracket === undefined) {
+    return { ok: false, observations, findings, code: temporaryBracket.code ?? 'ERR-STO-IO-FAILURE', message: temporaryBracket.message ?? 'quarantine temporary class scan failed' };
+  }
+  if (temporaryBracket.bracket.absent) return { ok: true, observations, findings };
+  for (const shardName of temporaryBracket.bracket.names) {
+    if (!SHARD_RE.test(shardName)) {
+      observations.push({
+        id: quarantineObservationId('', shardName),
+        entry: shardName,
+        kind: 'quarantine-object',
+        shard: '',
+        classification: 'foreign-entry',
+        code: 'ERR-STO-MALFORMED',
+      });
+      continue;
+    }
+    const shardBracket = readdirVerified(`${quarantineDir}/temporary/${shardName}`, input.serviceUid, input.hooks, { surface: 'quarantine-temporary', shard: shardName });
+    if (!shardBracket.ok || shardBracket.bracket === undefined) {
+      return { ok: false, observations, findings, code: shardBracket.code ?? 'ERR-STO-ROOT-IDENTITY-CHANGED', message: shardBracket.message ?? 'quarantine shard scan failed' };
+    }
+    if (shardBracket.bracket.absent) {
+      return { ok: false, observations, findings, code: 'ERR-STO-ROOT-IDENTITY-CHANGED', message: 'quarantine shard disappeared during the scan' };
+    }
+    for (const entryName of shardBracket.bracket.names) {
+      const base = { id: quarantineObservationId(shardName, entryName), entry: entryName, kind: 'quarantine-object' as const, shard: shardName };
+      if (!QUARANTINE_NAME_RE.test(entryName)) {
+        observations.push({
+          ...base,
+          classification: entryName.endsWith(QUARANTINE_SUFFIX) ? 'quarantine-malformed' : 'foreign-entry',
+          code: 'ERR-STO-MALFORMED',
+        });
+        continue;
+      }
+      const quarantineId = entryName.slice(0, 64);
+      const objectRead = readQuarantineObject({
+        path: `${quarantineDir}/temporary/${shardName}/${entryName}`,
+        serviceUid: input.serviceUid,
+        byteLimit: input.temporaryBytes,
+      });
+      if (!objectRead.ok) {
+        observations.push({ ...base, quarantineId, classification: objectRead.classification ?? 'quarantine-malformed', code: objectRead.code ?? '' });
+        continue;
+      }
+      // Interrupted-link detection: any tmp/ object sharing this inode.
+      const tmpTwin = input.tmpObservations.find((t) => t.stat !== undefined && t.stat.dev === objectRead.dev && t.stat.ino === objectRead.ino);
+      if (tmpTwin !== undefined) {
+        observations.push({
+          ...base,
+          quarantineId,
+          classification: 'quarantine-interrupted-link',
+          code: 'ERR-STO-INTEGRITY',
+          sourceEntry: tmpTwin.entry,
+          contentDigest: objectRead.contentDigest ?? '',
+          envelope: objectRead.envelope,
+          sharesInodeWithTemporary: true,
+        });
+        continue;
+      }
+      if (objectRead.nlink !== 1) {
+        observations.push({ ...base, quarantineId, classification: 'unexpected-hard-link', code: 'ERR-STO-INTEGRITY', contentDigest: objectRead.contentDigest });
+        continue;
+      }
+      // Evidence matching (identity-derived; outcome `quarantined`).
+      const evidenceId = computeQuarantineEvidenceIdentity({ storeInstance: input.storeInstance, quarantineId, sourceDigest: objectRead.contentDigest ?? '', outcome: 'quarantined' });
+      const evidenceDerived = deriveRecordRelativePath('store-evidence-record', evidenceId);
+      const evidencePath = evidenceDerived.ok ? `${input.namespaceRoot}/${evidenceDerived.relativePath}` : undefined;
+      const evidence = evidencePath === undefined ? undefined : verifyObjectBytesAt({ path: evidencePath, serviceUid: input.serviceUid, byteLimit: input.temporaryBytes });
+      if (evidence !== undefined && evidence.ok && evidence.canonicalUtf8 !== undefined) {
+        const facts = extractQuarantineEvidenceFacts(evidence.canonicalUtf8);
+        const matching = facts.quarantineId === quarantineId && facts.sourceDigest === (objectRead.contentDigest ?? '');
+        if (matching) {
+          observations.push({
+            ...base,
+            quarantineId,
+            classification: 'quarantined-valid',
+            code: '',
+            sourceEntry: facts.sourceEntry,
+            contentDigest: objectRead.contentDigest,
+            envelope: objectRead.envelope,
+          });
+          continue;
+        }
+        observations.push({ ...base, quarantineId, classification: 'quarantine-conflict', code: 'ERR-STO-INTEGRITY', contentDigest: objectRead.contentDigest });
+        continue;
+      }
+      observations.push({ ...base, quarantineId, classification: 'quarantined-missing-evidence', code: 'ERR-STO-INTEGRITY', contentDigest: objectRead.contentDigest, envelope: objectRead.envelope });
+    }
+  }
+  return { ok: true, observations, findings };
+}
+
+/** Descriptor-bound read of one quarantine object (regular-file policy). */
+function readQuarantineObject(input: {
+  readonly path: string;
+  readonly serviceUid: number;
+  readonly byteLimit: number;
+}): { readonly ok: boolean; readonly classification?: QuarantineObjectClassification; readonly code?: string; readonly message?: string; readonly dev?: number; readonly ino?: number; readonly nlink?: number; readonly contentDigest?: string; readonly envelope?: RecordObservationFacts } {
+  let fd: number | undefined;
+  try {
+    fd = openSync(input.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    const pre = fstatSync(fd);
+    const stat = statFacts(pre);
+    if (stat.fileType !== 'regular') {
+      return { ok: false, classification: 'wrong-type', code: 'ERR-STO-FTYPE-UNSUPPORTED', message: 'quarantine location is not a regular file' };
+    }
+    if (stat.uid !== input.serviceUid || (stat.mode & 0o777) !== 0o600) {
+      return { ok: false, classification: 'wrong-uid-or-mode', code: 'ERR-STO-PERM-DENIED', message: 'quarantine object violates the store permission policy' };
+    }
+    if (pre.size > input.byteLimit) {
+      return { ok: false, classification: 'quarantine-malformed', code: 'ERR-STO-LIMIT-EXCEEDED', message: 'quarantine object exceeds the bounded byte limit' };
+    }
+    const bytes = readFileSync(fd);
+    const post = fstatSync(fd);
+    const revalidated = comparePrePostStat(pre, post);
+    if (!revalidated.ok || post.size !== bytes.length) {
+      return { ok: false, classification: 'quarantine-malformed', code: 'ERR-STO-INTEGRITY', message: 'quarantine object changed during descriptor-based read' };
+    }
+    const raw = bytes.toString('utf8');
+    const contentDigest = computeDomainDigest(STORAGE_RECORD_BYTES_DIGEST_DOMAIN, raw);
+    let envelope: RecordObservationFacts | undefined;
+    try {
+      const extracted = extractEnvelopeFacts({ raw, byteLimit: input.byteLimit, component: '' });
+      if (extracted.rawParses && extracted.canonicalOk && extracted.envelope !== undefined) envelope = extracted.envelope;
+    } catch {
+      envelope = undefined;
+    }
+    return {
+      ok: true,
+      dev: Number(pre.dev),
+      ino: Number(pre.ino),
+      nlink: Number(pre.nlink),
+      contentDigest,
+      envelope,
+    };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ELOOP' || code === 'ENOTDIR' || code === 'ENXIO' || code === 'ENODEV' || code === 'EISDIR') {
+      return { ok: false, classification: 'wrong-type', code: 'ERR-STO-FTYPE-UNSUPPORTED', message: 'quarantine location is not a regular file' };
+    }
+    if (code === 'EACCES' || code === 'EPERM') {
+      return { ok: false, classification: 'wrong-uid-or-mode', code: 'ERR-STO-PERM-DENIED', message: 'quarantine object is not accessible' };
+    }
+    return { ok: false, classification: 'quarantine-malformed', code: 'ERR-STO-IO-FAILURE', message: 'quarantine object could not be scanned' };
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/**
  * Bounded read-only store scan (RDS-004/007, CSA, LMT-006/010, DTM-003;
  * F1–F4, F1-B, F1-S, F3-G). `bounds.failClosed` selects the recovery-scan
  * limit semantics (over-limit fails closed with ERR-STO-LIMIT-EXCEEDED)
@@ -876,7 +1220,7 @@ export function scanStoreSnapshot(input: StoreScanInput): StoreScanResult {
   // only (a continuation cursor suppresses re-reporting so the paging union
   // stays complete and duplicate-free).
   const reportParent = cursor === undefined;
-  const structureRead = readSurfaceStructure({ namespaceRoot: input.namespaceRoot, serviceUid, hooks: input.hooks, report: reportParent });
+  const structureRead = readSurfaceStructure({ namespaceRoot: input.namespaceRoot, serviceUid, hooks: input.hooks, report: reportParent, mode: bounds.mode });
   if (!structureRead.ok || structureRead.structure === undefined) {
     return failResult(structureRead.code ?? 'ERR-STO-IO-FAILURE', structureRead.message ?? 'surface structure scan failed');
   }
@@ -1142,6 +1486,27 @@ export function scanStoreSnapshot(input: StoreScanInput): StoreScanResult {
   // never from a non-resumable structural anomaly. When nothing was
   // processed, `truncated` without a continuation is the detectable
   // no-progress state.
+  // ── quarantine/ surface (WP-8-F; recovery mode only) ────────────────────
+  // Quarantine objects are never registry records: registry mode does not
+  // scan this surface at all (QRN/WP-8-F §8).
+  const quarantineObservations: QuarantineScanObservation[] = [];
+  if (!truncated && recoveryMode) {
+    const quarantineScan = scanQuarantineSurface({
+      namespaceRoot: input.namespaceRoot,
+      serviceUid,
+      hooks: input.hooks,
+      storeInstance: input.capability.binding.storeInstance,
+      temporaryBytes,
+      tmpObservations: observations.filter((o): o is TemporaryScanObservation => o.kind === 'temporary-object'),
+    });
+    if (!quarantineScan.ok) {
+      return failResult(quarantineScan.code ?? 'ERR-STO-IO-FAILURE', quarantineScan.message ?? 'quarantine surface scan failed');
+    }
+    quarantineObservations.push(...quarantineScan.observations);
+    findings.push(...quarantineScan.findings);
+  }
+  observations.push(...quarantineObservations);
+
   const continuation: ScanCursor | undefined =
     truncated && lastClass !== undefined && lastShard !== undefined && lastEntry !== undefined && !recoveryMode
       ? { generation, surfaceGeneration, recordClass: lastClass, shard: lastShard, entry: lastEntry }
@@ -1151,5 +1516,5 @@ export function scanStoreSnapshot(input: StoreScanInput): StoreScanResult {
     return failResult('ERR-STO-INTERNAL-INVARIANT', 'continuation failed self-validation');
   }
   findings.sort(compareFindings);
-  return { ok: true, observations, findings, scannedEntries, scannedBytes, truncated, generation, ...(continuation !== undefined ? { continuation } : {}) };
+  return { ok: true, observations, findings, scannedEntries, scannedBytes, truncated, generation, surfaceGeneration, ...(continuation !== undefined ? { continuation } : {}) };
 }

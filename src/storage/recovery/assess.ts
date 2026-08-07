@@ -44,7 +44,9 @@ import type {
   LockScanObservation,
   ObjectFinding,
   OrphanTemporaryFinding,
+  QuarantineScanObservation,
   ReconstructionCandidateFinding,
+  RecordScanObservation,
   RecoveryAssessment,
   ScanFacts,
   ScanObservation,
@@ -185,6 +187,8 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   const quarantineEligible: ObjectFinding[] = [];
   const requiresDisposition: DispositionFinding[] = [];
   const reconstructionCandidates: ReconstructionCandidateFinding[] = [];
+  const quarantineObjects: QuarantineScanObservation[] = [];
+  const danglingQuarantineEvidence: { readonly evidenceObservationId: string; readonly quarantineId: string; readonly sourceEntry?: string }[] = [];
   const findings: StorageFinding[] = [...finalized.findings, ...association.findings];
 
   for (const item of obs) {
@@ -196,6 +200,7 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
         classification: temp.classification,
         recordId: temp.envelope?.recordId,
         recordDigest: temp.envelope?.recordDigest,
+        contentDigest: temp.contentDigest,
         sharesInodeWithPublished: temp.sharesInodeWithPublished,
       });
       incompletePublicationStates.push({
@@ -255,6 +260,35 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
     }
   }
 
+  for (const item of obs) {
+    if (item.kind !== 'quarantine-object') continue;
+    const q = item as QuarantineScanObservation;
+    quarantineObjects.push(q);
+    if (q.classification === 'quarantine-malformed' || q.classification === 'foreign-entry') {
+      findings.push(finding('ERR-STO-MALFORMED', 'malformed or foreign quarantine object in the quarantine surface'));
+      requiresDisposition.push({ observationId: q.id, classification: q.classification, code: q.code, reason: 'malformed or foreign quarantine object; control-plane disposition required' });
+    }
+    if (q.classification === 'quarantine-conflict' || q.classification === 'unexpected-hard-link' || q.classification === 'wrong-type' || q.classification === 'wrong-uid-or-mode') {
+      findings.push(finding(q.code === '' ? 'ERR-STO-INTEGRITY' : q.code, 'quarantine object violates the quarantine policy'));
+      requiresDisposition.push({ observationId: q.id, classification: q.classification, code: q.code === '' ? 'ERR-STO-INTEGRITY' : q.code, reason: 'quarantine object requires control-plane disposition' });
+    }
+    if (q.classification === 'quarantined-missing-evidence') {
+      findings.push(finding('ERR-STO-INTEGRITY', 'quarantined temporary object is missing its recovery evidence'));
+    }
+    if (q.classification === 'quarantine-interrupted-link') {
+      findings.push(finding('ERR-STO-INTEGRITY', 'quarantine interrupted between destination link and source unlink'));
+    }
+  }
+  // WP-8-F: dangling quarantine evidence (evidence referencing no present
+  // quarantine object) — derived purely from the scanned evidence facts.
+  const qtnIds = new Set(quarantineObjects.filter((q) => q.quarantineId !== undefined).map((q) => q.quarantineId as string));
+  for (const item of obs) {
+    if (item.kind !== 'record' || item.recordClass !== 'store-evidence-record' || item.quarantineEvidenceFacts === undefined) continue;
+    if (qtnIds.has(item.quarantineEvidenceFacts.quarantineId)) continue;
+    danglingQuarantineEvidence.push({ evidenceObservationId: item.id, quarantineId: item.quarantineEvidenceFacts.quarantineId, sourceEntry: item.quarantineEvidenceFacts.sourceEntry });
+    findings.push(finding('ERR-STO-INTEGRITY', 'quarantine evidence references a missing quarantine object'));
+  }
+
   for (const conflict of finalized.duplicateConflicts) {
     requiresDisposition.push({
       observationId: conflict.observationIds[0] ?? '',
@@ -284,6 +318,8 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
     });
   }
 
+  quarantineObjects.sort((a, b) => (a.entry < b.entry ? -1 : a.entry > b.entry ? 1 : 0));
+  danglingQuarantineEvidence.sort((a, b) => (a.quarantineId < b.quarantineId ? -1 : a.quarantineId > b.quarantineId ? 1 : 0));
   orphanTemporaryObjects.sort((a, b) => (a.entry < b.entry ? -1 : a.entry > b.entry ? 1 : 0));
   persistentLockObservations.sort((a, b) => (a.observationId < b.observationId ? -1 : 1));
   incompletePublicationStates.sort((a, b) => (a.observationId < b.observationId ? -1 : a.observationId > b.observationId ? 1 : a.kind < b.kind ? -1 : 1));
@@ -304,6 +340,8 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
     quarantineEligible,
     requiresDisposition,
     reconstructionCandidates,
+    quarantineObjects,
+    danglingQuarantineEvidence,
     findings,
   };
 }

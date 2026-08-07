@@ -159,7 +159,9 @@
 - `audit/` — audit events;
 - `tmp/` — temporary write state;
 - `locks/` — writer and recovery locks;
-- `quarantine/` — recovery evidence and quarantined objects.
+- `quarantine/` — quarantined objects (recovery evidence is persisted as
+  `StoreEvidenceRecord` records under `records/evidence/`, contract 6.3);
+  quarantine execution follows 16.5.
 
 **5.3 Path-component encoding (W8A-C08, corrected W8A-R01).** Exactly one normative encoding model exists; it is layout-version-bound.
 
@@ -539,6 +541,130 @@ Failure semantics by stage:
 A recovery-generated event MUST NOT pretend the original operation emitted an event. Recovery evidence MUST NOT create or infer a lifecycle decision.
 
 **16.4 Stale locks.** Stale locks are broken only by explicit recovery with evidence (Section 12).
+
+**16.5 Quarantine execution (WP-8-F `quarantine-temporary`).** The initial
+authorized quarantine operation is `quarantine-temporary`: it moves one
+crash-reappearing temporary regular file under the verified `tmp/` surface
+into the quarantine namespace. Quarantine is a recovery mutation: it is
+executed only by an explicitly authorized recovery capability bound to the
+exact store, namespace, configuration, recovery action identity, and
+operation; it NEVER decides lifecycle state; and it never touches canonical
+primary records, audit records, lock files, registry/index files,
+directories, symlinks, sockets, FIFOs, devices, or contested identities.
+
+**Eligibility (closed).** A target is eligible if and only if, immediately
+before mutation, it is reclassified deterministically as WPR-023 (b)
+(incomplete unpublished temporary) or WPR-023 (c) (malformed temporary) AND
+all of: regular file; exact expected service UID; exact expected
+temporary-file mode; size within `temporaryBytes`; exact descriptor-bound
+identity; `nlink === 1`; no verified durable publication twin (WPR-023 (a)
+twins use `orphan-removal`, never quarantine); no contested or uncertain
+publication relationship; no active writer-lock implication; and the current
+observation and assessment evidence match the request exactly. WPR-023 (d)
+and otherwise uncertain temporaries are ineligible and remain untouched
+(disposition required).
+
+**Destination derivation (deterministic, internal).** The quarantine
+destination is `<namespace>/quarantine/temporary/<shard>/<quarantineId>.qtn`
+where `<shard>` is the first four lowercase hexadecimal characters of
+`quarantineId`, and `quarantineId` is the lowercase SHA-256 domain digest
+over (store identity, namespace identity, source temporary entry
+designation, WPR-023 classification, exact source content digest, and the
+pre-mutation evidence digest), domain-separated as
+`PGAP-STORAGE-QUARANTINE-TEMPORARY-v1`. The destination is derived
+internally only; no raw path, descriptor, device/inode number, clock value,
+random nonce, capability, or recovery action identity enters the digest or
+the returned data.
+
+**Provisioning.** `quarantine/`, `quarantine/temporary/`, and
+`quarantine/temporary/<shard>/` MAY be lazily provisioned under the writer
+lock with exact fixed-directory verification (no-follow; expected UID;
+exact directory mode; same verified namespace filesystem). Absent
+directories may be created; existing directories must be verified; a
+symlink, special file, wrong UID, wrong mode, or replacement fails closed;
+no arbitrary caller-provided directory creation exists; created parents are
+fsynced.
+
+**Mutation primitive and ordering.** Quarantine uses same-filesystem
+hard-link plus unlink (never `rename`, never byte copying, never
+overwrite). Order: genuine trusted recovery request; exact
+`quarantine-temporary` capability verification; store and namespace
+revalidation; request-generation recomputation; surface-generation
+recomputation; writer-lock acquisition; immediate source re-verification
+(descriptor, UID, mode, `nlink === 1`, size bound, content digest,
+observation evidence, current classification); internal `quarantineId` and
+destination derivation; exact quarantine-directory provisioning and
+verification; destination hard-link no-replace; source/destination same-
+inode verification; link-count transition 1 → 2 verification; destination
+shard-directory fsync; immediate source-name re-verification; source
+unlink; destination-intact and link-count 2 → 1 verification; source
+`tmp/`-directory fsync; source-absent and destination-exact verification;
+durable recovery evidence publication; corresponding `authorized-write`
+audit publication; capability/store revalidation; identity-bound lock
+release.
+
+**No-overwrite.** An existing destination is never overwritten. An existing
+destination is verified exactly (bytes, identity, classification, evidence
+binding) before any idempotent continuation; a destination with different
+inode or content fails closed with the conflict/integrity vocabulary and
+neither object is modified or unlinked.
+
+**Evidence.** Every quarantine execution publishes a `StoreEvidenceRecord`
+(`recovery-evidence`, contract 6.3) with operation `quarantine-temporary`,
+binding store and namespace identity, the recovery action identity, the
+source temporary entry designation, the source classification, the source
+content digest, the pre-mutation evidence digest, the quarantine ID, the
+destination logical designation, the resulting state, the request
+generation, the surface generation, and the outcome (`quarantined` |
+`already-completed`). No raw filesystem path is stored. Success is reported
+only after destination durability, source-name removal durability, evidence
+durability, and `authorized-write` audit durability.
+
+**Idempotency states (deterministic).** Source present + destination absent:
+normal execution. Source present + destination present + same verified
+inode: interrupted after the hard link; all facts are re-verified and the
+operation continues from the source unlink. Source absent + destination
+present + exact expected object + no evidence: interrupted after the source
+unlink; the missing recovery evidence and audit are published. Source
+absent + destination present + matching evidence: `already-completed`.
+Source present + destination present + different inode or content: fail
+closed; neither object is modified. Source absent + destination absent:
+fail closed; success is never inferred. Matching evidence but destination
+missing: fail closed as an integrity failure. Matching evidence but source
+still present: fail closed unless the destination is the same verified
+inode in an explicitly recoverable interrupted-link state. Repeated
+execution is idempotent; conflicting evidence fails closed; no
+repair-by-guessing, no rollback of an established quarantine destination.
+
+**Crash-state classification.** Every quarantine crash state is
+deterministically classifiable by the recovery scanner (16.2): valid
+quarantined temporary with matching evidence; quarantined temporary missing
+evidence; evidence referencing a missing quarantine object; source and
+destination both present as the same inode; source and destination both
+present but conflicting; malformed quarantine filename; foreign quarantine
+entry; wrong type/UID/mode; unexpected link count; unknown quarantine class
+or shard; quarantine parent/class identity drift (fail closed). A rerun
+either completes safely, rolls evidence forward, returns
+`already-completed`, or fails closed; stale-lock breaking remains out of
+scope (16.4).
+
+### Quarantine requirements
+
+- **QRN-001.** `quarantine-temporary` is the initial authorized quarantine
+  operation; no generic `quarantine` authority exists; the recovery
+  capability operation set contains exactly the implemented operations.
+- **QRN-002.** Quarantine eligibility is the closed WPR-023 (b)/(c)
+  regular-file set of 16.5; every other object is ineligible and remains
+  untouched.
+- **QRN-003.** The quarantine destination is derived deterministically per
+  16.5; no caller-supplied path or destination exists.
+- **QRN-004.** Quarantine uses same-filesystem hard-link plus unlink;
+  `rename`, byte copying, overwrite, and chmod/chown repair are prohibited.
+- **QRN-005.** Every quarantine execution publishes durable
+  `StoreEvidenceRecord` evidence and its `authorized-write` audit before
+  success is reported.
+- **QRN-006.** Quarantine idempotency and crash states follow 16.5
+  exactly; conflicting destinations and evidence fail closed.
 
 ### Crash-safety requirements
 

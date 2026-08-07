@@ -137,8 +137,10 @@ accepted**; the **post-commit baseline verification and closure report
 records the verification and prepares the closure documentation**;
 **WP-8-D is closed** at commit
 `23a30b212dbe1f2ffa05e2b69314754730aeb222` (subject `docs: close WP-8-D
-durable storage operations`); the **next gate is the WP-8-E
-implementation acceptance**; WP-8
+durable storage operations`); **WP-8-E was implemented and accepted** at
+commit `f3677e61c3ce048f9dde7ac7dc6de5ad8f2c9f8e` (subject `feat: add
+WP-8-E registry recovery read slice`); the **next gate is the WP-8-F
+implementation review**; WP-8
 implementation is **not closed**. WP-9 and later
 packages are **not authorized**. No push, release,
 publication, installation, or deployment has occurred.
@@ -154,11 +156,28 @@ advisory recovery plan; no mutation of any kind); the **static-guard and
 global-security boundaries are extended** with exact module/API
 allowlists; the **implementation report
 (`docs/reports/wp-8e-registry-recovery-read-slice-implementation-report.md`)
-is complete** with the full verification evidence; **WP-8-E is not yet
-closed** — implementation acceptance and the next review gate remain
-pending; retention and migration remain out of scope; WP-8 implementation
-is **not closed**. WP-9 and later packages are **not authorized**. No push,
-release, publication, installation, or deployment has occurred. Each disposition
+is complete**; **WP-8-E is closed** at commit
+`f3677e61c3ce048f9dde7ac7dc6de5ad8f2c9f8e`. **WP-8-F (authorized recovery
+mutation foundation) is implemented**: authority-gated recovery mutation
+(recovery capability + recovery-action provenance, zero production
+producers); immediate descriptor-bound re-verification; safe WPR-023 (a)
+orphan-temporary cleanup; the authorized **`quarantine-temporary`
+operation** (ADR-030; contract §16.5, QRN-001…006) for WPR-023 (b)/(c)
+regular temporaries with the deterministic quarantine destination,
+hard-link plus unlink primitive, exact provisioning, no-overwrite and
+idempotency states, durable evidence, recovery-scanner classification,
+and a fixed 15-stage crash inventory; durable recovery evidence with
+deterministic identity; deterministic already-completed idempotency;
+exact static-guard/global-security extensions (three new fs owners; the
+contract was extended with §16.5/QRN and its pinned SHA-256 updated).
+Stale-lock breaking, deletion, WPR-023 (d) disposition, retention,
+migration, index rebuild, WP-9, and WP-12 remain out of scope. The
+**implementation report
+(`docs/reports/wp-8f-recovery-mutation-foundation-implementation-report.md`)
+is complete**; **WP-8-F is not yet closed** — implementation review
+pending; WP-8 implementation is **not closed**. WP-9 and later packages
+are **not authorized**. No push, release, publication, installation, or
+deployment has occurred. Each disposition
 is one of RESOLVED (by this planning package or earlier closed packages),
 DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
 

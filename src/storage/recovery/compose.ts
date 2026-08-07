@@ -28,8 +28,9 @@ function failResult(code: string, message: string): RecoveryScanResult {
   return { ok: false, findings: [{ code, message, phase: 'request-validation', state: NO_STATE }] };
 }
 
-function scanFactsOf(scan: { readonly scannedEntries: number; readonly scannedBytes: number; readonly truncated: boolean }, generation: string): ScanFacts {
-  return { generation, scannedEntries: scan.scannedEntries, scannedBytes: scan.scannedBytes, truncated: scan.truncated, failClosed: true };
+function scanFactsOf(scan: { readonly scannedEntries: number; readonly scannedBytes: number; readonly truncated: boolean; readonly surfaceGeneration?: string }, generation: string): ScanFacts {
+  if (scan.surfaceGeneration === undefined) throw new Error('recovery scan produced no surface-generation token');
+  return { generation, surfaceGeneration: scan.surfaceGeneration, scannedEntries: scan.scannedEntries, scannedBytes: scan.scannedBytes, truncated: scan.truncated, failClosed: true };
 }
 
 /**

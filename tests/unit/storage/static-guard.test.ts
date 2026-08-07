@@ -58,6 +58,15 @@ const FS_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   // WP-8-E: the read-only store scan (records/audit/tmp/locks surfaces). The
   // allowlist is deliberately read-only: no mutating fs API is delegated.
   'src/storage/recovery/scan.ts': ['readdirSync', 'openSync', 'closeSync', 'fstatSync', 'readFileSync', 'constants'],
+  // WP-8-F exact fs-bearing mutation owners (ADR-029 implementation
+  // constraints): descriptor-bound re-verification (read-only) and the
+  // exact-own-temporary unlink with tmp-directory fsync.
+  'src/storage/recovery/reverify.ts': ['openSync', 'closeSync', 'fstatSync', 'readFileSync', 'constants'],
+  'src/storage/recovery/cleanup.ts': ['openSync', 'closeSync', 'fstatSync', 'fsyncSync', 'unlinkSync', 'constants'],
+  // WP-8-F quarantine-temporary: exact quarantine-directory provisioning
+  // (mkdir) and the hard-link plus unlink primitive with directory fsyncs.
+  // No rename, copy, chmod/chown, or recursive removal.
+  'src/storage/recovery/quarantine.ts': ['mkdirSync', 'openSync', 'closeSync', 'fstatSync', 'fsyncSync', 'linkSync', 'unlinkSync', 'constants'],
 };
 
 /** Complete filesystem API name vocabulary (denied outside the allowlist). */
@@ -85,6 +94,17 @@ const CREATOR_EDGES: Readonly<Record<string, readonly string[]>> = {
   createProvisioningCapability: ['src/storage/publication/index.ts'],
   createReadCapability: ['src/storage/read/index.ts', 'src/storage/registry/compose.ts', 'src/storage/recovery/compose.ts'],
   createVerifyCapability: ['src/storage/read/index.ts'],
+  // WP-8-F edges: the recovery-mutation boundary is the sole production
+  // consumer; the provenance creator has zero production consumers.
+  createRecoveryActionProvenance: [], // future consumer: src/control-plane/storage-recovery-action.ts (does not exist)
+  createTrustedRecoveryRequest: ['src/storage/recovery/execute.ts'],
+  createRecoveryCapability: ['src/storage/recovery/execute.ts'],
+  // WP-8-F correction edges: the exact-record recovery publication permit
+  // is minted only by the evidence module and verified/liveness-checked
+  // only by the narrow permit-bound publication implementation.
+  createRecoveryPublicationPermit: ['src/storage/recovery/evidence.ts'],
+  isGenuineRecoveryPublicationPermit: ['src/storage/publication/publish-record.ts'],
+  recoveryPublicationPermitLive: ['src/storage/publication/publish-record.ts'],
 };
 
 /** Future capability issuance markers — denied globally. */
@@ -458,7 +478,7 @@ test('static guard: package exports and dependencies unchanged', () => {
 test('static guard: authoritative contract is byte-identical at the accepted SHA-256', () => {
   const contract = readFileSync(join(REPO, 'docs', 'specs', 'wp-8-local-storage-registry-contract.md'), 'utf8');
   const hash = createHash('sha256').update(contract).digest('hex');
-  assert.equal(hash, 'aeed25790f58d52f77a98a31d8e7d58784a871aa7466422fb1c638a1faf8456f');
+  assert.equal(hash, '93504ea29b5ed0abb0b9fcf4685029939ab1b652049325a8160023ba10c0cd3a');
 });
 
 test('static guard: no timers, randomness, or environment dependence in storage modules', () => {
@@ -534,8 +554,8 @@ test('static guard: locks-only entropy/process exception does not leak (D-3)', (
   }
 });
 
-test('static guard: read/scan tree is mutation-free and readdirSync is the scan owner (WP-8-D/E)', () => {
-  const readTree = ['src/storage/read/read-record.ts', 'src/storage/read/enumerate.ts', 'src/storage/recovery/scan.ts'];
+test('static guard: read/scan tree is mutation-free and readdirSync is the scan owner (WP-8-D/E/F)', () => {
+  const readTree = ['src/storage/read/read-record.ts', 'src/storage/read/enumerate.ts', 'src/storage/recovery/scan.ts', 'src/storage/recovery/reverify.ts'];
   const mutating = /\b(writeSync|linkSync|unlinkSync|mkdirSync|fsyncSync|fchmodSync|renameSync|rmSync|rmdirSync|cpSync|chmodSync|chownSync)\b/;
   for (const path of readTree) {
     const content = readFileSync(join(STORAGE_SRC, path.replace('src/storage/', '')), 'utf8');
@@ -555,7 +575,7 @@ test('static guard: read/scan tree is mutation-free and readdirSync is the scan 
 
 test('static guard: registry/recovery boundaries hold (WP-8-E)', () => {
   const files = collectTsFiles(STORAGE_SRC);
-  const fsFree = ['src/storage/registry/classify.ts', 'src/storage/registry/derive.ts', 'src/storage/registry/compose.ts', 'src/storage/recovery/assess.ts', 'src/storage/recovery/plan.ts', 'src/storage/recovery/compose.ts'];
+  const fsFree = ['src/storage/registry/classify.ts', 'src/storage/registry/derive.ts', 'src/storage/registry/compose.ts', 'src/storage/recovery/assess.ts', 'src/storage/recovery/plan.ts', 'src/storage/recovery/compose.ts', 'src/storage/recovery/execute.ts', 'src/storage/recovery/evidence.ts'];
   const scanAllowlist = FS_ALLOWLIST['src/storage/recovery/scan.ts'] ?? [];
   const mutating = ['writeSync', 'linkSync', 'unlinkSync', 'mkdirSync', 'fsyncSync', 'fchmodSync', 'renameSync', 'rmSync', 'rmdirSync', 'cpSync', 'chmodSync', 'chownSync'];
   for (const name of mutating) {
@@ -567,11 +587,53 @@ test('static guard: registry/recovery boundaries hold (WP-8-E)', () => {
       assert.equal(new RegExp(`\\b${name}\\b`).test(content), false, `${path} references filesystem API ${name} (fs-free boundary)`);
     }
   }
-  // The WP-8-E slice performs no recovery mutation: no quarantine/lock-break/
-  // reconstruction/removal operation export exists anywhere in src/storage.
+  // WP-8-E performed no recovery mutation; WP-8-F adds the exact authorized
+  // mutation owners. Operation-level mutation primitives (quarantine
+  // execution, lock breaking, audit reconstruction, generic recovery
+  // execution, capability issuance) are denied everywhere; the orphan-removal
+  // primitive and the composition boundary exist ONLY in their exact owners.
+  const RECOVERY_MUTATION_OWNERS = new Set(['src/storage/recovery/execute.ts', 'src/storage/recovery/cleanup.ts', 'src/storage/recovery/quarantine.ts', 'src/storage/recovery/index.ts']); // index.ts re-exports only the exact boundary
   for (const file of files) {
     const content = readFileSync(file, 'utf8');
-    assert.equal(/quarantineObject|breakLock|removeOrphan|reconstructAudit|executerecovery|performRecovery|issueRecoveryOperation/i.test(content), false, `${rel(file)} contains a recovery-mutation operation marker`);
+    if (!RECOVERY_MUTATION_OWNERS.has(rel(file))) {
+      assert.equal(/\bquarantineObject\s*\(|breakLock|removeOrphan|reconstructAudit|performRecovery|issueRecoveryOperation|executeRecoveryMutation/i.test(content), false, `${rel(file)} contains a recovery-mutation operation marker`);
+    }
+  }
+  // The recovery-mutation boundary never accepts a plan action or any
+  // path/descriptor/nonce/fs-function operand.
+  const execute = readFileSync(join(STORAGE_SRC, 'recovery', 'execute.ts'), 'utf8');
+  assert.equal(/RecoveryPlanAction/.test(execute), false, 'execute.ts must not accept a plan action operand');
+  assert.equal(/readFileSync|writeSync|unlinkSync|linkSync|mkdirSync|renameSync/.test(execute), false, 'execute.ts must not perform filesystem work directly');
+});
+
+test('static guard: publication sink accepts write authority only; recovery publication is permit-bound (WP-8-F correction)', () => {
+  const files = collectTsFiles(STORAGE_SRC);
+  // The structural substitution view is gone: no PublicationAuthority
+  // abstraction and no caller-supplied operation vocabulary anywhere.
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    assert.equal(/PublicationAuthority/.test(content), false, `${rel(file)} still references the structural PublicationAuthority abstraction`);
+    assert.equal(/generic recovery authority union/.test(content), false, `${rel(file)} references a recovery authority union`);
+  }
+  const substrate = readFileSync(join(STORAGE_SRC, 'publication', 'publish-record.ts'), 'utf8');
+  // Generic publication and provisioning are write-only: genuine brand check
+  // before any filesystem access; no recovery-capability operand type.
+  assert.equal(/isGenuineWriteCapability/.test(substrate), true, 'publish-record.ts must runtime-brand-check the write capability');
+  assert.equal(/\bRecoveryCapability\b/.test(substrate), false, 'publish-record.ts must never reference the recovery capability type');
+  assert.equal(/\bWriteCapability\b/.test(substrate), true, 'publish-record.ts must accept the write capability type');
+  assert.equal(/publishImmutableRecord\(input: \{\s*\n  readonly capability: WriteCapability/.test(substrate), true, 'publishImmutableRecord must accept WriteCapability only');
+  assert.equal(/ensureClassShardDirectories\(input: \{\s*\n  readonly capability: WriteCapability/.test(substrate), true, 'ensureClassShardDirectories must accept WriteCapability only');
+  assert.equal(/readonly operation\?:/.test(substrate), false, 'publish-record.ts must not carry a caller-supplied operation parameter');
+  // The recovery entry point consumes only the exact-record permit and never
+  // accepts a record class, final path, shard, or operation from the caller.
+  assert.equal(/publishRecoveryBoundRecord/.test(substrate), true, 'the dedicated recovery publication entry point must exist');
+  assert.equal(/readonly permit: RecoveryPublicationPermit/.test(substrate), true, 'the recovery entry point must consume the permit only');
+  const recoveryEntry = substrate.slice(substrate.indexOf('export function publishRecoveryBoundRecord'), substrate.indexOf('export function publishRecoveryBoundRecord') + 900);
+  assert.equal(/readonly recordClass|readonly finalPath|readonly shard|readonly operation/.test(recoveryEntry), false, 'the recovery entry point must not accept a record class, final path, shard, or operation');
+  // No permit creator or verifier in any barrel or the package root.
+  for (const barrel of ['src/storage/index.ts', 'src/storage/publication/index.ts', 'src/storage/capabilities/index.ts', 'src/index.ts']) {
+    const content = readFileSync(join(REPO, barrel), 'utf8');
+    assert.equal(/createRecoveryPublicationPermit|isGenuineRecoveryPublicationPermit|recoveryPublicationPermitLive/.test(content), false, `${barrel} must not export the recovery publication permit creator or verifier`);
   }
 });
 

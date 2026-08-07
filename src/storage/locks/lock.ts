@@ -40,7 +40,22 @@ import { jcsSerialize } from '../../canonical/jcs.js';
 import { computeDomainDigest, isValidDigestSyntax } from '../format/envelope.js';
 import { writeAllSync } from '../metadata/bootstrap-persist.js';
 import { comparePrePostStat, verifyRegularFileStat } from '../root/identity.js';
-import { isGenuineWriteCapability, type WriteCapability } from '../capabilities/authenticity.js';
+import { isGenuineWriteCapability, isGenuineRecoveryCapability, type CapabilityCheck, type RecoveryCapability, type WriteCapability } from '../capabilities/authenticity.js';
+
+/**
+ * WP-8-F: the single-writer lock is shared by the write path and the
+ * authorized recovery-mutation path. Both capability kinds are genuine
+ * mutation-capable brands; a structural object is rejected before any
+ * filesystem access. The checked operation is the caller's closed
+ * vocabulary ('record-publish' for writes, 'orphan-removal' for recovery
+ * mutations).
+ */
+export type LockAuthority = WriteCapability | RecoveryCapability;
+export type LockOperation = 'record-publish' | 'orphan-removal' | 'quarantine-temporary';
+
+function isGenuineLockAuthority(value: unknown): value is LockAuthority {
+  return isGenuineWriteCapability(value) || isGenuineRecoveryCapability(value);
+}
 import type { LockResult, LockTimeSource, WriterLockRecord } from '../types.js';
 
 const { O_CREAT, O_EXCL, O_WRONLY, O_RDONLY, O_NOFOLLOW, O_DIRECTORY } = constants;
@@ -165,7 +180,9 @@ export function probeWriterLock(lockPath: string): LockResult {
  * during the wait fails with ERR-STO-CANCELLED and leaves no partial state.
  */
 export function acquireWriterLock(input: {
-  readonly capability: WriteCapability;
+  readonly capability: LockAuthority;
+  /** Closed operation vocabulary of the caller's mutation boundary. */
+  readonly operation?: LockOperation;
   readonly lockPath: string;
   readonly locksDirPath: string;
   readonly storeInstance: readonly { readonly kind: string; readonly dev: number; readonly ino: number }[];
@@ -174,15 +191,18 @@ export function acquireWriterLock(input: {
   readonly timeSource: LockTimeSource;
   readonly hooks?: LockHooks;
 }): LockResult {
+  const operation = input.operation ?? 'record-publish';
   // The capability operand must be genuine BEFORE any method call or
   // filesystem access (CAP-007): a structural object with a forged verify()
   // is rejected here.
-  if (!isGenuineWriteCapability(input.capability)) {
-    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'write capability operand is not genuine' };
+  if (!isGenuineLockAuthority(input.capability)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'lock capability operand is not genuine' };
   }
-  const check = input.capability.verify('record-publish');
+  // The brand check above guarantees a genuine mutation-capable capability;
+  // widen the verify call (both brands re-check their own brand inside).
+  const check = (input.capability as { verify(op: string): CapabilityCheck }).verify(operation);
   if (!check.ok) {
-    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'write capability is not usable at the lock boundary' };
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'capability is not usable at the lock boundary' };
   }
   const serviceUid = input.capability.binding.serviceUid;
   const record = buildLockRecord({
@@ -290,21 +310,26 @@ export function acquireWriterLock(input: {
  * be positively verified as the caller's own is never touched.
  */
 export function releaseWriterLock(input: {
-  readonly capability: WriteCapability;
+  readonly capability: LockAuthority;
+  /** Closed operation vocabulary of the caller's mutation boundary. */
+  readonly operation?: LockOperation;
   readonly lockPath: string;
   readonly locksDirPath: string;
   readonly expected: { readonly nonce: string; readonly storeInstance: readonly { readonly kind: string; readonly dev: number; readonly ino: number }[] };
   readonly timeSource: LockTimeSource;
   readonly hooks?: LockHooks;
 }): LockResult {
+  const operation = input.operation ?? 'record-publish';
   // The capability operand must be genuine BEFORE any method call or
   // filesystem access (CAP-007).
-  if (!isGenuineWriteCapability(input.capability)) {
-    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'write capability operand is not genuine' };
+  if (!isGenuineLockAuthority(input.capability)) {
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'lock capability operand is not genuine' };
   }
-  const check = input.capability.verify('record-publish');
+  // The brand check above guarantees a genuine mutation-capable capability;
+  // widen the verify call (both brands re-check their own brand inside).
+  const check = (input.capability as { verify(op: string): CapabilityCheck }).verify(operation);
   if (!check.ok) {
-    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'write capability is not usable at the release boundary' };
+    return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'capability is not usable at the release boundary' };
   }
   const serviceUid = input.capability.binding.serviceUid;
   let fd: number | undefined;

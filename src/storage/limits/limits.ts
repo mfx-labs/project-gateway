@@ -54,6 +54,9 @@ export const LIMIT_DEFINITIONS: readonly LimitDefinition[] = [
   { name: 'writers', unit: 'writers', default: 1, hardMin: 1, hardMax: 1, source: 'contract-constant', configSelectable: false, requestLowerable: false, requestRaiseable: false, exact: 'n/a', plusOne: 'n/a', result: 'ERR-STO-CONCURRENCY' },
   { name: 'quarantineEntries', unit: 'count', default: 4096, hardMin: 64, hardMax: 65536, source: 'config', configSelectable: true, requestLowerable: true, requestRaiseable: false, exact: 'accepted', plusOne: 'fail-closed', result: 'quarantine full → recovery required' },
   { name: 'indexRebuildWork', unit: 'count', default: 1 * MIB, hardMin: 1024, hardMax: 16 * MIB, source: 'config', configSelectable: true, requestLowerable: true, requestRaiseable: false, exact: 'accepted', plusOne: 'fail-closed', result: 'rebuild fails closed' },
+  // WP-8-H contract amendment (ADR-031): the persistent registry index is a
+  // bounded derived cache; `indexBytes` caps the canonical index snapshot.
+  { name: 'indexBytes', unit: 'bytes', default: 64 * MIB, hardMin: 1 * MIB, hardMax: 1 * GIB, source: 'config', configSelectable: true, requestLowerable: true, requestRaiseable: false, exact: 'accepted', plusOne: 'fail-closed', result: 'rebuild fails closed' },
 ];
 
 export const LIMIT_BY_NAME: ReadonlyMap<string, LimitDefinition> = new Map(LIMIT_DEFINITIONS.map((l) => [l.name, l]));

@@ -37,3 +37,8 @@ export {
 export type { RecoveryEvidenceInput, RecoveryEvidenceBuild } from './evidence.js';
 export type { AuditReconstructionEvidenceInput, AuditReconstructionOutcome, ReconstructedAuditPublishResult } from './reconstruct.js';
 export { buildRecoveryAuditReconstructionEvent, RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND } from '../audit/write-audit.js';
+// WP-8-H: the registry-index rebuild operation (ADR-031): the exact
+// registry-index publication builder and the index surface scan helpers.
+export { publishRegistryIndex } from './index-rebuild.js';
+export { indexObservationId, isRegistryIndexBytes } from './scan.js';
+export type { RegistryIndexPublishResult } from './index-rebuild.js';

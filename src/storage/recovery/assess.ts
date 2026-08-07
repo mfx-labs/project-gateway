@@ -39,6 +39,7 @@ import type {
   AuditEventView,
   DispositionFinding,
   IncompletePublicationFinding,
+  IndexScanObservation,
   LockFacts,
   LockObservationFinding,
   LockScanObservation,
@@ -191,6 +192,8 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   const requiresDisposition: DispositionFinding[] = [];
   const reconstructionCandidates: ReconstructionCandidateFinding[] = [];
   const reconstructionStates: ReconstructionStateFinding[] = [];
+  const indexArtifacts: IndexScanObservation[] = [];
+  let indexMissing = false;
   const quarantineObjects: QuarantineScanObservation[] = [];
   const danglingQuarantineEvidence: { readonly evidenceObservationId: string; readonly quarantineId: string; readonly sourceEntry?: string }[] = [];
   const findings: StorageFinding[] = [...finalized.findings, ...association.findings];
@@ -293,6 +296,36 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
     findings.push(finding('ERR-STO-INTEGRITY', 'quarantine evidence references a missing quarantine object'));
   }
 
+  // WP-8-H: registry-index artifacts (recovery mode only; §11). The index
+  // is derived cache: stale/malformed states are rebuild candidates, never
+  // storage failures; loss of the index never loses records or authority
+  // (RGY-007). A conflicting index (identity/roots inconsistent) requires
+  // disposition (rebuild would collide with the conflicting file).
+  for (const item of obs) {
+    if (item.kind !== 'index-object') continue;
+    const index = item as IndexScanObservation;
+    indexArtifacts.push(index);
+    if (index.classification === 'index-stale') {
+      findings.push(finding('ERR-STO-INTEGRITY', `registry-index is stale (${index.staleReason ?? 'unknown'}); rebuild candidate`));
+    } else if (index.classification === 'index-malformed' || index.classification === 'index-unsupported-version') {
+      findings.push(finding('ERR-STO-MALFORMED', 'registry-index artifact is malformed or unsupported; rebuild candidate'));
+    } else if (index.classification === 'index-conflicting') {
+      findings.push(finding('ERR-STO-INTEGRITY', 'conflicting registry-index artifact; disposition required'));
+    } else if (index.classification === 'foreign-entry' || index.classification === 'index-wrong-type' || index.classification === 'index-wrong-uid-or-mode') {
+      findings.push(finding('ERR-STO-MALFORMED', 'registry-index artifact violates the index surface policy'));
+    }
+  }
+  // WP-8-H: incomplete index temporaries (a WPR-023 temporary whose bytes
+  // are a canonical registry index; crash artifact of index publication).
+  for (const item of obs) {
+    if (item.kind !== 'temporary-object' || item.indexContent !== true) continue;
+    findings.push(finding('ERR-STO-INTEGRITY', 'incomplete registry-index temporary; scanner-classifiable and disposable'));
+  }
+  if (indexArtifacts.length === 0) {
+    indexMissing = true;
+  } else if (!indexArtifacts.some((i) => i.classification === 'index-current-valid')) {
+    findings.push(finding('ERR-STO-INTEGRITY', 'no current registry-index exists; rebuild candidate'));
+  }
   // WP-8-G: deterministic audit-reconstruction state classification (16.3;
   // §11). State precedence per target: conflicting-audit > duplicate-audit >
   // dangling-evidence > evidence-without-audit > complete > malformed-evidence
@@ -471,6 +504,7 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
   requiresDisposition.sort((a, b) => (a.observationId < b.observationId ? -1 : 1));
   reconstructionCandidates.sort((a, b) => (a.recordId < b.recordId ? -1 : 1));
   reconstructionStates.sort((a, b) => (a.recordId < b.recordId ? -1 : a.recordId > b.recordId ? 1 : a.state < b.state ? -1 : 1));
+  indexArtifacts.sort((a, b) => (a.entry < b.entry ? -1 : a.entry > b.entry ? 1 : 0));
   findings.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
 
   return {
@@ -487,6 +521,8 @@ export function assessRecovery(observations: readonly ScanObservation[], source:
     quarantineObjects,
     danglingQuarantineEvidence,
     reconstructionStates,
+    indexArtifacts,
+    indexMissing,
     findings,
   };
 }

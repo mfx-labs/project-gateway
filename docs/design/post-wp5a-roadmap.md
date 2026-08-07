@@ -250,6 +250,47 @@ closed**; WP-8 implementation remains **not closed**; WP-9 and later
 packages remain **not authorized**. No release, publication,
 installation, or deployment action has occurred for WP-8.
 
+**WP-8-H (contract §29 phase 4 — persistent registry index, rebuild,
+and stale detection) is implemented**: WP-8-G remains at the same commit
+`0a1d48c` (subject `feat: add WP-8-G audit reconstruction`); the
+**WP-8-H persistent registry index slice** adds the fourth recovery
+operation **`registry-index-rebuild`** (recovery set: `orphan-removal`,
+`quarantine-temporary`, `audit-reconstruction`, `registry-index-rebuild`)
+with one canonical immutable index snapshot per derived state under
+`index/registry-index/<shard>/<indexId>.idx` (ADR-031; contract 5.2
+`index/`, CSA-003/004, ITG-005, RGY-001/007): a deterministic domain-
+separated identity binding (model version, verified store and namespace
+identities, registry scan generation, registry surface generation,
+record/audit/observation roots, scan bounds, index bounds, scan
+counters); content is the complete verified registry-mode observation
+set with bounded stat facts (the freshness manifest), structure-level
+scan findings, and scan facts — the registry view is re-derived purely
+from the stored observations, so the opt-in fast path and the
+authoritative scan share one derivation; completeness invariants
+(truncated scans and unresolved continuations are rejected; every bound
+fails the build deterministically); immutable no-replace publication
+through an exact-record `RecoveryPublicationPermit` (role
+`registry-index`; sink-level confinement preserved); the writer lock is
+taken only for the publication phase with an under-lock generation/
+surface/entry-set-probe recheck (stale builds fail closed); deterministic
+stale detection (missing/malformed/unsupported-version/stale-generation/
+stale-surface/stale-record-set/stale-audit-state/conflicting/wrong-type/
+wrong-UID-mode/foreign); recovery-scanner classification of index
+artifacts with rebuild recommendations; a fixed 8-stage crash inventory;
+and exact static-guard/global-security boundaries (one new read-only fs
+owner, `registry/index-store.ts`). The contract gained the single
+normative `indexBytes` limit row (ADR-031) and its pinned SHA-256 was
+updated. **Not begun**: stale-lock breaking, primary/audit deletion,
+WPR-023 (d) disposition, retention, migration, index deletion/
+disposition, WP-9 generation seeding, WP-12 integration. The
+**implementation report
+(`docs/reports/wp-8h-persistent-registry-index-implementation-report.md`)
+is complete** with the verification evidence; the **next gate is the
+WP-8-F/WP-8-G/WP-8-H implementation review**; **WP-8-F, WP-8-G, and
+WP-8-H are not closed**; WP-8 implementation remains **not closed**;
+WP-9 and later packages remain **not authorized**. No release,
+publication, installation, or deployment action has occurred for WP-8.
+
 **Normative cross-references:** `project-gateway-scope-and-principles.md`
 (WP-0), ADR-002, ADR-003, ADR-006, ADR-020, ADR-022, ADR-023 (sequencing
 decision), ADR-024 (trusted configuration ownership), ADR-025 (capability

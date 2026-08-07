@@ -625,6 +625,8 @@ export interface TemporaryScanObservation extends ScanObservationBase {
   readonly contentDigest?: string;
   /** True when the temporary name and a verified published record share one inode (WPR-023 (a)). */
   readonly sharesInodeWithPublished: boolean;
+  /** WP-8-H: true when the temporary bytes parse as a canonical registry-index envelope. */
+  readonly indexContent?: boolean;
 }
 
 export interface LockScanObservation extends ScanObservationBase {
@@ -636,6 +638,10 @@ export interface LockScanObservation extends ScanObservationBase {
 export interface ForeignScanObservation extends ScanObservationBase {
   readonly kind: 'foreign-object';
   readonly recordClass?: RecordClassId;
+  /** WP-8-H: shard location when the foreign entry sits inside a valid shard (additive). */
+  readonly shard?: string;
+  /** WP-8-H: parent surface for parent-level foreign entries (additive; observation-id derivation). */
+  readonly surface?: 'records' | 'audit';
   readonly classification: 'foreign-entry';
 }
 
@@ -666,13 +672,46 @@ export interface QuarantineScanObservation extends ScanObservationBase {
   readonly sharesInodeWithTemporary?: boolean;
 }
 
+/** Closed index-artifact classification vocabulary (WP-8-H; §11). */
+export type IndexObjectClassification =
+  | 'index-current-valid'
+  | 'index-stale'
+  | 'index-malformed'
+  | 'index-unsupported-version'
+  | 'index-conflicting'
+  | 'index-wrong-type'
+  | 'index-wrong-uid-or-mode'
+  | 'foreign-entry';
+
+/** One scanned registry-index artifact (WP-8-H; recovery mode; §11). */
+export interface IndexScanObservation extends ScanObservationBase {
+  readonly kind: 'index-object';
+  /** 4-hex index shard (empty for malformed/foreign entries). */
+  readonly shard: string;
+  readonly classification: IndexObjectClassification;
+  /** Index-identity filename stem when the name grammar holds. */
+  readonly indexId?: string;
+  /** Parsed model version (present when the canonical form parses). */
+  readonly modelVersion?: string;
+  /** Parsed binding facts (present when the canonical form parses). */
+  readonly binding?: {
+    readonly generation: string;
+    readonly surfaceGeneration: string;
+    readonly recordRoot: string;
+    readonly auditRoot: string;
+  };
+  /** Deterministic stale-reason designation (e.g. `stale-generation`). */
+  readonly staleReason?: string;
+}
+
 export type ScanObservation =
   | RecordScanObservation
   | AuditScanObservation
   | TemporaryScanObservation
   | LockScanObservation
   | ForeignScanObservation
-  | QuarantineScanObservation;
+  | QuarantineScanObservation
+  | IndexScanObservation;
 
 /** Stored lock-record facts observable without disclosure (no nonce; 18.3/ERM-004). */
 export interface LockFacts {
@@ -721,6 +760,8 @@ export interface ScanBounds {
   readonly byteLimit: number;
   /** True for recovery scans: over-limit fails closed instead of truncating (recoveryScanEntries row). */
   readonly failClosed: boolean;
+  /** WP-8-H: per-index-file read bound (profile `indexBytes`); present only for scans that classify index artifacts. */
+  readonly indexByteLimit?: number;
 }
 
 /** Immutable facts of the scanned snapshot the derived view is valid for (RGY-005). */
@@ -899,6 +940,10 @@ export interface RecoveryAssessment {
   readonly danglingQuarantineEvidence: readonly { readonly evidenceObservationId: string; readonly quarantineId: string; readonly sourceEntry?: string }[];
   /** WP-8-G: deterministic audit-reconstruction state classifications (16.3; §11). */
   readonly reconstructionStates: readonly ReconstructionStateFinding[];
+  /** WP-8-H: scanned registry-index artifacts (recovery mode only; §11). */
+  readonly indexArtifacts: readonly IndexScanObservation[];
+  /** WP-8-H: true when no registry-index family exists (rebuild candidate). */
+  readonly indexMissing: boolean;
   readonly findings: readonly StorageFinding[];
 }
 
@@ -906,6 +951,7 @@ export type RecoveryActionCategory =
   | 'quarantine'
   | 'orphan-removal'
   | 'audit-reconstruction'
+  | 'registry-index-rebuild'
   | 'lock-recovery'
   | 'disposition';
 
@@ -915,12 +961,12 @@ export type RecoveryActionSafety = 'safe' | 'unsafe' | 'requires-external-dispos
 export interface RecoveryPlanAction {
   readonly actionId: string;
   readonly targetLogicalIdentity: string;
-  readonly targetKind: 'primary-record' | 'audit-event' | 'temporary-object' | 'lock-object' | 'foreign-object';
+  readonly targetKind: 'primary-record' | 'audit-event' | 'temporary-object' | 'lock-object' | 'foreign-object' | 'index-object';
   readonly category: RecoveryActionCategory;
   readonly observedEvidence: readonly string[];
   readonly reason: string;
   readonly requiredCapability: 'recovery' | 'control-plane';
-  readonly requiredOperation: 'quarantine' | 'orphan-removal' | 'audit-reconstruction' | 'lock-recovery' | 'disposition';
+  readonly requiredOperation: 'quarantine' | 'orphan-removal' | 'audit-reconstruction' | 'registry-index-rebuild' | 'lock-recovery' | 'disposition';
   readonly verifyImmediatelyBeforeMutation: boolean;
   readonly safety: RecoveryActionSafety;
 }
@@ -941,6 +987,8 @@ export interface RegistryViewRequest {
   readonly trustedInput: unknown;
   /** Optional continuation from a previous truncated registry scan. */
   readonly continuation?: ScanCursor;
+  /** WP-8-H: opt-in persistent-index fast path; falls back to the authoritative scan on any index invalidity. */
+  readonly usePersistentIndex?: boolean;
 }
 
 export interface RegistryViewResult {
@@ -948,6 +996,8 @@ export interface RegistryViewResult {
   readonly view?: RegistryView;
   /** Resume cursor when the scan truncated with forward progress (F1-B). */
   readonly continuation?: ScanCursor;
+  /** WP-8-H: deterministic index-state classification when the fast path was attempted (e.g. `current-valid`, `missing`, `stale-record-set`). */
+  readonly indexState?: string;
   /**
    * Findings. A truncated result WITHOUT a continuation is the detectable
    * no-progress state: the byte profile cannot make progress, and the
@@ -1041,7 +1091,13 @@ export type RecoveryMutationStage =
   | 'after-reconstructed-audit-publication'
   | 'before-reconstructed-audit-durability-confirmation'
   | 'after-reconstructed-audit-durability-confirmation'
-  | 'after-evidence-audit-publication';
+  | 'after-evidence-audit-publication'
+  // WP-8-H registry-index-rebuild stages (fixed inventory; §16).
+  | 'after-generation-recheck'
+  | 'before-index-publication'
+  | 'after-index-publication'
+  | 'before-directory-durability'
+  | 'after-directory-durability';
 
 /** Test-only crash/fsync injection hooks (same pattern as `PublicationHooks`). */
 export interface RecoveryMutationHooks {
@@ -1054,7 +1110,7 @@ export interface RecoveryMutationHooks {
 /** Narrow structured recovery-mutation action (never a plan action, never a path). */
 export interface RecoveryMutationAction {
   /** Closed category vocabulary: exactly the implemented recovery operations; no generic `quarantine` exists. */
-  readonly category: 'orphan-removal' | 'quarantine-temporary' | 'audit-reconstruction';
+  readonly category: 'orphan-removal' | 'quarantine-temporary' | 'audit-reconstruction' | 'registry-index-rebuild';
   /** Orphan-removal/quarantine-temporary only: deterministic entry designation (temporary name; never a path). */
   readonly targetEntry?: string;
   /** Orphan-removal only: verified durable publication sharing the temporary's inode (WPR-023 (a)). */
@@ -1065,12 +1121,12 @@ export interface RecoveryMutationAction {
   readonly expectedTwinDigest?: string;
   /** Orphan-removal only: link count observed at assessment (exact re-verification requirement). */
   readonly expectedLinkCount?: number;
-  /** Evidence identifiers from the recovery assessment (exactly one per mutation). */
-  readonly expectedObservationIds: readonly string[];
-  /** Assessment scan-generation token (recomputed and compared before mutation). */
-  readonly expectedGeneration: string;
-  /** Assessment surface-structure token (recomputed and compared before mutation). */
-  readonly expectedSurfaceGeneration: string;
+  /** Evidence identifiers from the recovery assessment (one per mutation; not used by registry-index-rebuild). */
+  readonly expectedObservationIds?: readonly string[];
+  /** Assessment scan-generation token (recomputed and compared before mutation; not used by registry-index-rebuild). */
+  readonly expectedGeneration?: string;
+  /** Assessment surface-structure token (recomputed and compared before mutation; not used by registry-index-rebuild). */
+  readonly expectedSurfaceGeneration?: string;
   /** Quarantine-temporary only: the assessed WPR-023 classification of the source (b or c). */
   readonly expectedClassification?: 'incomplete-unpublished' | 'malformed-temporary';
   /** Quarantine-temporary only: exact source content digest (the pre-mutation evidence digest). */
@@ -1085,6 +1141,10 @@ export interface RecoveryMutationAction {
   readonly expectedOriginalActionIdentity?: string;
   /** Audit-reconstruction only: the assessment's missing-audit finding id (equals the record observation id). */
   readonly expectedMissingAuditFindingId?: string;
+  /** Registry-index-rebuild only: registry-mode scan-generation token of the assessment snapshot. */
+  readonly expectedRegistryGeneration?: string;
+  /** Registry-index-rebuild only: registry-mode surface-structure token of the assessment snapshot. */
+  readonly expectedRegistrySurfaceGeneration?: string;
 }
 
 /** Authorized recovery-mutation request (WP-8-F composition boundary). */
@@ -1101,6 +1161,8 @@ export interface RecoveryMutationRequest {
   /** Narrow structured action; no path, descriptor, nonce, callback, or fs function. */
   readonly action: RecoveryMutationAction;
   readonly timeSource: LockTimeSource;
+  /** WP-8-H: genuine branded `TrustedStorageBootstrapInput` (required only for `registry-index-rebuild`). */
+  readonly trustedInput?: unknown;
   /** Test-only crash/fsync injection. */
   readonly hooks?: RecoveryMutationHooks;
 }
@@ -1108,9 +1170,11 @@ export interface RecoveryMutationRequest {
 /** Recovery-mutation result (advisory data; no capability, path, or nonce). */
 export interface RecoveryMutationResult {
   readonly ok: boolean;
-  /** `removed` (orphan removed), `quarantined` (temporary quarantined), `reconstructed` (audit reconstructed), `already-completed`: no work needed. */
-  readonly outcome?: 'removed' | 'quarantined' | 'reconstructed' | 'already-completed';
+  /** `removed` (orphan removed), `quarantined` (temporary quarantined), `reconstructed` (audit reconstructed), `rebuilt` (index published), `already-completed`: no work needed. */
+  readonly outcome?: 'removed' | 'quarantined' | 'reconstructed' | 'rebuilt' | 'already-completed';
   /** Deterministic evidence record identity when evidence is durable. */
   readonly evidenceId?: string;
+  /** WP-8-H: deterministic registry-index identity when an index is published/current. */
+  readonly indexId?: string;
   readonly findings?: readonly StorageFinding[];
 }

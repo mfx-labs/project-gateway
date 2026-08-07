@@ -18,14 +18,14 @@ const EXPECTED_LIMIT_NAMES = [
   'recordBytes', 'payloadBytes', 'referencesPerRecord', 'pathComponentBytes', 'pathBytes',
   'dirEntries', 'enumerationResults', 'auditEventsPerOperation', 'recordsPerTransaction', 'temporaryBytes',
   'totalScanEntries', 'totalScanBytes', 'recoveryScanEntries', 'retainedVersions', 'lockWait',
-  'operationTimeout', 'concurrentReaders', 'writers', 'quarantineEntries', 'indexRebuildWork',
+  'operationTimeout', 'concurrentReaders', 'writers', 'quarantineEntries', 'indexRebuildWork', 'indexBytes',
 ];
 
-test('limits: exactly 20 normative limits with unique names', () => {
-  assert.equal(LIMIT_DEFINITIONS.length, 20);
+test('limits: exactly 21 normative limits with unique names', () => {
+  assert.equal(LIMIT_DEFINITIONS.length, 21);
   assert.deepEqual(LIMIT_DEFINITIONS.map((l) => l.name), EXPECTED_LIMIT_NAMES);
-  assert.equal(new Set(LIMIT_DEFINITIONS.map((l) => l.name)).size, 20);
-  assert.equal(LIMIT_BY_NAME.size, 20);
+  assert.equal(new Set(LIMIT_DEFINITIONS.map((l) => l.name)).size, 21);
+  assert.equal(LIMIT_BY_NAME.size, 21);
 });
 
 test('limits: every definition is internally consistent', () => {

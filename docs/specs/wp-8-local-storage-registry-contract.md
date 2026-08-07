@@ -805,6 +805,7 @@ scope (16.4).
 | `writers` | writers | 1 | 1 | 1 | contract constant | no | no | no | n/a | n/a | ERR-STO-CONCURRENCY |
 | `quarantineEntries` | entries | 4096 | 64 | 65536 | config | within range | yes | no | accepted | fail closed | quarantine full → recovery required |
 | `indexRebuildWork` | entries | 1 MiB | 1024 | 16 MiB | config | within range | yes | no | accepted | fail closed | rebuild fails closed |
+| `indexBytes` | bytes | 64 MiB | 1 MiB | 1 GiB | config | within range | yes | no | accepted | fail closed | rebuild fails closed |
 
 **19.2 Binding.** The complete selected limit profile MUST be bound to the trusted-configuration version, the trusted-configuration identity or digest, the store metadata, and the operation identity where relevant. A change in the selected profile changes the configuration version and invalidates previously issued mutation capabilities (CAP). Security hard maxima are contract-defined; no "implementation-selected" security limit exists.
 

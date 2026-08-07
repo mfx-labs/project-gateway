@@ -19,3 +19,26 @@ export {
   verifiedRecordViews,
 } from './derive.js';
 export type { AuditAssociationResult, FinalizedSnapshot } from './derive.js';
+export { runRegistrySnapshotScan } from './compose.js';
+export {
+  buildRegistryIndex,
+  parseRegistryIndex,
+  computeRegistryIndexIdentity,
+  computeRegistryIndexRoots,
+  registryIndexViewOf,
+  registryIndexObservationsOf,
+  validateRegistryIndexSelfConsistency,
+  registryIndexManifest,
+  REGISTRY_INDEX_MODEL_VERSION,
+  REGISTRY_INDEX_MAX_ENTRIES,
+  STORAGE_REGISTRY_INDEX_IDENTITY_DOMAIN,
+} from './index-model.js';
+export type { RegistryIndexBuildInput, RegistryIndexBuildResult, ParsedRegistryIndex, IndexObservationTuple } from './index-model.js';
+export {
+  validateRegistryIndexLive,
+  probeRegistryEntrySet,
+  compareManifestAgainstProbe,
+  enumerateRegistryIndexFiles,
+  readRegistryIndexFile,
+} from './index-store.js';
+export type { RegistryIndexLiveState, RegistryIndexLiveValidation, RegistryProbeEntry } from './index-store.js';

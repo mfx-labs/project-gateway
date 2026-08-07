@@ -67,6 +67,10 @@ const FS_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   // (mkdir) and the hard-link plus unlink primitive with directory fsyncs.
   // No rename, copy, chmod/chown, or recursive removal.
   'src/storage/recovery/quarantine.ts': ['mkdirSync', 'openSync', 'closeSync', 'fstatSync', 'fsyncSync', 'linkSync', 'unlinkSync', 'constants'],
+  // WP-8-H registry-index store access: read-only descriptor reads, the
+  // readdir + no-follow lstat freshness probe, and the index-family
+  // enumeration. No mutating API is delegated.
+  'src/storage/registry/index-store.ts': ['readdirSync', 'lstatSync', 'openSync', 'closeSync', 'fstatSync', 'readFileSync', 'constants'],
 };
 
 /** Complete filesystem API name vocabulary (denied outside the allowlist). */
@@ -104,8 +108,8 @@ const CREATOR_EDGES: Readonly<Record<string, readonly string[]>> = {
   // only by the narrow permit-bound publication implementation.
   // WP-8-G: the audit-reconstruction publication builder joins the permit
   // creator edge (the permitted "other single exact recovery publication
-  // builder").
-  createRecoveryPublicationPermit: ['src/storage/recovery/evidence.ts', 'src/storage/recovery/reconstruct.ts'],
+  // builder"); WP-8-H: the registry-index publication builder joins it too.
+  createRecoveryPublicationPermit: ['src/storage/recovery/evidence.ts', 'src/storage/recovery/reconstruct.ts', 'src/storage/recovery/index-rebuild.ts'],
   isGenuineRecoveryPublicationPermit: ['src/storage/publication/publish-record.ts'],
   recoveryPublicationPermitLive: ['src/storage/publication/publish-record.ts'],
 };
@@ -481,7 +485,7 @@ test('static guard: package exports and dependencies unchanged', () => {
 test('static guard: authoritative contract is byte-identical at the accepted SHA-256', () => {
   const contract = readFileSync(join(REPO, 'docs', 'specs', 'wp-8-local-storage-registry-contract.md'), 'utf8');
   const hash = createHash('sha256').update(contract).digest('hex');
-  assert.equal(hash, '93504ea29b5ed0abb0b9fcf4685029939ab1b652049325a8160023ba10c0cd3a');
+  assert.equal(hash, '87f0683992928d5114dff10b8329bdbab53cc18a425a7eaccb9243823cd01bee');
 });
 
 test('static guard: no timers, randomness, or environment dependence in storage modules', () => {
@@ -565,8 +569,9 @@ test('static guard: read/scan tree is mutation-free and readdirSync is the scan 
     assert.equal(mutating.test(content), false, `${path} imports or uses a mutating filesystem API`);
   }
   // readdirSync is confined to the enumeration module, the provisioning
-  // classifier, and the WP-8-E recovery scan module in the storage tree.
-  const readdirOwners = ['src/storage/read/enumerate.ts', 'src/storage/initialization/provision.ts', 'src/storage/recovery/scan.ts'];
+  // classifier, the WP-8-E recovery scan module, and the WP-8-H index store
+  // (freshness probe) in the storage tree.
+  const readdirOwners = ['src/storage/read/enumerate.ts', 'src/storage/initialization/provision.ts', 'src/storage/recovery/scan.ts', 'src/storage/registry/index-store.ts'];
   const files = collectTsFiles(STORAGE_SRC);
   for (const file of files) {
     const path = rel(file);
@@ -578,7 +583,7 @@ test('static guard: read/scan tree is mutation-free and readdirSync is the scan 
 
 test('static guard: registry/recovery boundaries hold (WP-8-E)', () => {
   const files = collectTsFiles(STORAGE_SRC);
-  const fsFree = ['src/storage/registry/classify.ts', 'src/storage/registry/derive.ts', 'src/storage/registry/compose.ts', 'src/storage/recovery/assess.ts', 'src/storage/recovery/plan.ts', 'src/storage/recovery/compose.ts', 'src/storage/recovery/execute.ts', 'src/storage/recovery/evidence.ts', 'src/storage/recovery/reconstruct.ts'];
+  const fsFree = ['src/storage/registry/classify.ts', 'src/storage/registry/derive.ts', 'src/storage/registry/compose.ts', 'src/storage/registry/index-model.ts', 'src/storage/recovery/assess.ts', 'src/storage/recovery/plan.ts', 'src/storage/recovery/compose.ts', 'src/storage/recovery/execute.ts', 'src/storage/recovery/evidence.ts', 'src/storage/recovery/reconstruct.ts', 'src/storage/recovery/index-rebuild.ts'];
   const scanAllowlist = FS_ALLOWLIST['src/storage/recovery/scan.ts'] ?? [];
   const mutating = ['writeSync', 'linkSync', 'unlinkSync', 'mkdirSync', 'fsyncSync', 'fchmodSync', 'renameSync', 'rmSync', 'rmdirSync', 'cpSync', 'chmodSync', 'chownSync'];
   for (const name of mutating) {
@@ -595,7 +600,7 @@ test('static guard: registry/recovery boundaries hold (WP-8-E)', () => {
   // execution, lock breaking, audit reconstruction, generic recovery
   // execution, capability issuance) are denied everywhere; the orphan-removal
   // primitive and the composition boundary exist ONLY in their exact owners.
-  const RECOVERY_MUTATION_OWNERS = new Set(['src/storage/recovery/execute.ts', 'src/storage/recovery/cleanup.ts', 'src/storage/recovery/quarantine.ts', 'src/storage/recovery/reconstruct.ts', 'src/storage/recovery/index.ts']); // index.ts re-exports only the exact boundary
+  const RECOVERY_MUTATION_OWNERS = new Set(['src/storage/recovery/execute.ts', 'src/storage/recovery/cleanup.ts', 'src/storage/recovery/quarantine.ts', 'src/storage/recovery/reconstruct.ts', 'src/storage/recovery/index-rebuild.ts', 'src/storage/recovery/index.ts']); // index.ts re-exports only the exact boundary
   for (const file of files) {
     const content = readFileSync(file, 'utf8');
     if (!RECOVERY_MUTATION_OWNERS.has(rel(file))) {
@@ -642,14 +647,14 @@ test('static guard: publication sink accepts write authority only; recovery publ
 
 test('static guard: audit-reconstruction vocabulary is closed and confined (WP-8-G)', () => {
   const files = collectTsFiles(STORAGE_SRC);
-  // The recovery operation set contains exactly the three implemented
+  // The recovery operation set contains exactly the four implemented
   // operations — no generic audit-write/audit-repair/recovery-write/
   // publish-audit operation exists anywhere in src/storage.
   const authenticity = readFileSync(join(STORAGE_SRC, 'capabilities', 'authenticity.ts'), 'utf8');
   assert.equal(
-    /RECOVERY_OPERATION_SET = \['orphan-removal', 'quarantine-temporary', 'audit-reconstruction'\]/.test(authenticity),
+    /RECOVERY_OPERATION_SET = \['orphan-removal', 'quarantine-temporary', 'audit-reconstruction', 'registry-index-rebuild'\]/.test(authenticity),
     true,
-    'the recovery operation set must contain exactly the three implemented operations',
+    'the recovery operation set must contain exactly the four implemented operations',
   );
   for (const file of files) {
     const content = readFileSync(file, 'utf8');
@@ -686,6 +691,41 @@ test('static guard: audit-reconstruction vocabulary is closed and confined (WP-8
   // The recovery capability creator accepts only the closed vocabulary.
   const capCreator = authenticity.slice(authenticity.indexOf('export function createRecoveryCapability'), authenticity.indexOf('export function createRecoveryCapability') + 1600);
   assert.equal(/RECOVERY_OPERATION_SET\.includes\(op\)/.test(capCreator), true, 'the capability creator must validate its operation set against the closed vocabulary');
+});
+
+test('static guard: registry-index vocabulary is closed and confined (WP-8-H)', () => {
+  const files = collectTsFiles(STORAGE_SRC);
+  // The `registry-index` publication-role binding exists only in the brand
+  // module, the permit-bound sink, and the index-rebuild builder.
+  const roleOwners = new Set(['src/storage/capabilities/authenticity.ts', 'src/storage/publication/publish-record.ts', 'src/storage/recovery/index-rebuild.ts']);
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    if (/role: 'registry-index'|role === 'registry-index'|role !== 'registry-index'/.test(content)) {
+      assert.ok(roleOwners.has(rel(file)), `${rel(file)} binds the registry-index publication role outside its owners`);
+    }
+    assert.equal(/\bindex-write\b|\bindex-repair\b|\bindex-publish\b|\bpublish-index\b/.test(content), false, `${rel(file)} contains a generic index-publication marker`);
+  }
+  // The pure index model and the read-only index store never import
+  // capability or provenance creators: an index grants nothing and can
+  // never mint authority (WP-8-H §2).
+  for (const pure of ['src/storage/registry/index-model.ts']) {
+    const content = readFileSync(join(STORAGE_SRC, pure.replace('src/storage/', '')), 'utf8');
+    assert.equal(/createReadCapability|createRecoveryCapability|createWriteCapability|createRecoveryPublicationPermit|createTrustedRecoveryRequest|createRecoveryActionProvenance|createStorageWriteActionProvenance/.test(content), false, `${pure} must not import capability or provenance creators`);
+  }
+  const indexStore = readFileSync(join(STORAGE_SRC, 'registry', 'index-store.ts'), 'utf8');
+  assert.equal(/createReadCapability|createRecoveryCapability|createWriteCapability|createRecoveryPublicationPermit|createTrustedRecoveryRequest/.test(indexStore), false, 'index-store.ts must not import capability or provenance creators');
+  // The index publication builder consumes only the exact permit (sink
+  // confinement equivalent to the WP-8-F exact-record permits).
+  const indexRebuild = readFileSync(join(STORAGE_SRC, 'recovery', 'index-rebuild.ts'), 'utf8');
+  assert.equal(/createRecoveryPublicationPermit/.test(indexRebuild), true, 'index-rebuild.ts must mint the exact registry-index permit');
+  assert.equal(/publishImmutableRecord|ensureClassShardDirectories/.test(indexRebuild), false, 'index-rebuild.ts must never reach the generic publication substrate');
+  // The index store is the exact read-only fs owner; its allowlist is
+  // read-only (no mutating API).
+  const indexStoreAllowlist = FS_ALLOWLIST['src/storage/registry/index-store.ts'] ?? [];
+  assert.ok(indexStoreAllowlist.length > 0, 'index-store.ts must carry an exact fs allowlist');
+  for (const mutating of ['writeSync', 'linkSync', 'unlinkSync', 'mkdirSync', 'fsyncSync', 'fchmodSync', 'renameSync', 'rmSync', 'rmdirSync', 'cpSync', 'chmodSync', 'chownSync']) {
+    assert.equal(indexStoreAllowlist.includes(mutating), false, `index-store allowlist must not contain the mutating API ${mutating}`);
+  }
 });
 
 /**

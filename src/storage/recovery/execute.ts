@@ -38,9 +38,13 @@
  * and never guessed.
  */
 import { createRecoveryCapability, type RecoveryCapability } from '../capabilities/authenticity.js';
-import { createTrustedRecoveryRequest } from '../trusted-input/bootstrap-input.js';
+import { createTrustedRecoveryRequest, isGenuineTrustedStorageBootstrapInput } from '../trusted-input/bootstrap-input.js';
 import { verifyStoreInstance } from '../read/read-record.js';
 import { revalidateParentIdentity } from '../root/resolve.js';
+import { runRegistrySnapshotScan } from '../registry/compose.js';
+import { buildRegistryIndex, parseRegistryIndex, registryIndexManifest, REGISTRY_INDEX_MAX_ENTRIES } from '../registry/index-model.js';
+import { probeRegistryEntrySet, readRegistryIndexFile, compareManifestAgainstProbe } from '../registry/index-store.js';
+import { publishRegistryIndex } from './index-rebuild.js';
 import { computeScanGeneration, recordObservationId, auditEventsForRecord, reconstructionEvidenceForTarget, temporaryObservationId, recomputeSurfaceGeneration, isPublicationTemporaryName } from './scan.js';
 import { reverifyOrphanTwin, reverifyQuarantineSource, reverifyTwinOnly, reverifyReconstructionTarget } from './reverify.js';
 import { removeOrphanTemporary } from './cleanup.js';
@@ -87,7 +91,7 @@ function validateAction(input: RecoveryMutationRequest): { readonly ok: boolean;
   if (typeof action !== 'object' || action === null) {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery action is malformed' };
   }
-  if (action.category !== 'orphan-removal' && action.category !== 'quarantine-temporary' && action.category !== 'audit-reconstruction') {
+  if (action.category !== 'orphan-removal' && action.category !== 'quarantine-temporary' && action.category !== 'audit-reconstruction' && action.category !== 'registry-index-rebuild') {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery action category is outside the supported vocabulary; no generic quarantine authority exists' };
   }
   if (action.category === 'audit-reconstruction') {
@@ -126,6 +130,15 @@ function validateAction(input: RecoveryMutationRequest): { readonly ok: boolean;
     }
     if (typeof action.expectedSourceDigest !== 'string' || !isValidDigestSyntax(action.expectedSourceDigest)) {
       return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected source digest is malformed' };
+    }
+    return { ok: true };
+  }
+  if (action.category === 'registry-index-rebuild') {
+    if (typeof action.expectedRegistryGeneration !== 'string' || !isValidDigestSyntax(action.expectedRegistryGeneration)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected registry generation is malformed' };
+    }
+    if (typeof action.expectedRegistrySurfaceGeneration !== 'string' || !isValidDigestSyntax(action.expectedRegistrySurfaceGeneration)) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'expected registry surface generation is malformed' };
     }
     return { ok: true };
   }
@@ -303,7 +316,7 @@ function executeQuarantineMutation(
         sourceEntry: targetEntryName,
         sourceClassification: classification,
         sourceDigest,
-        observationIds: action.expectedObservationIds,
+        observationIds: action.expectedObservationIds as readonly string[],
         outcome: 'quarantined',
         generation: recomputedGeneration,
         surfaceGeneration,
@@ -856,9 +869,253 @@ function executeAuditReconstructionMutation(
 }
 
 /**
+ * Registry-index rebuild flow (WP-8-H §9; ADR-031): a COMPLETE verified
+ * registry snapshot is derived WITHOUT the writer lock (a long read-only
+ * scan never holds it), the deterministic canonical index is built, the
+ * writer lock is taken only for the publication phase, the store
+ * generation/surface tokens and the live entry-set probe are re-checked
+ * under the lock (any change since the scan fails closed as a stale
+ * build), the exact immutable index is published under a dedicated
+ * exact-record permit, every durability point is verified, and the newly
+ * published index is reopened and verified. A conflicting index at the
+ * derived identity fails closed (no overwrite; disposition out of scope).
+ */
+function executeRegistryIndexRebuildMutation(
+  request: RecoveryMutationRequest,
+  action: RecoveryMutationRequest['action'] & { category: 'registry-index-rebuild' },
+  hooks: NonNullable<RecoveryMutationRequest['hooks']>,
+): RecoveryMutationResult {
+  if (!isGenuineTrustedStorageBootstrapInput(request.trustedInput)) {
+    return failResult('ERR-STO-REQ-INVALID', 'registry-index-rebuild requires a genuine branded trusted bootstrap input');
+  }
+  const inputResult = createTrustedRecoveryRequest(
+    request.trustedConfiguration,
+    request.recoveryActionProvenance,
+    { locator: request.locator, serviceUid: request.serviceUid, forbiddenRoots: request.forbiddenRoots, limitProfile: request.limitProfile },
+  );
+  if (!inputResult.ok || inputResult.request === undefined) {
+    const code = inputResult.reason === 'not-genuine-configuration' || inputResult.reason === 'not-genuine-action-provenance' || inputResult.reason === 'configuration-identity-mismatch'
+      ? 'ERR-STO-CONFIG-UNAVAILABLE'
+      : 'ERR-STO-REQ-INVALID';
+    return failResult(code, inputResult.message ?? 'trusted recovery request could not be established');
+  }
+  const store = verifyStoreInstance({
+    locator: request.locator,
+    serviceUid: request.serviceUid,
+    forbiddenRoots: request.forbiddenRoots,
+    configurationIdentity: (request.trustedConfiguration as { readonly identity: string }).identity,
+    configurationVersion: (request.trustedConfiguration as { readonly configurationVersion: string }).configurationVersion,
+    limitProfile: request.limitProfile,
+  });
+  if (!store.ok || store.storeInstance === undefined) {
+    return failResult(store.code ?? 'ERR-STO-INTEGRITY', store.message ?? 'store revalidation failed');
+  }
+  const storeInstance = store.storeInstance;
+  const recoveryCapability = createRecoveryCapability({ trustedRecoveryRequest: inputResult.request, storeInstance });
+  if (recoveryCapability === undefined) {
+    return failResult('ERR-STO-REQ-INVALID', 'recovery capability could not be issued');
+  }
+  let capability: RecoveryCapability | undefined = recoveryCapability;
+  try {
+    const profile = storeInstance.limitProfile;
+    const entryLimit = profile['totalScanEntries'] ?? 1024 * 1024;
+    const byteLimit = profile['totalScanBytes'] ?? 4 * 1024 * 1024 * 1024;
+    const indexRebuildWork = profile['indexRebuildWork'] ?? 1024 * 1024;
+    const indexBytes = profile['indexBytes'] ?? 64 * 1024 * 1024;
+    // Registry-mode generation recomputation (the index binds the registry
+    // scan generation; F2).
+    const recomputedGeneration = computeScanGeneration({ storeInstance, mode: 'registry', entryLimit, byteLimit, failClosed: false });
+    if (recomputedGeneration !== action.expectedRegistryGeneration) {
+      return failResult('ERR-STO-REQ-INVALID', 'registry scan generation does not match the current store and limits');
+    }
+    const storeRoot = `${storeInstance.parentIdentity.canonicalPath}/store-v1`;
+    const surface = recomputeSurfaceGeneration({ namespaceRoot: storeRoot, serviceUid: request.serviceUid, mode: 'registry' });
+    if (!surface.ok || surface.generation === undefined) {
+      return failResult(surface.code ?? 'ERR-STO-IO-FAILURE', surface.message ?? 'surface structure could not be re-read');
+    }
+    if (surface.generation !== action.expectedRegistrySurfaceGeneration) {
+      return failResult('ERR-STO-ROOT-IDENTITY-CHANGED', 'store structure changed since the registry snapshot');
+    }
+    // Complete verified snapshot scan WITHOUT the writer lock (WP-8-H §9:
+    // a long read-only full-store scan must not hold the writer lock).
+    const snapshot = runRegistrySnapshotScan({ trustedConfiguration: request.trustedConfiguration, trustedInput: request.trustedInput });
+    if (!snapshot.ok || snapshot.observations === undefined || snapshot.scanFacts === undefined) {
+      return failResult(snapshot.code ?? 'ERR-STO-INTEGRITY', snapshot.message ?? 'complete registry snapshot could not be derived');
+    }
+    // Deterministic canonical index (rejects truncated scans, unresolved
+    // continuations, and every bound overflow; WP-8-H §5/§13).
+    const built = buildRegistryIndex({
+      observations: snapshot.observations,
+      findings: snapshot.findings ?? [],
+      scanFacts: snapshot.scanFacts,
+      storeInstance,
+      entryLimit,
+      byteLimit,
+      indexRebuildWork,
+      indexBytes,
+      continuation: snapshot.continuation,
+    });
+    if (!built.ok || built.index === undefined) {
+      return failResult(built.code ?? 'ERR-STO-INTERNAL-INVARIANT', built.message ?? 'registry index could not be built');
+    }
+    const index = built.index;
+    // Pre-lock surface recheck (cheap): the structural token must still
+    // match the build input.
+    const surfacePre = recomputeSurfaceGeneration({ namespaceRoot: storeRoot, serviceUid: request.serviceUid, mode: 'registry' });
+    if (!surfacePre.ok || surfacePre.generation === undefined || surfacePre.generation !== snapshot.scanFacts.surfaceGeneration) {
+      return failResult('ERR-STO-ROOT-IDENTITY-CHANGED', 'store structure changed during the registry snapshot; stale build');
+    }
+    hooks.stage?.('before-lock-acquisition');
+    const locksDir = `${storeRoot}/locks`;
+    const lockPath = `${locksDir}/writer.lock`;
+    const lockWaitMs = profile['lockWait'] ?? 5000;
+    const acquired = acquireWriterLock({
+      capability,
+      operation: 'registry-index-rebuild',
+      lockPath,
+      locksDirPath: locksDir,
+      storeInstance: storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })),
+      actionIdentity: inputResult.request.actionIdentity,
+      lockWaitMs,
+      timeSource: request.timeSource,
+      hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+    });
+    if (!acquired.ok || acquired.record === undefined) {
+      return failResult(acquired.code ?? 'ERR-STO-LOCK-UNAVAILABLE', acquired.message ?? 'writer lock could not be acquired');
+    }
+    const lockRecord = acquired.record;
+    hooks.stage?.('after-lock-acquisition');
+    const release = (): RecoveryMutationResult => {
+      hooks.stage?.('before-lock-release');
+      const released = releaseWriterLock({
+        capability,
+        operation: 'registry-index-rebuild',
+        lockPath,
+        locksDirPath: locksDir,
+        expected: { nonce: lockRecord.nonce, storeInstance: storeInstance.namespaces.map((n) => ({ kind: n.kind, dev: n.dev, ino: n.ino })) },
+        timeSource: request.timeSource,
+        hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+      });
+      if (!released.ok) {
+        return failResult('ERR-STO-RECOVERY-FAILED', 'lock release failed; the lock remains for recovery');
+      }
+      return { ok: true };
+    };
+    const failClosed = (code: string, message: string): RecoveryMutationResult => {
+      const released = release();
+      if (!released.ok) return released;
+      return failResult(code, message);
+    };
+    // Generation recheck under the writer lock (WP-8-H §9.7): the store
+    // generation, the structural surface, and the live entry-set probe must
+    // still match the build input; any change since the scan is a stale
+    // build and the index for the old snapshot is never published.
+    const genUnderLock = computeScanGeneration({ storeInstance, mode: 'registry', entryLimit, byteLimit, failClosed: false });
+    if (genUnderLock !== recomputedGeneration) {
+      return failClosed('ERR-STO-REQ-INVALID', 'registry scan generation changed; stale build, rebuild from a fresh view');
+    }
+    const surfaceUnderLock = recomputeSurfaceGeneration({ namespaceRoot: storeRoot, serviceUid: request.serviceUid, mode: 'registry' });
+    if (!surfaceUnderLock.ok || surfaceUnderLock.generation === undefined || surfaceUnderLock.generation !== snapshot.scanFacts.surfaceGeneration) {
+      return failClosed('ERR-STO-ROOT-IDENTITY-CHANGED', 'store structure changed between build and publication; stale build');
+    }
+    const probe = probeRegistryEntrySet(storeRoot, request.serviceUid);
+    if (!probe.ok || probe.entries === undefined) {
+      return failClosed(probe.code ?? 'ERR-STO-INTEGRITY', probe.message ?? 'live entry-set probe failed; stale build');
+    }
+    const indexParsed = parseRegistryIndex(index.canonicalUtf8, indexBytes, REGISTRY_INDEX_MAX_ENTRIES);
+    if (!indexParsed.ok || indexParsed.model === undefined) {
+      return failClosed('ERR-STO-INTERNAL-INVARIANT', 'built registry index does not re-parse');
+    }
+    const manifest = registryIndexManifest(indexParsed.model);
+    const comparison = compareManifestAgainstProbe(manifest, probe.entries);
+    if (!comparison.ok) {
+      return failClosed('ERR-STO-INTEGRITY', `immutable store state changed between build and publication (${comparison.side ?? 'records'}/${comparison.reason ?? 'changed'}); stale build`);
+    }
+    hooks.stage?.('after-generation-recheck');
+    // Existing index at the derived identity: byte-exact is idempotent,
+    // anything else fails closed (no overwrite; WP-8-H §7).
+    const existing = readRegistryIndexFile({ namespaceRoot: storeRoot, serviceUid: request.serviceUid, byteLimit: indexBytes, indexId: index.indexId });
+    if (existing.ok && existing.raw === index.canonicalUtf8) {
+      const released = release();
+      if (!released.ok) return released;
+      return { ok: true, outcome: 'already-completed', indexId: index.indexId };
+    }
+    if (existing.ok) {
+      return failClosed('ERR-STO-INTEGRITY', 'conflicting registry-index exists at the derived identity; fail closed');
+    }
+    if (existing.code !== 'ERR-STO-NOT-FOUND') {
+      return failClosed(existing.code ?? 'ERR-STO-INTEGRITY', existing.message ?? 'derived registry-index path could not be verified');
+    }
+    // Exact immutable index publication (dedicated permit; sink-confined).
+    hooks.stage?.('before-index-publication');
+    const published = publishRegistryIndex({
+      capability,
+      namespaceRoot: storeRoot,
+      serviceUid: request.serviceUid,
+      byteLimit: indexBytes,
+      index,
+      hooks: { fsyncFile: hooks.fsyncFile, fsyncDirectory: hooks.fsyncDirectory },
+    });
+    if (!published.ok) {
+      return failClosed(published.code ?? 'ERR-STO-RECOVERY-FAILED', published.message ?? 'registry-index publication failed');
+    }
+    hooks.stage?.('after-index-publication');
+    // Directory durability and final-object durability confirmation (the
+    // directory fsyncs run inside the immutable substrate before it
+    // returns; the confirmation re-verifies the final object).
+    hooks.stage?.('before-directory-durability');
+    const durable = readRegistryIndexFile({ namespaceRoot: storeRoot, serviceUid: request.serviceUid, byteLimit: indexBytes, indexId: index.indexId });
+    if (!durable.ok || durable.raw !== index.canonicalUtf8) {
+      return failClosed('ERR-STO-DURABILITY', 'registry-index durability point is not verified');
+    }
+    hooks.stage?.('after-directory-durability');
+    const beforeSuccess = capability.assertExpected({
+      storeInstance,
+      configurationIdentity: storeInstance.configurationIdentity,
+      serviceUid: request.serviceUid,
+      limitProfile: storeInstance.limitProfile,
+    });
+    if (!beforeSuccess.ok) {
+      const released = release();
+      if (!released.ok) return released;
+      return failResult('ERR-STO-DURABILITY', 'capability invalidated before acknowledgement; registry index is durable');
+    }
+    const rootRevalidated = revalidateParentIdentity(storeInstance.parentIdentity, request.serviceUid);
+    if (!rootRevalidated.ok) {
+      const released = release();
+      if (!released.ok) return released;
+      return failResult(rootRevalidated.code ?? 'ERR-STO-ROOT-IDENTITY-CHANGED', rootRevalidated.message ?? 'trusted parent identity changed');
+    }
+    const released = release();
+    if (!released.ok) return released;
+    // Reopen and verify the newly published index (WP-8-H §9.11): canonical
+    // form, self-consistency, store identity, and the current generation /
+    // surface tokens (the entry-set probe is intentionally excluded here —
+    // a legitimate write landing after lock release makes the index stale
+    // for the fast path, not a publication failure).
+    const reopen = readRegistryIndexFile({ namespaceRoot: storeRoot, serviceUid: request.serviceUid, byteLimit: indexBytes, indexId: index.indexId });
+    if (!reopen.ok) {
+      return failResult('ERR-STO-DURABILITY', 'registry-index reopen verification failed');
+    }
+    const reopenParsed = parseRegistryIndex(reopen.raw ?? '', indexBytes, REGISTRY_INDEX_MAX_ENTRIES);
+    if (!reopenParsed.ok || reopenParsed.model === undefined || reopenParsed.model.indexId !== index.indexId) {
+      return failResult('ERR-STO-DURABILITY', 'registry-index reopen parse failed');
+    }
+    const reopenSurface = recomputeSurfaceGeneration({ namespaceRoot: storeRoot, serviceUid: request.serviceUid, mode: 'registry' });
+    if (!reopenParsed.model || reopenParsed.model.binding.generation !== recomputedGeneration || (reopenSurface.ok && reopenSurface.generation !== undefined && reopenSurface.generation !== reopenParsed.model.binding.surfaceGeneration)) {
+      return failResult('ERR-STO-DURABILITY', 'registry-index reopen binding does not match the current store');
+    }
+    return { ok: true, outcome: 'rebuilt', indexId: index.indexId };
+  } finally {
+    capability?.dispose();
+  }
+}
+
+/**
  * Execute one authorized recovery mutation. `orphan-removal`,
- * `quarantine-temporary`, and `audit-reconstruction` are executable in
- * this slice; every other category fails closed.
+ * `quarantine-temporary`, `audit-reconstruction`, and
+ * `registry-index-rebuild` are executable in this slice; every other
+ * category fails closed.
  */
 export function executeRecoveryMutation(request: RecoveryMutationRequest): RecoveryMutationResult {
   const validation = validateAction(request);
@@ -866,6 +1123,9 @@ export function executeRecoveryMutation(request: RecoveryMutationRequest): Recov
     return failResult(validation.code ?? 'ERR-STO-REQ-INVALID', validation.message ?? 'recovery action validation failed');
   }
   const hooks = request.hooks ?? {};
+  if (request.action.category === 'registry-index-rebuild') {
+    return executeRegistryIndexRebuildMutation(request, request.action as RecoveryMutationRequest['action'] & { category: 'registry-index-rebuild' }, hooks);
+  }
   if (request.action.category === 'audit-reconstruction') {
     // The expected observation evidence and the expected missing-audit
     // finding must match the deterministic record observation identity of
@@ -877,7 +1137,7 @@ export function executeRecoveryMutation(request: RecoveryMutationRequest): Recov
       return failResult('ERR-STO-CONTAINMENT-DENIED', 'target record path derivation failed');
     }
     const recomputedObservationId = recordObservationId(targetRecordClass, derived.shard, derived.filename);
-    if (request.action.expectedObservationIds[0] !== recomputedObservationId || request.action.expectedMissingAuditFindingId !== recomputedObservationId) {
+    if (request.action.expectedObservationIds?.[0] !== recomputedObservationId || request.action.expectedMissingAuditFindingId !== recomputedObservationId) {
       return failResult('ERR-STO-REQ-INVALID', 'expected observation or missing-audit finding does not match the scanned target record');
     }
     return executeAuditReconstructionMutation(request, request.action as RecoveryMutationRequest['action'] & { category: 'audit-reconstruction' }, hooks);
@@ -885,7 +1145,7 @@ export function executeRecoveryMutation(request: RecoveryMutationRequest): Recov
   // The expected observation evidence must match the deterministic
   // temporary-object observation identity of the WP-8-E scan.
   const recomputedObservationId = temporaryObservationId(request.action.targetEntry!);
-  if (request.action.expectedObservationIds[0] !== recomputedObservationId) {
+  if (request.action.expectedObservationIds?.[0] !== recomputedObservationId) {
     return failResult('ERR-STO-REQ-INVALID', 'expected observation evidence does not match the scanned temporary object');
   }
   if (request.action.category === 'quarantine-temporary') {

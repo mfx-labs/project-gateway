@@ -208,8 +208,36 @@ breaking, deletion, WPR-023
 (d) disposition, retention, migration, index rebuild, WP-9, and WP-12
 remain out of scope. The **implementation report
 (`docs/reports/wp-8g-audit-reconstruction-implementation-report.md`)
-is complete**; **WP-8-F and WP-8-G are not yet closed** — implementation
-review pending; WP-8 implementation is **not closed**. WP-9 and later
+is complete**. **WP-8-H (persistent registry index, rebuild, and stale
+detection; ADR-031) is implemented**: the fourth recovery operation
+`registry-index-rebuild` publishes one canonical immutable index snapshot
+per derived state under `index/registry-index/<shard>/<indexId>.idx` — a
+deterministic domain-separated identity binding (model version, verified
+store/namespace identities, registry scan generation and surface token,
+record/audit/observation roots, scan and index bounds, scan counters);
+content is the complete verified registry-mode observation set with
+bounded stat facts (freshness manifest), structure-level findings, and
+scan facts; the opt-in registry fast path validates the index against the
+current store (generation, surface, entry-set probe) and re-derives the
+registry view purely from the stored observations (deep equivalence),
+falling back to the authoritative scan on any invalidity; truncated
+scans and unresolved continuations are rejected, every bound
+(`indexRebuildWork`, new `indexBytes`) fails the build deterministically;
+immutable no-replace publication through an exact-record
+`RecoveryPublicationPermit` (role `registry-index`); the writer lock is
+taken only for the publication phase with under-lock generation/surface/
+probe rechecks (stale builds fail closed); deterministic stale detection
+and recovery-scanner index-artifact classification with rebuild
+recommendations; a fixed 8-stage crash inventory; one new read-only fs
+owner. The contract gained the single normative `indexBytes` limit row
+and its pinned SHA-256 was updated. Stale-lock breaking, deletion,
+WPR-023 (d) disposition, retention, migration, index deletion/
+disposition, WP-9, and WP-12 remain out of scope. The **implementation
+report
+(`docs/reports/wp-8h-persistent-registry-index-implementation-report.md`)
+is complete**; **WP-8-F, WP-8-G, and WP-8-H are not yet closed** —
+implementation review pending; WP-8 implementation is **not closed**.
+WP-9 and later
 packages are **not authorized**. No push, release, publication,
 installation, or deployment has occurred. Each disposition
 is one of RESOLVED (by this planning package or earlier closed packages),

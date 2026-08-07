@@ -22,9 +22,10 @@
  */
 import { openSync, closeSync, writeSync, fsyncSync, fchmodSync, fstatSync, linkSync, unlinkSync, mkdirSync, readFileSync } from 'node:fs';
 import { constants } from 'node:fs';
-import { parsePersistedEnvelope, computeDomainDigest } from '../format/envelope.js';
+import { parsePersistedEnvelope, computeDomainDigest, STORAGE_RECORD_BYTES_DIGEST_DOMAIN } from '../format/envelope.js';
 import { classifyExistingTarget, type ExistingTargetClass } from '../errors/precedence.js';
-import { deriveRecordRelativePath } from '../layout/layout.js';
+import { deriveRecordRelativePath, deriveRegistryIndexRelativePath, REGISTRY_INDEX_FAMILY } from '../layout/layout.js';
+import { parseRegistryIndex, validateRegistryIndexSelfConsistency, REGISTRY_INDEX_MAX_ENTRIES } from '../registry/index-model.js';
 import { writeAllSync } from '../metadata/bootstrap-persist.js';
 import { comparePrePostStat, verifyDirectoryStat, verifyRegularFileStat } from '../root/identity.js';
 import { isGenuineWriteCapability, isGenuineRecoveryPublicationPermit, recoveryPublicationPermitLive, type RecoveryPublicationPermit, type WriteCapability } from '../capabilities/authenticity.js';
@@ -182,6 +183,61 @@ function ensureClassShardDirectoriesFor(namespaceRoot: string, recordClass: Reco
     } finally {
       if (fd !== undefined) closeSync(fd);
     }
+  }
+  return { ok: true };
+}
+
+/**
+ * WP-8-H exact registry-index family provisioning (ADR-031): lazily create
+ * `index/`, `index/registry-index/`, and the exact bound shard under the
+ * writer lock with exact fixed-directory verification (no-follow; expected
+ * UID; exact directory mode; same verified namespace filesystem). `index/`
+ * is a deferred top-level directory (provision.ts State D), so the chain
+ * is created here; every created entry's PARENT is fsynced in deterministic
+ * order (namespace root, `index/`, `index/registry-index/`). Absent
+ * directories may be created; existing directories must be verified; a
+ * symlink, special file, wrong UID, wrong mode, or replacement fails
+ * closed. No arbitrary caller-provided directory creation exists.
+ */
+function ensureRegistryIndexDirectoriesFor(namespaceRoot: string, indexId: string, serviceUid: number, hooks: PublicationHooks | undefined): PublishStageResult {
+  const derived = deriveRegistryIndexRelativePath(indexId);
+  if (!derived.ok) {
+    return { ok: false, code: 'ERR-STO-CONTAINMENT-DENIED', message: 'registry-index path derivation failed' };
+  }
+  const dirs = [
+    `${namespaceRoot}/index`,
+    `${namespaceRoot}/index/${REGISTRY_INDEX_FAMILY}`,
+    `${namespaceRoot}/index/${REGISTRY_INDEX_FAMILY}/${derived.shard}`,
+  ];
+  const createdParents: string[] = [];
+  for (const dir of dirs) {
+    let createdNow = false;
+    try {
+      mkdirSync(dir, 0o700);
+      createdNow = true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
+        const mapped = mapPublishError((err as NodeJS.ErrnoException).code, 'dir');
+        return { ok: false, code: mapped.code, message: mapped.message };
+      }
+    }
+    let fd: number | undefined;
+    try {
+      fd = openSync(dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+      const stat = fstatSync(fd);
+      const verified = verifyDirectoryStat(stat, serviceUid);
+      if (!verified.ok) return { ok: false, code: verified.code, message: verified.message };
+      if (createdNow) {
+        createdParents.push(dir.slice(0, dir.lastIndexOf('/')));
+      }
+    } catch {
+      return { ok: false, code: 'ERR-STO-IO-FAILURE', message: 'registry-index directory could not be verified descriptor-bound' };
+    } finally {
+      if (fd !== undefined) closeSync(fd);
+    }
+  }
+  for (const parent of createdParents) {
+    fsyncDirectory(parent, hooks ?? {});
   }
   return { ok: true };
 }
@@ -532,11 +588,29 @@ export function publishRecoveryBoundRecord(input: {
   if (!capability.verify(binding.operation).ok) {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery capability is not usable at the recovery publication boundary' };
   }
-  // 2-4. Parse and verify the canonical record bytes against the permit.
+  // 2-4. Parse and verify the canonical bytes against the permit. The
+  // registry-index role consumes a canonical index snapshot (ADR-031); all
+  // other roles consume canonical record envelopes.
   const bytes = Buffer.from(input.canonicalUtf8, 'utf8');
   if (bytes.length > input.byteLimit) {
     return { ok: false, code: 'ERR-STO-LIMIT-EXCEEDED', message: 'record exceeds the bounded byte limit' };
   }
+  if (binding.role === 'registry-index') {
+    const indexParsed = parseRegistryIndex(input.canonicalUtf8, input.byteLimit, REGISTRY_INDEX_MAX_ENTRIES);
+    if (!indexParsed.ok || indexParsed.model === undefined) {
+      return { ok: false, code: indexParsed.code ?? 'ERR-STO-MALFORMED', message: indexParsed.message ?? 'registry index bytes are not a canonical index snapshot' };
+    }
+    if (indexParsed.model.indexId !== binding.recordId) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'registry index identity does not match the permit binding' };
+    }
+    if (computeDomainDigest(STORAGE_RECORD_BYTES_DIGEST_DOMAIN, input.canonicalUtf8) !== binding.recordDigest || computeDomainDigest(STORAGE_RECORD_BYTES_DIGEST_DOMAIN, input.canonicalUtf8) !== binding.canonicalBytesDigest) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'registry index canonical-byte digest does not match the permit binding' };
+    }
+    const indexConsistent = validateRegistryIndexSelfConsistency(indexParsed.model);
+    if (!indexConsistent.ok) {
+      return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'registry index identity or roots are inconsistent with the permit binding' };
+    }
+  } else {
   const parsed = parsePersistedEnvelope(input.canonicalUtf8, input.byteLimit);
   if (!parsed.ok || parsed.model === undefined || parsed.bytes === undefined) {
     return { ok: false, code: 'ERR-STO-MALFORMED', message: 'record bytes are not a canonical record envelope' };
@@ -601,29 +675,41 @@ export function publishRecoveryBoundRecord(input: {
       return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'recovery operation does not match the permit binding' };
     }
   }
+  }
   // 5-6. Derive the destination internally and verify it matches the permit.
-  const derived = deriveRecordRelativePath(binding.recordClass, binding.recordId);
-  if (!derived.ok) {
+  const namespaceRoot = `${capability.binding.storeInstance.parentIdentity.canonicalPath}/store-v1`;
+  let derived: { readonly ok: boolean; readonly relativePath?: string; readonly classSegment?: string; readonly code?: string; readonly message?: string };
+  if (binding.role === 'registry-index') {
+    const indexDerived = deriveRegistryIndexRelativePath(binding.recordId);
+    derived = indexDerived.ok ? { ok: true, relativePath: indexDerived.relativePath } : { ok: false };
+  } else {
+    derived = deriveRecordRelativePath(binding.recordClass as Parameters<typeof deriveRecordRelativePath>[0], binding.recordId);
+  }
+  if (!derived.ok || derived.relativePath === undefined) {
     return { ok: false, code: 'ERR-STO-CONTAINMENT-DENIED', message: 'record path derivation failed' };
   }
   if (derived.relativePath !== binding.destinationDesignation) {
     return { ok: false, code: 'ERR-STO-REQ-INVALID', message: 'derived destination does not match the permit binding' };
   }
-  const namespaceRoot = `${capability.binding.storeInstance.parentIdentity.canonicalPath}/store-v1`;
-  const topLevel = derived.relativePath.startsWith('audit/') ? 'audit' : 'records';
-  const classDir = `${namespaceRoot}/${topLevel}/${derived.classSegment}`;
+  const topLevel = derived.relativePath.startsWith('audit/') ? 'audit' : derived.relativePath.startsWith('index/') ? 'index' : 'records';
   const finalPath = `${namespaceRoot}/${derived.relativePath}`;
   const finalDirPath = `${namespaceRoot}/${derived.relativePath.slice(0, derived.relativePath.lastIndexOf('/'))}`;
+  const parentDirPath = `${namespaceRoot}/${topLevel}/${binding.role === 'registry-index' ? REGISTRY_INDEX_FAMILY : derived.classSegment}`;
   const tmpDirPath = `${namespaceRoot}/tmp`;
   // Same deterministic per-operation temp ordinals as the recovery evidence
   // path: evidence = base, audit = base + 1 (2/3 orphan-removal, 4/5
-  // quarantine-temporary, 6/7 audit-reconstruction).
-  const ordinalBase = binding.operation === 'quarantine-temporary' ? 4 : binding.operation === 'audit-reconstruction' ? 6 : 2;
+  // quarantine-temporary, 6/7 audit-reconstruction, 8/9 index rebuild).
+  const ordinalBase = binding.operation === 'quarantine-temporary' ? 4 : binding.operation === 'audit-reconstruction' ? 6 : binding.operation === 'registry-index-rebuild' ? 8 : 2;
   const ordinal = binding.role === 'recovery-authorized-write-audit' ? ordinalBase + 1 : ordinalBase;
   const tmpPath = `${tmpDirPath}/${publicationTempName(capability.binding.actionIdentity, ordinal)}`;
-  // 7. Provision only the exact bound class/shard (module-private; authority
-  // already verified above).
-  const provisioned = ensureClassShardDirectoriesFor(namespaceRoot, binding.recordClass, binding.recordId, input.serviceUid);
+  // 7. Provision only the exact bound class/shard or index family/shard
+  // (module-private; authority already verified above).
+  let provisioned: { readonly ok: boolean; readonly code?: string; readonly message?: string };
+  if (binding.role === 'registry-index') {
+    provisioned = ensureRegistryIndexDirectoriesFor(namespaceRoot, binding.recordId, input.serviceUid, input.hooks);
+  } else {
+    provisioned = ensureClassShardDirectoriesFor(namespaceRoot, binding.recordClass as Parameters<typeof ensureClassShardDirectoriesFor>[1], binding.recordId, input.serviceUid);
+  }
   if (!provisioned.ok) {
     return { ok: false, code: provisioned.code ?? 'ERR-STO-IO-FAILURE', message: provisioned.message ?? 'recovery record class/shard directories could not be established' };
   }
@@ -645,7 +731,7 @@ export function publishRecoveryBoundRecord(input: {
     expectedRecordId: binding.recordId,
     expectedRevision: 1,
     expectedDigest: binding.recordDigest,
-    syncDirectories: [classDir, `${namespaceRoot}/${topLevel}`],
+    syncDirectories: [parentDirPath, `${namespaceRoot}/${topLevel}`],
     hooks: input.hooks,
   });
 }

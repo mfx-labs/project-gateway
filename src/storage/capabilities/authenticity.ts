@@ -29,7 +29,7 @@
 import { isGenuineTrustedStorageBootstrapInput, isGenuineTrustedWriteRequest, isGenuineTrustedRecoveryRequest, type TrustedRecoveryRequest, type TrustedStorageBootstrapInput, type TrustedWriteRequest } from '../trusted-input/bootstrap-input.js';
 import { RECOVERY_AUDIT_RECONSTRUCTION_EVENT_KIND, type AuditEventKind } from '../audit/write-audit.js';
 import { isValidDigestSyntax } from '../format/envelope.js';
-import { deriveRecordRelativePath } from '../layout/layout.js';
+import { deriveRecordRelativePath, deriveRegistryIndexRelativePath } from '../layout/layout.js';
 import type { RootIdentity, VerifiedStoreInstance } from '../types.js';
 
 export const INITIALIZATION_OPERATION_SET = ['namespace-initialize', 'provision-phase3'] as const;
@@ -434,7 +434,7 @@ export function isGenuineVerifyCapability(value: unknown): value is VerifyCapabi
 // the set only when implemented. The capability NEVER derives from a
 // RecoveryPlan, assessment, cursor, observation, path, or caller boolean.
 
-export const RECOVERY_OPERATION_SET = ['orphan-removal', 'quarantine-temporary', 'audit-reconstruction'] as const;
+export const RECOVERY_OPERATION_SET = ['orphan-removal', 'quarantine-temporary', 'audit-reconstruction', 'registry-index-rebuild'] as const;
 export type RecoveryOperation = (typeof RECOVERY_OPERATION_SET)[number];
 
 /** Recovery-capability binding (mutation-capable; CAP-001/API-003). */
@@ -570,8 +570,8 @@ export function isGenuineRecoveryCapability(value: unknown): value is RecoveryCa
 // verifier only by `src/storage/publication/publish-record.ts` (static-guard
 // enforced).
 
-export type RecoveryPublicationRole = 'recovery-evidence' | 'recovery-authorized-write-audit' | 'reconstructed-recovery-audit';
-export type RecoveryPublicationRecordClass = 'store-evidence-record' | 'authoritative-audit-event';
+export type RecoveryPublicationRole = 'recovery-evidence' | 'recovery-authorized-write-audit' | 'reconstructed-recovery-audit' | 'registry-index';
+export type RecoveryPublicationRecordClass = 'store-evidence-record' | 'authoritative-audit-event' | 'registry-index';
 
 /** Closed audit event kinds bindable by an audit-role recovery permit (vocabulary owned by the audit builder). */
 export type RecoveryPermitAuditEventKind = AuditEventKind;
@@ -651,14 +651,26 @@ export function createRecoveryPublicationPermit(input: {
   const capability = input.capability as RecoveryCapability;
   // Least authority at mint time: the capability must verify the exact
   // bound operation (an orphan-only or quarantine-only capability can never
-  // mint an audit-reconstruction permit; WP-8-G §1).
+  // mint an audit-reconstruction or registry-index permit; WP-8-G §1).
   if (!capability.verify(input.operation).ok) return undefined;
-  if (input.role !== 'recovery-evidence' && input.role !== 'recovery-authorized-write-audit' && input.role !== 'reconstructed-recovery-audit') return undefined;
-  const recordClass: RecoveryPublicationRecordClass = input.role === 'recovery-evidence' ? 'store-evidence-record' : 'authoritative-audit-event';
-  if (!isValidDigestSyntax(input.recordDigest) || !isValidDigestSyntax(input.canonicalBytesDigest)) return undefined;
-  if (input.recordDigest !== input.canonicalBytesDigest) return undefined;
-  const derived = deriveRecordRelativePath(recordClass, input.recordId);
-  if (!derived.ok || derived.relativePath !== input.destinationDesignation) return undefined;
+  if (input.role !== 'recovery-evidence' && input.role !== 'recovery-authorized-write-audit' && input.role !== 'reconstructed-recovery-audit' && input.role !== 'registry-index') return undefined;
+  let recordClass: RecoveryPublicationRecordClass;
+  if (input.role === 'registry-index') {
+    // WP-8-H: the registry-index role binds the exact derived cache snapshot
+    // (ADR-031). The record identity is the 32-hex index identity; the
+    // destination is the internally derived `index/registry-index/...` path.
+    recordClass = 'registry-index';
+    if (!/^[0-9a-f]{32}$/.test(input.recordId)) return undefined;
+    if (input.audit !== undefined) return undefined;
+    const indexDerived = deriveRegistryIndexRelativePath(input.recordId);
+    if (!indexDerived.ok || indexDerived.relativePath !== input.destinationDesignation) return undefined;
+  } else {
+    recordClass = input.role === 'recovery-evidence' ? 'store-evidence-record' : 'authoritative-audit-event';
+    if (!isValidDigestSyntax(input.recordDigest) || !isValidDigestSyntax(input.canonicalBytesDigest)) return undefined;
+    if (input.recordDigest !== input.canonicalBytesDigest) return undefined;
+    const derived = deriveRecordRelativePath(recordClass, input.recordId);
+    if (!derived.ok || derived.relativePath !== input.destinationDesignation) return undefined;
+  }
   if (input.role === 'recovery-authorized-write-audit') {
     if (input.audit === undefined) return undefined;
     if (input.audit.eventKind !== 'authorized-write') return undefined;

@@ -51,7 +51,7 @@ import { isGenuineWriteCapability, isGenuineRecoveryCapability, type CapabilityC
  * mutations).
  */
 export type LockAuthority = WriteCapability | RecoveryCapability;
-export type LockOperation = 'record-publish' | 'orphan-removal' | 'quarantine-temporary' | 'audit-reconstruction';
+export type LockOperation = 'record-publish' | 'orphan-removal' | 'quarantine-temporary' | 'audit-reconstruction' | 'registry-index-rebuild';
 
 function isGenuineLockAuthority(value: unknown): value is LockAuthority {
   return isGenuineWriteCapability(value) || isGenuineRecoveryCapability(value);

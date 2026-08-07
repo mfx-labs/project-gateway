@@ -25,6 +25,38 @@ export const STORE_METADATA_RELATIVE_PATH = 'metadata/metadata.json' as const;
 export const WRITER_LOCK_RELATIVE_PATH = 'locks/writer.lock' as const;
 export const TEMPORARY_SUFFIX = '.tmp' as const;
 
+/** WP-8-H derived registry-index family (LAY-009; ADR-031): `index/registry-index/<shard>/<id>.idx`. */
+export const REGISTRY_INDEX_FAMILY = 'registry-index' as const;
+export const REGISTRY_INDEX_SUFFIX = '.idx' as const;
+export const REGISTRY_INDEX_FILENAME_LENGTH = COMPONENT_LENGTH + REGISTRY_INDEX_SUFFIX.length; // 36
+
+export type RegistryIndexDerivationResult =
+  | { readonly ok: true; readonly shard: string; readonly component: string; readonly filename: string; readonly relativePath: string }
+  | { readonly ok: false; readonly reason: LayoutRejectReason };
+
+/**
+ * Derive the namespace-relative registry-index path for a validated 32-hex
+ * index identity (WP-8-H; ADR-031): `index/registry-index/<shard4>/<id>.idx`.
+ * The identity is a deterministic domain digest — never a caller-selected
+ * name, path, or record identity. Length arithmetic mirrors 5.3/LAY-014.
+ */
+export function deriveRegistryIndexRelativePath(indexId: string): RegistryIndexDerivationResult {
+  if (!/^[0-9a-f]{32}$/.test(indexId)) {
+    return { ok: false, reason: 'invalid-character' };
+  }
+  const component = indexId;
+  const shard = component.slice(0, SHARD_WIDTH);
+  const filename = component + REGISTRY_INDEX_SUFFIX;
+  if (filename.length > PATH_COMPONENT_BYTES_DEFAULT) {
+    return { ok: false, reason: 'component-over-limit' };
+  }
+  const relativePath = `index/${REGISTRY_INDEX_FAMILY}/${shard}/${filename}`;
+  if (relativePath.length > PATH_BYTES_DEFAULT) {
+    return { ok: false, reason: 'path-over-limit' };
+  }
+  return { ok: true, shard, component, filename, relativePath };
+}
+
 export type LayoutRejectReason = 'unknown-record-class' | IdentifierRejectReason | 'component-over-limit' | 'path-over-limit';
 
 export type LayoutDerivationResult =

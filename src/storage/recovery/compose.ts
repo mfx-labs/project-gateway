@@ -56,6 +56,8 @@ export function runRecoveryScan(request: RecoveryScanRequest): RecoveryScanResul
       entryLimit: profile['recoveryScanEntries'] ?? 1024 * 1024,
       byteLimit: profile['totalScanBytes'] ?? 4 * 1024 * 1024 * 1024,
       failClosed: true,
+      // WP-8-H: per-index-artifact read bound (ADR-031 `indexBytes`).
+      indexByteLimit: profile['indexBytes'] ?? 64 * 1024 * 1024,
     };
     const scan = scanStoreSnapshot({ capability, namespaceRoot: namespaceRootFor(store.storeInstance), bounds });
     if (!scan.ok) {

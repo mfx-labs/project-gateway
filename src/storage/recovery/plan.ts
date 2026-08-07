@@ -58,7 +58,7 @@ function safetyRank(safety: RecoveryActionSafety): number {
 }
 
 function categoryRank(category: RecoveryActionCategory): number {
-  const order: readonly RecoveryActionCategory[] = ['audit-reconstruction', 'orphan-removal', 'quarantine', 'lock-recovery', 'disposition'];
+  const order: readonly RecoveryActionCategory[] = ['audit-reconstruction', 'orphan-removal', 'quarantine', 'registry-index-rebuild', 'lock-recovery', 'disposition'];
   const idx = order.indexOf(category);
   return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
 }
@@ -159,6 +159,52 @@ export function buildRecoveryPlan(assessment: RecoveryAssessment): RecoveryPlan 
       reason: 'durable primary without its write-audit event; recovery-audit reconstruction with gap marker (16.3, CSA-013/014)',
       requiredCapability: 'recovery',
       requiredOperation: 'audit-reconstruction',
+      verifyImmediatelyBeforeMutation: true,
+      safety: 'safe',
+    });
+  }
+  // WP-8-H: registry-index rebuild recommendation (derived cache; §11). A
+  // missing, stale, malformed, or unsupported index is a rebuild candidate;
+  // a conflicting index requires disposition (rebuild would collide with
+  // the conflicting file at the derived identity path). The action is
+  // advisory and grants nothing.
+  if (assessment.indexMissing) {
+    specs.push({
+      targetLogicalIdentity: 'registry-index',
+      targetKind: 'index-object',
+      category: 'registry-index-rebuild',
+      observedEvidence: [],
+      reason: 'registry-index is absent; rebuild from verified source records (RGY-007; WP-8-H §9)',
+      requiredCapability: 'recovery',
+      requiredOperation: 'registry-index-rebuild',
+      verifyImmediatelyBeforeMutation: true,
+      safety: 'safe',
+    });
+  }
+  for (const index of assessment.indexArtifacts) {
+    if (index.classification === 'index-current-valid') continue;
+    if (index.classification === 'index-conflicting') {
+      specs.push({
+        targetLogicalIdentity: index.indexId ?? index.entry,
+        targetKind: 'index-object',
+        category: 'disposition',
+        observedEvidence: [index.id],
+        reason: 'conflicting registry-index artifact at the derived identity; rebuild is blocked and disposition is required',
+        requiredCapability: 'control-plane',
+        requiredOperation: 'disposition',
+        verifyImmediatelyBeforeMutation: true,
+        safety: 'requires-external-disposition',
+      });
+      continue;
+    }
+    specs.push({
+      targetLogicalIdentity: index.indexId ?? index.entry,
+      targetKind: 'index-object',
+      category: 'registry-index-rebuild',
+      observedEvidence: [index.id],
+      reason: `registry-index artifact is ${index.classification}${index.staleReason !== undefined ? ` (${index.staleReason})` : ''}; rebuild candidate`,
+      requiredCapability: 'recovery',
+      requiredOperation: 'registry-index-rebuild',
       verifyImmediatelyBeforeMutation: true,
       safety: 'safe',
     });

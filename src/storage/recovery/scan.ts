@@ -111,12 +111,15 @@ import { RECORD_CLASS_BY_ID, RECORD_CLASS_PROFILES } from '../format/taxonomy.js
 import { comparePrePostStat, verifyRegularFileStat } from '../root/identity.js';
 import { verifyNamespaceRootIdentity } from '../read/read-record.js';
 import { classifyCandidate, extractEnvelopeFacts, type CandidateFacts } from '../registry/classify.js';
+import { parseRegistryIndex, computeRegistryIndexRoots, REGISTRY_INDEX_MODEL_VERSION, REGISTRY_INDEX_MAX_ENTRIES, REGISTRY_INDEX_FILENAME_RE, validateRegistryIndexSelfConsistency, type ParsedRegistryIndex } from '../registry/index-model.js';
 import { parseLockRecordFacts } from './assess.js';
 import { LOCK_RECORD_MAX_BYTES } from '../locks/lock.js';
 import type {
   AuditAssociationFacts,
   AuditScanObservation,
   ForeignScanObservation,
+  IndexObjectClassification,
+  IndexScanObservation,
   LockScanObservation,
   QuarantineObjectClassification,
   QuarantineScanObservation,
@@ -159,6 +162,16 @@ export function temporaryObservationId(entry: string): string {
  */
 export function recordObservationId(recordClass: RecordClassId, shard: string, entry: string): string {
   return observationId('record', recordClass, shard, entry);
+}
+
+/** Deterministic audit-event observation id (WP-8-H index tuple reconstruction). */
+export function auditObservationId(shard: string, entry: string): string {
+  return observationId('audit-event', 'authoritative-audit-event', shard, entry);
+}
+
+/** Deterministic foreign-object observation id (WP-8-H index tuple reconstruction). */
+export function foreignObservationId(scope: string | undefined, shard: string | undefined, entry: string): string {
+  return observationId('foreign-object', scope, shard, entry);
 }
 
 /** Deterministic quarantine-object observation id (WP-8-F). */
@@ -329,6 +342,10 @@ interface SurfaceStructure {
   readonly quarantineParent: DirectoryIdentity | undefined;
   readonly quarantineTemporaryPresent: boolean;
   readonly quarantineShards: readonly { readonly shard: string; readonly dev: number; readonly ino: number }[];
+  /** WP-8-H registry-index structure (recovery mode only). */
+  readonly indexParent: DirectoryIdentity | undefined;
+  readonly indexFamilyPresent: boolean;
+  readonly indexShards: readonly { readonly shard: string; readonly dev: number; readonly ino: number }[];
 }
 
 /**
@@ -353,6 +370,9 @@ function computeSurfaceGeneration(structure: SurfaceStructure): string {
   const quarantineShards = [...structure.quarantineShards]
     .map((q) => ({ shard: q.shard, dev: q.dev, ino: q.ino }))
     .sort((a, b) => (a.shard < b.shard ? -1 : a.shard > b.shard ? 1 : 0));
+  const indexShards = [...structure.indexShards]
+    .map((q) => ({ shard: q.shard, dev: q.dev, ino: q.ino }))
+    .sort((a, b) => (a.shard < b.shard ? -1 : a.shard > b.shard ? 1 : 0));
   const tuple = jcsSerialize({
     modelVersion: SCAN_MODEL_VERSION,
     recordsParent: structure.recordsParent ?? null,
@@ -363,6 +383,9 @@ function computeSurfaceGeneration(structure: SurfaceStructure): string {
     quarantineParent: structure.quarantineParent ?? null,
     quarantineTemporaryPresent: structure.quarantineTemporaryPresent,
     quarantineShards,
+    indexParent: structure.indexParent ?? null,
+    indexFamilyPresent: structure.indexFamilyPresent,
+    indexShards,
   });
   return computeDomainDigest(SCAN_SURFACE_GENERATION_DOMAIN, tuple);
 }
@@ -866,6 +889,45 @@ function readSurfaceStructure(input: {
     }
   }
 
+  // WP-8-H registry-index structure (recovery mode only): the `index/`
+  // parent, the `registry-index` family directory, and every 4-hex shard
+  // identity. Registry mode excludes the index structure so that index
+  // publication never invalidates the registry surface token the index
+  // itself binds.
+  let indexParent: DirectoryIdentity | undefined;
+  let indexFamilyPresent = false;
+  const indexShards: { readonly shard: string; readonly dev: number; readonly ino: number }[] = [];
+  if (input.mode === 'recovery') {
+    const indexBracket = readdirVerified(`${input.namespaceRoot}/index`, input.serviceUid, input.hooks, { surface: 'records' });
+    if (!indexBracket.ok || indexBracket.bracket === undefined) {
+      return { ok: false, code: indexBracket.code ?? 'ERR-STO-IO-FAILURE', message: indexBracket.message ?? 'index parent scan failed' };
+    }
+    if (!indexBracket.bracket.absent) {
+      indexParent = indexBracket.bracket.identity;
+      const familyNames = indexBracket.bracket.names.filter((n) => n === 'registry-index');
+      if (familyNames.length === 1) {
+        const familyBracket = readdirVerified(`${input.namespaceRoot}/index/registry-index`, input.serviceUid, input.hooks, { surface: 'records' });
+        if (!familyBracket.ok || familyBracket.bracket === undefined) {
+          return { ok: false, code: familyBracket.code ?? 'ERR-STO-IO-FAILURE', message: familyBracket.message ?? 'registry-index family scan failed' };
+        }
+        if (!familyBracket.bracket.absent) {
+          indexFamilyPresent = true;
+          for (const shardName of familyBracket.bracket.names) {
+            if (!SHARD_RE.test(shardName)) continue;
+            const identity = statDirectoryIdentity(`${input.namespaceRoot}/index/registry-index/${shardName}`);
+            if (!identity.ok) {
+              return { ok: false, code: identity.code ?? 'ERR-STO-IO-FAILURE', message: identity.message ?? 'registry-index shard identity could not be read' };
+            }
+            if (identity.identity === undefined) {
+              return { ok: false, code: 'ERR-STO-ROOT-IDENTITY-CHANGED', message: 'registry-index shard disappeared during the scan' };
+            }
+            indexShards.push({ shard: shardName, dev: identity.identity.dev, ino: identity.identity.ino });
+          }
+        }
+      }
+    }
+  }
+
   const observations: ForeignScanObservation[] = [];
   const findings: StorageFinding[] = [];
   if (input.report) {
@@ -916,6 +978,9 @@ function readSurfaceStructure(input: {
       quarantineParent,
       quarantineTemporaryPresent,
       quarantineShards,
+      indexParent,
+      indexFamilyPresent,
+      indexShards,
     },
     observations,
     findings,
@@ -934,7 +999,7 @@ function foreignParentObservation(parentPath: string, surface: 'records' | 'audi
   } finally {
     if (fd !== undefined) closeSync(fd);
   }
-  return { id: observationId('foreign-object', surface, undefined, name), entry: name, kind: 'foreign-object', classification: 'foreign-entry', code: 'ERR-STO-MALFORMED', ...(stat !== undefined ? { stat } : {}) };
+  return { id: observationId('foreign-object', surface, undefined, name), entry: name, kind: 'foreign-object', classification: 'foreign-entry', code: 'ERR-STO-MALFORMED', surface, ...(stat !== undefined ? { stat } : {}) };
 }
 
 /**
@@ -1206,6 +1271,10 @@ function scanTemporaryEntry(input: {
       sharesInodeWithPublished: false,
       stat,
       ...(envelope !== undefined ? { envelope } : {}),
+      // WP-8-H: an index-publication temporary carries canonical
+      // registry-index bytes; the recovery assessment reports it as an
+      // incomplete index temporary (still a WPR-023 temporary).
+      ...(isRegistryIndexBytes(raw) ? { indexContent: true } : {}),
     };
     return { observation };
   } catch (err) {
@@ -1224,6 +1293,22 @@ function scanTemporaryEntry(input: {
     return { stop: 'failed', code: 'ERR-STO-IO-FAILURE', message: 'temporary object could not be scanned' };
   } finally {
     if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/**
+ * WP-8-H: true when the raw bytes parse as a canonical registry-index
+ * envelope (`indexKind: RegistryIndex` with a model version). Cheap pure
+ * probe used to classify index-publication temporaries; never opens files.
+ */
+export function isRegistryIndexBytes(raw: string): boolean {
+  try {
+    const model = parseRawJson(raw, 1024 * 1024).model;
+    if (typeof model !== 'object' || model === null || Array.isArray(model)) return false;
+    const m = model as Readonly<Record<string, unknown>>;
+    return m['indexKind'] === 'RegistryIndex' && typeof m['modelVersion'] === 'string' && m['modelVersion'].length > 0;
+  } catch {
+    return false;
   }
 }
 
@@ -1488,6 +1573,204 @@ function readQuarantineObject(input: {
   }
 }
 
+/** Deterministic index-object observation id (WP-8-H). */
+export function indexObservationId(shard: string, entry: string): string {
+  return observationId('index-object', shard, undefined, entry);
+}
+
+/**
+ * Read one registry-index artifact descriptor-bound (WP-8-H; recovery
+ * classification). Mirrors `readQuarantineObject`: no-follow open, exact
+ * policy, bounded bytes, pre/post revalidation; returns the raw canonical
+ * bytes for the pure parser. Read/stat failures map to the closed index
+ * classifications (wrong-type / wrong-uid-or-mode / malformed).
+ */
+function readRegistryIndexObject(input: {
+  readonly path: string;
+  readonly serviceUid: number;
+  readonly byteLimit: number;
+}): { readonly ok: boolean; readonly raw?: string; readonly classification?: IndexObjectClassification; readonly code?: string; readonly message?: string } {
+  let fd: number | undefined;
+  try {
+    fd = openSync(input.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    const pre = fstatSync(fd);
+    const stat = statFacts(pre);
+    if (stat.fileType !== 'regular') {
+      return { ok: false, classification: 'index-wrong-type', code: 'ERR-STO-FTYPE-UNSUPPORTED', message: 'index location is not a regular file' };
+    }
+    if (stat.uid !== input.serviceUid || (stat.mode & 0o777) !== 0o600) {
+      return { ok: false, classification: 'index-wrong-uid-or-mode', code: 'ERR-STO-PERM-DENIED', message: 'index object violates the store permission policy' };
+    }
+    if (pre.size > input.byteLimit) {
+      return { ok: false, classification: 'index-malformed', code: 'ERR-STO-LIMIT-EXCEEDED', message: 'index object exceeds the bounded byte limit' };
+    }
+    const bytes = readFileSync(fd);
+    const post = fstatSync(fd);
+    const revalidated = comparePrePostStat(pre, post);
+    if (!revalidated.ok || post.size !== bytes.length) {
+      return { ok: false, classification: 'index-malformed', code: 'ERR-STO-INTEGRITY', message: 'index object changed during descriptor-based read' };
+    }
+    return { ok: true, raw: bytes.toString('utf8') };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ELOOP' || code === 'ENOTDIR' || code === 'ENXIO' || code === 'ENODEV' || code === 'EISDIR') {
+      return { ok: false, classification: 'index-wrong-type', code: 'ERR-STO-FTYPE-UNSUPPORTED', message: 'index location is not a regular file' };
+    }
+    if (code === 'EACCES' || code === 'EPERM') {
+      return { ok: false, classification: 'index-wrong-uid-or-mode', code: 'ERR-STO-PERM-DENIED', message: 'index object is not accessible' };
+    }
+    return { ok: false, classification: 'index-malformed', code: 'ERR-STO-IO-FAILURE', message: 'index object could not be scanned' };
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/**
+ * Scan the `index/` surface (WP-8-H; recovery mode only): classifies every
+ * registry-index artifact against the CURRENT scan's generation, surface
+ * token, and deterministic roots — current-valid, stale (with a
+ * deterministic stale reason), malformed, unsupported-version, conflicting,
+ * wrong type/UID/mode, or foreign. The index never grants authority and
+ * never blocks record recovery (RGY-007; WP-8-H §11).
+ */
+function scanIndexSurface(input: {
+  readonly namespaceRoot: string;
+  readonly serviceUid: number;
+  readonly hooks: ScanHooks | undefined;
+  readonly indexByteLimit: number;
+  readonly storeInstance: VerifiedStoreInstance;
+  readonly observations: readonly ScanObservation[];
+}): { readonly ok: boolean; readonly observations: readonly IndexScanObservation[]; readonly findings: readonly StorageFinding[]; readonly code?: string; readonly message?: string } {
+  // The registry index binds the REGISTRY-mode generation and surface token
+  // (F2/F3-G), so currency is classified against the recomputed registry
+  // tokens — never the recovery-mode tokens (the two modes differ by
+  // design). The registry surface excludes the index structure itself.
+  const observations: IndexScanObservation[] = [];
+  const findings: StorageFinding[] = [];
+  // The registry index binds the REGISTRY-mode generation and surface token
+  // (F2/F3-G), so currency is classified against the recomputed registry
+  // tokens — never the recovery-mode tokens (the two modes differ by
+  // design). The registry surface excludes the index structure itself.
+  const profile = input.storeInstance.limitProfile;
+  const registryGeneration = computeScanGeneration({
+    storeInstance: input.storeInstance,
+    mode: 'registry',
+    entryLimit: profile['totalScanEntries'] ?? 1024 * 1024,
+    byteLimit: profile['totalScanBytes'] ?? 4 * 1024 * 1024 * 1024,
+    failClosed: false,
+  });
+  const registrySurface = recomputeSurfaceGeneration({ namespaceRoot: input.namespaceRoot, serviceUid: input.serviceUid, mode: 'registry' });
+  if (!registrySurface.ok || registrySurface.generation === undefined) {
+    return { ok: false, observations, findings, code: registrySurface.code ?? 'ERR-STO-IO-FAILURE', message: registrySurface.message ?? 'registry surface could not be recomputed for the index classification' };
+  }
+  const indexDir = `${input.namespaceRoot}/index`;
+  const indexBracket = readdirVerified(indexDir, input.serviceUid, input.hooks, { surface: 'records' });
+  if (!indexBracket.ok || indexBracket.bracket === undefined) {
+    return { ok: false, observations, findings, code: indexBracket.code ?? 'ERR-STO-IO-FAILURE', message: indexBracket.message ?? 'index parent scan failed' };
+  }
+  if (indexBracket.bracket.absent) return { ok: true, observations, findings };
+  for (const name of indexBracket.bracket.names) {
+    if (name === 'registry-index') continue;
+    observations.push({ id: indexObservationId('', name), entry: name, kind: 'index-object', shard: '', classification: 'foreign-entry', code: 'ERR-STO-MALFORMED' });
+    findings.push(finding('ERR-STO-MALFORMED', 'foreign entry in the index surface'));
+  }
+  if (!indexBracket.bracket.names.includes('registry-index')) return { ok: true, observations, findings };
+  const familyBracket = readdirVerified(`${indexDir}/registry-index`, input.serviceUid, input.hooks, { surface: 'records' });
+  if (!familyBracket.ok || familyBracket.bracket === undefined) {
+    return { ok: false, observations, findings, code: familyBracket.code ?? 'ERR-STO-IO-FAILURE', message: familyBracket.message ?? 'registry-index family scan failed' };
+  }
+  if (familyBracket.bracket.absent) return { ok: true, observations, findings };
+  for (const shardName of familyBracket.bracket.names) {
+    if (!SHARD_RE.test(shardName)) {
+      observations.push({ id: indexObservationId('', shardName), entry: shardName, kind: 'index-object', shard: '', classification: 'foreign-entry', code: 'ERR-STO-MALFORMED' });
+      continue;
+    }
+    const shardBracket = readdirVerified(`${indexDir}/registry-index/${shardName}`, input.serviceUid, input.hooks, { surface: 'records', shard: shardName });
+    if (!shardBracket.ok || shardBracket.bracket === undefined) {
+      return { ok: false, observations, findings, code: shardBracket.code ?? 'ERR-STO-ROOT-IDENTITY-CHANGED', message: shardBracket.message ?? 'registry-index shard scan failed' };
+    }
+    if (shardBracket.bracket.absent) {
+      return { ok: false, observations, findings, code: 'ERR-STO-ROOT-IDENTITY-CHANGED', message: 'registry-index shard disappeared during the scan' };
+    }
+    for (const entryName of shardBracket.bracket.names) {
+      const base = { id: indexObservationId(shardName, entryName), entry: entryName, kind: 'index-object' as const, shard: shardName };
+      if (!REGISTRY_INDEX_FILENAME_RE.test(entryName)) {
+        observations.push({
+          ...base,
+          classification: entryName.endsWith('.idx') ? 'index-malformed' : 'foreign-entry',
+          code: 'ERR-STO-MALFORMED',
+        });
+        continue;
+      }
+      const indexId = entryName.slice(0, 32);
+      const objectRead = readRegistryIndexObject({
+        path: `${indexDir}/registry-index/${shardName}/${entryName}`,
+        serviceUid: input.serviceUid,
+        byteLimit: input.indexByteLimit,
+      });
+      if (!objectRead.ok) {
+        observations.push({ ...base, indexId, classification: objectRead.classification ?? 'index-malformed', code: objectRead.code ?? '' });
+        continue;
+      }
+      const parsed = parseRegistryIndex(objectRead.raw ?? '', input.indexByteLimit, REGISTRY_INDEX_MAX_ENTRIES);
+      if (!parsed.ok || parsed.model === undefined) {
+        observations.push({ ...base, indexId, classification: 'index-malformed', code: parsed.code ?? 'ERR-STO-MALFORMED' });
+        findings.push(finding('ERR-STO-MALFORMED', 'malformed registry-index artifact'));
+        continue;
+      }
+      const model = parsed.model;
+      if (model.modelVersion !== REGISTRY_INDEX_MODEL_VERSION) {
+        observations.push({ ...base, indexId, modelVersion: model.modelVersion, classification: 'index-unsupported-version', code: 'ERR-STO-MALFORMED' });
+        findings.push(finding('ERR-STO-MALFORMED', 'registry-index model version is not supported; rebuild required'));
+        continue;
+      }
+      const consistent = validateRegistryIndexSelfConsistency(model);
+      if (!consistent.ok) {
+        observations.push({ ...base, indexId, modelVersion: model.modelVersion, classification: 'index-conflicting', code: 'ERR-STO-INTEGRITY' });
+        findings.push(finding('ERR-STO-INTEGRITY', 'registry-index identity or roots are inconsistent; conflicting index'));
+        continue;
+      }
+      // Currency classification against the CURRENT scan state.
+      const staleReason = indexStaleReason(model, registryGeneration, registrySurface.generation, input.observations);
+      if (staleReason !== undefined) {
+        observations.push({
+          ...base,
+          indexId,
+          modelVersion: model.modelVersion,
+          classification: 'index-stale',
+          code: 'ERR-STO-INTEGRITY',
+          binding: {
+            generation: model.binding.generation,
+            surfaceGeneration: model.binding.surfaceGeneration,
+            recordRoot: model.binding.recordRoot,
+            auditRoot: model.binding.auditRoot,
+          },
+          staleReason,
+        });
+        continue;
+      }
+      observations.push({ ...base, indexId, modelVersion: model.modelVersion, classification: 'index-current-valid', code: '' });
+    }
+  }
+  return { ok: true, observations, findings };
+}
+
+/** Deterministic stale reason of an index against the current scan state. */
+function indexStaleReason(
+  model: ParsedRegistryIndex,
+  currentGeneration: string,
+  currentSurfaceGeneration: string,
+  observations: readonly ScanObservation[],
+): string | undefined {
+  if (model.binding.generation !== currentGeneration) return 'stale-generation';
+  if (model.binding.surfaceGeneration !== currentSurfaceGeneration) return 'stale-surface';
+  const roots = computeRegistryIndexRoots(observations, REGISTRY_INDEX_MODEL_VERSION);
+  if (model.binding.recordRoot !== roots.recordRoot) return 'stale-record-set';
+  if (model.binding.auditRoot !== roots.auditRoot) return 'stale-audit-state';
+  if (model.binding.observationRoot !== roots.observationRoot) return 'stale-observation-set';
+  return undefined;
+}
+
 /**
  * Bounded read-only store scan (RDS-004/007, CSA, LMT-006/010, DTM-003;
  * F1–F4, F1-B, F1-S, F3-G). `bounds.failClosed` selects the recovery-scan
@@ -1629,7 +1912,7 @@ export function scanStoreSnapshot(input: StoreScanInput): StoreScanResult {
         // order (resume skips everything at or before the cursor, so each
         // anomaly is reported exactly once), never a resumable cursor
         // position, never blocking later valid candidates.
-        observations.push({ id: observationId('foreign-object', recordClass, shardName, shardName), entry: shardName, kind: 'foreign-object', recordClass, classification: 'foreign-entry', code: 'ERR-STO-MALFORMED' });
+        observations.push({ id: observationId('foreign-object', recordClass, shardName, shardName), entry: shardName, kind: 'foreign-object', recordClass, classification: 'foreign-entry', code: 'ERR-STO-MALFORMED', shard: shardName });
         continue;
       }
       if (!cursorShard) {
@@ -1668,7 +1951,7 @@ export function scanStoreSnapshot(input: StoreScanInput): StoreScanResult {
         const component = entryName.slice(0, 32);
         const nameGrammarOk = COMPONENT_RE.test(component) && entryName.length === 36 && entryName.endsWith(recordProfile.suffix);
         if (!nameGrammarOk) {
-          const foreign: ForeignScanObservation = { id: observationId('foreign-object', recordClass, shardName, entryName), entry: entryName, kind: 'foreign-object', recordClass, classification: 'foreign-entry', code: 'ERR-STO-MALFORMED' };
+          const foreign: ForeignScanObservation = { id: observationId('foreign-object', recordClass, shardName, entryName), entry: entryName, kind: 'foreign-object', recordClass, classification: 'foreign-entry', code: 'ERR-STO-MALFORMED', shard: shardName };
           observations.push(foreign);
           lastClass = recordClass;
           lastShard = shardName;
@@ -1847,6 +2130,29 @@ export function scanStoreSnapshot(input: StoreScanInput): StoreScanResult {
     findings.push(...quarantineScan.findings);
   }
   observations.push(...quarantineObservations);
+  // ── index/ surface (WP-8-H; recovery mode only) ─────────────────────────
+  // Registry-index artifacts are derived cache: recovery classifies them
+  // (current/stale/malformed/conflicting/foreign) and may recommend
+  // rebuild, but never treats index loss as record loss and never derives
+  // authority from an index. Registry mode does not scan this surface (the
+  // fast path validates the index separately against the live store).
+  const indexObservations: IndexScanObservation[] = [];
+  if (!truncated && recoveryMode) {
+    const indexScan = scanIndexSurface({
+      namespaceRoot: input.namespaceRoot,
+      serviceUid,
+      hooks: input.hooks,
+      indexByteLimit: bounds.indexByteLimit ?? 64 * 1024 * 1024,
+      storeInstance: input.capability.binding.storeInstance,
+      observations,
+    });
+    if (!indexScan.ok) {
+      return failResult(indexScan.code ?? 'ERR-STO-IO-FAILURE', indexScan.message ?? 'registry-index surface scan failed');
+    }
+    indexObservations.push(...indexScan.observations);
+    findings.push(...indexScan.findings);
+  }
+  observations.push(...indexObservations);
 
   const continuation: ScanCursor | undefined =
     truncated && lastClass !== undefined && lastShard !== undefined && lastEntry !== undefined && !recoveryMode

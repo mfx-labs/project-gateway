@@ -168,8 +168,17 @@ test('recovery: verified records, verified audit, and a clean store produce an e
     assert.equal(result.findings!.some((f) => f.message === 'required audit class directory is absent: authoritative-audit-event'), false);
     const plan = result.plan!;
     assert.equal(plan.advisoryOnly, true);
-    assert.equal(plan.actions.length, 0);
-    assert.equal(plan.summary.total, 0);
+    // WP-8-H: a store without a persistent registry index is a rebuild
+    // candidate (missing → rebuild; derived cache, never a storage failure).
+    assert.equal(plan.actions.length, 1);
+    const rebuild = plan.actions[0]!;
+    assert.equal(rebuild.category, 'registry-index-rebuild');
+    assert.equal(rebuild.targetKind, 'index-object');
+    assert.equal(rebuild.safety, 'safe');
+    assert.equal(rebuild.requiredCapability, 'recovery');
+    assert.equal(rebuild.requiredOperation, 'registry-index-rebuild');
+    assert.equal(plan.summary.total, 1);
+    assert.equal(plan.summary.safe, 1);
   } finally {
     rmSync(env.dir, { recursive: true, force: true });
   }
@@ -225,8 +234,10 @@ test('recovery: orphan temporaries classify per WPR-023 (a)-(d)', () => {
     assert.equal(quarantines.filter((a) => a.safety === 'safe').length, 2);
     assert.ok(plan.actions.some((a) => a.category === 'disposition' && a.safety === 'requires-external-disposition'));
     assert.ok(quarantines.some((a) => a.safety === 'requires-external-disposition' && a.requiredOperation === 'disposition'));
-    // Every action carries the full required shape.
+    // Every action carries the full required shape (the missing-index
+    // rebuild action has no observation evidence by construction; WP-8-H).
     for (const action of plan.actions) {
+      if (action.category === 'registry-index-rebuild' && action.targetLogicalIdentity === 'registry-index') continue;
       assert.ok(action.targetLogicalIdentity.length > 0);
       assert.ok(action.observedEvidence.length >= 1);
       assert.ok(action.reason.length > 0);

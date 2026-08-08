@@ -130,8 +130,13 @@ test('security: production modules perform no hidden filesystem/network/process 
   // composition-root boundary with its own security guard
   // (tests/runtime/static-guard.test.ts) that allows only bounded startup
   // config reads and forbids network, mutation, stdout, and subprocess I/O.
+  // WP-11 Slice 1 controlled writing (src/writing): a dedicated module
+  // boundary with its own stricter guard
+  // (tests/writing/static-guard.test.ts) proving that node:fs appears ONLY
+  // in the injected host write executor (exact create-only API discipline)
+  // and that the pure core is I/O-free; excluded here by boundary.
   const prodFiles = walk(DIST)
-    .filter((p) => !p.includes('conformance') && !p.includes('/adapters/') && !p.includes('/reader/') && !p.includes('/git/') && !p.includes('/fff/') && !p.includes('/runtime/'))
+    .filter((p) => !p.includes('conformance') && !p.includes('/adapters/') && !p.includes('/reader/') && !p.includes('/git/') && !p.includes('/fff/') && !p.includes('/runtime/') && !p.includes('/writing/'))
     .filter((p) => !isStorageFsDelegatedModule(p));
   for (const p of prodFiles) {
     if (p.includes('runner.js') || p.includes('corpus-bundle')) continue;

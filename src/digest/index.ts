@@ -86,3 +86,14 @@ export function verifyRegistryDigest(model: Readonly<Record<string, unknown>>, d
 export function digestMatches(a: string, b: string): boolean {
   return a === b && DIGEST_RE.test(a);
 }
+
+/**
+ * WP-11 Slice 1 correlation check: compute the accepted artifact digest over
+ * ALREADY-canonical UTF-8 bytes (accepted domain separation + SHA-256; no
+ * second serializer and no model round-trip). Verifies that a supplied
+ * `canonicalUtf8` payload corresponds to its declared digest before
+ * persistence.
+ */
+export function computeArtifactDigestOverCanonicalUtf8(canonicalUtf8: string): string {
+  return computeDigest(ARTIFACT_DIGEST_DOMAIN, canonicalUtf8);
+}

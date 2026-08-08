@@ -1,5 +1,14 @@
 # WP-10 Artifact Drafting Tools — Implementation Report (Slice 1)
 
+> **Current-state pointer (closure; historical evidence below is
+> unchanged):** WP-10 implementation is COMPLETE (Slice 1 `5c560f48…`,
+> Slice 2 `09e48332…`, Slice 3 `c47126ea…` — each independently accepted
+> and committed). WP-10 was independently closure-reviewed with zero
+> substantive findings and is **CLOSED**; the authoritative closure report
+> is `docs/reports/wp-10-artifact-drafting-tools-closure-report.md`.
+> Remaining WP-10 implementation work: NONE; controlled-reader drafting
+> assist is not required for the closure gate.
+
 **Slice:** WP-10 slice 1 — transport-free draft-proposal core.
 **Status:** implementation candidate; Slice 1 independently accepted and
 committed by focused independent rereview (the
@@ -508,13 +517,16 @@ with no global fallback), and `tests/runtime/static-guard.test.ts`
 write-implying tool names, shape/type-only input schema assertions,
 runtime envelope `{ kind, content }` without requestId).
 
-### 15.9 Remaining WP-10 work (reassessed)
+### 15.9 Remaining WP-10 work (reassessed at Slice 3 handoff; superseded by closure)
 
 - WP-10 IMPLEMENTATION COMPLETE — CLOSURE REVIEW PENDING (WP-10 is NOT
   closed; the independent Slice 3 review concluded that controlled-reader
   drafting assist is NOT required for the normative WP-10 closure gate
   "Drafts validate but never self-approve": WP-7 is a satisfied
-  prerequisite, not a drafting-assist output obligation);
+  prerequisite, not a drafting-assist output obligation) — this was the
+  state at Slice 3 handoff; WP-10 has since been independently
+  closure-reviewed and CLOSED (see the current-state pointer at the top of
+  this report and the closure report);
 - controlled-reader drafting assist: NOT implemented and NOT required for
   WP-10 closure; it would be an optional separately-authorized enhancement
   (never invented automatically).

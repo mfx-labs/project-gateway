@@ -14,10 +14,10 @@
  * (`src/storage/trusted-input/bootstrap-input.ts`,
  * `src/storage/capabilities/authenticity.ts`). The action-provenance
  * creator, the trusted-input creator, and the capability creator have exact
- * production consumer edges (the future
- * `src/control-plane/storage-bootstrap-action.ts` producer does not exist,
- * so the production import count of the action-provenance creator must be
- * zero). Test-only imports are permitted only from the authorized storage
+ * production consumer edges (the WP-12 Slice 1 control-plane
+ * `src/control-plane/storage-write-action.ts` producer is the authorized
+ * write-action consumer). Test-only imports are permitted only from the
+ * authorized storage
  * test files and never create a runtime or package export path.
  */
 import { test } from 'node:test';
@@ -104,7 +104,7 @@ const CREATOR_EDGES: Readonly<Record<string, readonly string[]>> = {
   createTrustedStorageBootstrapInput: ['src/storage/initialization/initialize.ts', 'src/runtime/mcp/compose.ts'],
   createInitializationCapability: ['src/storage/initialization/initialize.ts', 'src/runtime/mcp/compose.ts'],
   // WP-8-D edges (ADR-029 implementation constraints):
-  createStorageWriteActionProvenance: [], // future consumer: src/control-plane/storage-write-action.ts (does not exist)
+  createStorageWriteActionProvenance: ['src/control-plane/storage-write-action.ts'], // WP-12 Slice 1 trusted control-plane write-action producer (authorized)
   createTrustedWriteRequest: ['src/storage/publication/index.ts'],
   createWriteCapability: ['src/storage/publication/index.ts'],
   createProvisioningCapability: ['src/storage/publication/index.ts'],

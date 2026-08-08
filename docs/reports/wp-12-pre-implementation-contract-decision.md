@@ -8,8 +8,16 @@ rereview ACCEPTED (`WP-12 CONTRACT CORRECTION ACCEPTED — READY FOR
 HUMAN IMPLEMENTATION AUTHORIZATION`); final precision corrections
 FSCR-W12-001 and FSCR-W12-002 applied and committed as the WP-12
 pre-implementation contract baseline (documentation closure commit).
-Not self-approved; WP-12 Slice 1 implementation requires a subsequent
-explicit human implementation authorization.
+WP-12 Slice 1 implementation CLOSED at commit `7282b3b7`
+(`feat: close WP-12 approval and issuance slice 1`). WP-12 Slice 2
+focused clarification record applied (§25) and focused senior contract
+review returned `WP-12 SLICE 2 CONTRACT ACCEPTED — READY FOR HUMAN
+IMPLEMENTATION AUTHORIZATION`; the five editorial MINOR findings
+SCR-W12-S2-001…005 are CLOSED (§25.27) and this document is committed
+as the WP-12 Slice 2 contract baseline (documentation closure commit).
+Not self-approved; WP-12 Slice 2 implementation (2A revoke, 2B
+`verifyCurrentLifecycleState`) requires a subsequent explicit human
+implementation authorization.
 **Baseline:** HEAD `9695c5d8a5f42404884f11c02c493ed56d6f9e72`
 (`feat: close WP-11 controlled artifact writing slice 1`, parent
 `e4b85daee8fc2cd51919232b417d25dee72c7401`); working tree clean; staging
@@ -292,8 +300,10 @@ Three layers, kept separate:
 
 **Owner:** WP-12 (Slice 2; read forms refined in Slices 3-4).
 
-**Form:** one read-only pure-evaluator operation over a trusted store
-snapshot — `verifyCurrentLifecycleState` — separate from all
+**Form:** one read-only pure-evaluator operation over the trusted
+observed record set (bounded trusted-store reads during one completed
+evaluation; no atomic store-snapshot primitive exists —
+SCR-W12-S2-002) — `verifyCurrentLifecycleState` — separate from all
 reservation-consuming mutations. ADR-011 does not require activation
 verification and activation transition to be one atomic operation; the
 transition atomicity requirement is scoped to the activation mutation
@@ -312,12 +322,13 @@ itself (Slice 3, WP-12 decision coordination lock; §15).
 - Freshness: every privileged use re-runs the query against current store
   state; no cached approval/grant is ever authority.
 - Deterministic success evidence: bounded object with the exact record IDs,
-  derived current-state facts, snapshot/registry-context identity, and the
-  subject identity — data/evidence only.
+  derived current-state facts, registry-context identity (id + digest), and
+  the subject identity — data/evidence only.
 - Denial taxonomy: typed fail-closed codes (Decision 8); redacted (no
   store paths, errno, stacks, secrets, unrelated records).
-- Replay resistance: evidence is bound to the exact current snapshot and
-  subject; it cannot be replayed as a grant or activation.
+- Replay resistance: evidence is bound to the registry context and the
+  records observed during the completed evaluation, and to the subject; it
+  cannot be replayed as a grant or activation.
 - WP-5B consumption: activation evidence object from Slice 3 (activation
   outcome, grant identity, reserved occurrence identity — ADR-027 fields),
   delivered as input to `PiEnforcementEvidence`; WP-5B independently
@@ -335,9 +346,9 @@ itself (Slice 3, WP-12 decision coordination lock; §15).
 | `recordValidation` | Validation host (trusted) | Canonical revision + host-injected accepted WP-4 run evidence (assessment outcome is NEVER a caller-supplied operand; SCR-W12-004) | Accepted WP-4 validation run | The validation run itself (accepted WP-4 result; §22) | Registry context | None (fresh) | Host-side coordination lock (validation decision key) + publishRecord writer lock (§15) | `ValidationRecord` | WP-8 mechanical write-audit (D-6) | Prior same-subject validation not invalidated (later record supersedes for current use) | Exact duplicate (identical full evidence correlation: subject, digest, registry snapshot/context, validator profile/version, validation-result identity) → lifecycle-conflict; a later run under a new snapshot/profile is a new record, not a duplicate (SCR-W12-004) | store-failure / subject-invalid / request-invalid / registry-context-mismatch | Approver (Slice 1) |
 | `approve` | Trusted operator (approver role) | Canonical revision (5 kinds incl. bundle) | Valid `ValidationRecord`; no conflicting approval | Eligibility checks; LFC-001/002 via graph | Ceilings; registry context | `ValidationRecord`, existing approvals/revocations | Host-side coordination lock (approval decision key) + publishRecord writer lock (§15) | `ApprovalRecord` | WP-8 mechanical write-audit (D-6) | Prior approval for same subject/workspace/purpose becomes non-current (conflict or supersession) | Exact duplicate → already-approved; re-approval after revocation → requires new command (new record) | lifecycle-state-missing / approver-not-independent / eligibility-denied / ceiling-denied / store-failure | Issuer (Slice 1), activation (Slice 3) |
 | `issue` | Trusted operator (issuer role) | Approved canonical revision | Active matching approval; no revocation | LFC-003 via graph | Registry context; ceilings | `ApprovalRecord`, revocation state | Host-side coordination lock (issuance decision key) + publishRecord writer lock (§15) | `IssuanceRecord` | WP-8 mechanical write-audit (D-6) | Prior issuance for same scope becomes non-current | Duplicate → already-issued | issuance-not-authorized / approval-revoked / lifecycle-state-missing | Activation (Slice 3), bounded consumer |
-| `revoke` | Trusted operator (revocation authority) | One exact Approval/Issuance/Grant (Slice 3+)/Publication record | Record exists | None (targeting check) | None | Target record, current revocation state | Host-side coordination lock (revocation decision key) + publishRecord writer lock (§15) | `RevocationRecord` | WP-8 mechanical write-audit (D-6) | Target usability for stated scope | Repeat same target+scope → lifecycle-conflict (already revoked) | target-unknown / lifecycle-conflict / store-failure | Every point-of-use verifier |
+| `revoke` | Trusted operator (revocation authority) | One exact Approval/Issuance/Grant (Slice 3+)/Publication record | Record exists | None (targeting check) | None | Target record, current revocation state | Host-side coordination lock (revocation decision key, §25 C5) + publishRecord writer lock (§15) | `RevocationRecord` | WP-8 mechanical write-audit (D-6) | Target usability for stated scope | Repeat same target+scope → lifecycle-conflict (already revoked) | lifecycle-state-missing (absent/out-of-workspace target) / request-invalid (immutable or malformed target, meaningless scope) / lifecycle-conflict (already revoked) / registry-context-mismatch / store-failure (§25 C1) | Every point-of-use verifier |
 | `issueRuntimeGrant` (Slice 3) | Trusted operator (grant authority) | Bundle revision + reserved occurrence ID | Fresh reservation; active bundle+member approvals/issuances; ceilings | EXE-eligible state via graph | Ceilings; policy | Approvals, issuances, reservations, grants | Host-side coordination lock (grant decision key) + publishRecord writer lock (§15) | `RuntimeGrant` | WP-8 mechanical write-audit (D-6) | Prior grant for same reservation | Reservation reused → occurrence-conflict | grant-not-authorized / reservation-invalid / ceiling-denied | Activation authority |
-| `verifyCurrentLifecycleState` (Slice 2+) | Any host consumer | Canonical subject + scope | — (read-only) | Eligibility evaluation | Ceilings; config | All relevant records + revocation/expiry/supersession | None (read) | None | None | — | Deterministic per snapshot | lifecycle-state-missing (fail closed) | All downstream consumers |
+| `verifyCurrentLifecycleState` (Slice 2+) | Any host consumer | Canonical subject + scope | — (read-only) | Eligibility evaluation | Ceilings; config | All relevant records + revocation/expiry/supersession | None (read) | None | None | — | Deterministic for the observed record set of the completed evaluation | lifecycle-state-missing (fail closed) | All downstream consumers |
 | `decideActivation` (Slice 3) | Trusted operator (activation authority) | Bundle revision + reserved occurrence ID + grant | All 8 protocol checks | EXE-001…009 via graph | Ceilings; policy | Bundle/member validations, approvals, issuances, grant, reservations, registry context | Host-side coordination lock (activation decision key) + publishRecord writer lock (§15); two records on accepted (SCR-W12-005) | `ActivationRecord` (accepted/denied); `ExecutionOccurrenceRecord` on accepted | WP-8 mechanical write-audit (D-6) | Reservation and grant permanently closed (denied); grant consumed (accepted) | Reservation reuse → occurrence-conflict; replay → fresh reservation required | activation-denied / occurrence-conflict / replay-denied / registry-context-mismatch | WP-5B (evidence), WP-13 (occurrence) |
 | `orchestrationDecision` / `recordExecutionAttempt` (Slice 4) | Trusted operator / WP-13 execution recorder | Accepted activation + occurrence (+ attempt) | Accepted activation; occurrence exists | Correlation checks | Registry context | Activation, occurrence, grant | Host-side coordination lock (occurrence/attempt decision key) + publishRecord writer lock (§15) | Bounded orchestration-decision evidence; `ExecutionAttemptRecord` | WP-8 mechanical write-audit (D-6) | — | Duplicate attempt ordinal → attempt-conflict | occurrence-conflict / attempt-ordinal-conflict / store-failure | WP-13 (execution), WP-15 (receipt facts) |
 
@@ -500,10 +511,15 @@ result. Public results never expose internal graph implementation
 details.
 
 `approver-not-independent` (structural semantics, SCR-W12-003): an
-untrusted operand attempted to assert or transport the approver role; the
-role can never be conferred by any operand, artifact field, annotation,
-validation record, digest possession, or transported proposal. No
-per-artifact producer comparison exists.
+untrusted operand attempted to assert or transport a trusted operator
+role (approver, issuer, or revocation authority); no trusted operator
+role — including the revocation-authority role — can ever be conferred by
+any operand, artifact field, annotation, validation record, digest
+possession, or transported proposal. The approver role, the issuer role,
+and the revocation role are all host-injected only. No per-artifact
+producer comparison exists. (SCR-W12-S2-001: the token name is unchanged
+for taxonomy stability; the category covers transport of ANY trusted
+operator role.)
 
 ## 14. Authority model
 
@@ -526,7 +542,12 @@ role assertions are ignored/rejected (SCR-W12-003).
 
 CLIENT / UNTRUSTED OPERAND: subject identity, workspace selector, purpose/
 use-class, validation-evidence references, reservation/grant references,
-reason strings.
+reason strings; Slice 2 additionally: revoke target record type/ID, revoke
+scope, effective point, reason code, and — for
+`verifyCurrentLifecycleState` — the registry-context correlation echo,
+consumer-support declaration, and requested capability requirements
+(§25 C3; all exact-key validated; the registry echo is a correlation
+operand only and never selects trusted registry state).
 HOST-INJECTED TRUSTED CONTEXT: configuration, ceilings, registry context,
 store boundary/locks, approver role, operator identity, resolver/evidence
 factories. Untrusted operands can never supply store roots, configuration,
@@ -1032,3 +1053,551 @@ contract, or ADR was created or modified by this phase. No push, tag,
 release, publication, installation, or deployment occurred. WP-12
 Slice 1 is authorized only by a subsequent explicit human implementation
 authorization; this closure document does NOT start implementation.
+
+Slice-2 focused clarification (documentation only; §25): resolves the
+bounded Slice-2 clarifications C1–C6 — `target-unknown` matrix wording
+removed (C1), verification result/condition model (C2), verify/revoke
+request models (C3), effectiveAt/scope rules (C4), revoke coordination-key
+composition (C5), and old-registry target revocation (C6). No public
+taxonomy token was added; no source, test, schema, fixture, package,
+lockfile, or WP-4/WP-6/WP-8/Slice-1 change was made. Left unstaged and
+uncommitted for focused senior contract review.
+
+## 25. WP-12 Slice 2 focused clarification record
+
+**Scope:** documentation only. Resolves exactly the bounded Slice-2
+clarifications C1–C6 identified by the WP-12 Slice 2 eligibility /
+contract-readiness analysis. No source, test, schema, fixture, package,
+lockfile, tsconfig, script, runtime configuration, WP-4, WP-6, WP-8, or
+closed WP-12 Slice-1 change is made by this record. This section is
+authoritative over any superseded wording it corrects; superseded
+locations are listed per clarification. No public result token is added;
+the §13 closed taxonomy is unchanged. No ADR is created (§21 policy note
+applies: this record resolves WP-12-owned questions within accepted
+ADR-002/011/012/023/025/027 and trusted-lifecycle-protocol scope).
+
+### 25.1 Fixed Slice-2 scope (unchanged, restated)
+
+Slice 2 = revocation + current lifecycle-state verification. Operations:
+`revoke`, `verifyCurrentLifecycleState` (read-only). Primary record
+production: `RevocationRecord` only. Operational revocation targets in
+Slice 2: `ApprovalRecord`, `IssuanceRecord` only. `RuntimeGrant`
+revocation is available only after RuntimeGrant exists (Slice 3);
+`ResultPublicationRecord` revocation is a later result-publication
+context. Slice 2 does NOT revoke `ValidationRecord`, `ActivationRecord`,
+`ExecutionOccurrenceRecord`, `ExecutionAttemptRecord`, `TrustedReceipt`,
+`SupersessionRecord`, `ExecutionSummaryRecord`, `MigrationRecord`, or
+`AuthoritativeAuditEvent` (LFC-005/006; schema target enum). Preserved:
+append-only history; no target mutation/deletion; no execution
+cancellation semantics; no MCP/CLI/HTTP transport; no cross-process
+locking; no WP-8 layout extension; one control-plane instance per store
+per process (§16).
+
+### 25.2 C1 — `target-unknown` resolved (removed, not added)
+
+The operation-matrix token `target-unknown` (§8 `revoke` row, former
+failure-mode cell) is stale matrix wording: it is absent from the §13
+closed taxonomy, is NOT added to it, and no revocation-specific or
+verification-specific public token is created. Normative revoke failure
+mapping (closed categories only):
+
+| Condition | Public result |
+|---|---|
+| A. Syntactically valid target record ID does not exist | `lifecycle-state-missing` |
+| B. Target exists but is outside the host-authorized workspace/context | `lifecycle-state-missing` (the existence of an out-of-scope target is never disclosed) |
+| C. Target class is structurally valid but not an operationally revocable Slice-2 class (e.g., ValidationRecord, ActivationRecord, ExecutionOccurrenceRecord, other immutable historical fact) | `request-invalid` |
+| D. Malformed target identifier or malformed target type | `request-invalid` |
+| E. Matching target already revoked for the exact applicable target/scope | `lifecycle-conflict` |
+| F. Store lookup/integrity failure (unreadable, recovery-required, malformed envelope/payload) | `store-failure` |
+| G. Registry-context echo differs from the host current accepted context | `registry-context-mismatch` |
+| H. Registry-context echo missing or malformed | `request-invalid` |
+
+This closes the stale matrix/taxonomy discrepancy without expanding the
+closed taxonomy. §8 `revoke` row corrected accordingly.
+
+The registry-context echo is a REQUIRED untrusted operand of the revoke
+request (SCR-W12-S2-003): missing or malformed → `request-invalid`;
+differing → `registry-context-mismatch`. It never selects, downgrades,
+overrides, or authorizes registry context — the authoritative registry
+context remains host-injected.
+
+### 25.3 C2 — `verifyCurrentLifecycleState` result model
+
+`verifyCurrentLifecycleState` is a READ-ONLY FAIL-CLOSED VERIFIER.
+SUCCESS means the requested lifecycle state is CURRENT AND USABLE for the
+exact requested subject/workspace/scope/capability context at the
+completed evaluation. No success result whose semantic meaning is
+"verified successfully, but current=false" exists for authority-relevant
+state; non-current/unusable state returns an existing typed failure
+(25.4). Success creates no transferable authority.
+
+Success evidence is a bounded non-authorizing object containing only:
+canonical subject identity; workspaceId; requested purpose or useClass;
+exact current `ApprovalRecord` ID where required; exact current
+`IssuanceRecord` ID where required; exact registry snapshot reference
+(id + digest); verification time from the trusted host time source; and
+bounded derived facts showing the required chain was present,
+non-revoked, non-expired, and registry-matching, plus the
+capability/ceiling/consumer-support evaluation outcome. NOT added:
+snapshot ID, verification evidence ID, freshness token, transferable
+grant, role token, evidence expiry, store path, raw record payload
+collection — none are required by the accepted contract.
+
+### 25.4 C2 — exact verification failure mapping
+
+APPROVAL-LEVEL: no matching/current approval → `lifecycle-state-missing`;
+matching approval explicitly revoked → `approval-revoked`; matching
+approval expired → `lifecycle-state-missing`; multiple CURRENT matching
+approvals → `lifecycle-conflict`.
+
+ISSUANCE-LEVEL: no matching/current issuance → `issuance-not-authorized`;
+matching issuance revoked → `issuance-not-authorized`; matching issuance
+expired → `issuance-not-authorized`; required matching approval
+missing/non-current: explicitly revoked approval → `approval-revoked`,
+otherwise no usable current approval → `issuance-not-authorized`;
+multiple CURRENT matching issuances → `lifecycle-conflict`.
+
+COMMON: registry-context mismatch → `registry-context-mismatch`; concrete
+WP-6 ceiling violation → `ceiling-denied`; consumer-support / requested-
+capability / policy eligibility denial → `eligibility-denied`;
+unknown-but-well-formed requested capability → `eligibility-denied`;
+unknown workspace / required lifecycle state unavailable →
+`lifecycle-state-missing`; malformed request → `request-invalid`;
+malformed subject → `subject-invalid`; store/integrity/recovery/
+unreadable-state failure → `store-failure`; unexpected internal failure →
+`internal-failure`.
+
+NOT created: `approval-expired`, `issuance-revoked`, `non-current`,
+`target-unknown`, `snapshot-stale`, or any other new public token.
+
+### 25.5 C3 — `verifyCurrentLifecycleState` request model
+
+Transport-free, host-composed, exact-key request variants. Untrusted
+request data may contain only: COMMON: operation; canonical subject;
+workspaceId; exact registry-context echo/reference;
+capabilityRequirements; consumerSupport — PLUS exactly one scope form:
+APPROVAL FORM (`purpose`) or ISSUANCE FORM (`useClass`); `purpose` and
+`useClass` MUST NOT both be supplied. Existing accepted enums/types are
+used (Slice-1 purpose/use-class vocabulary; `ConsumerSupportDeclaration`
+form); no new scope vocabulary is invented.
+
+REGISTRY CONTEXT: the request-side registry value is an UNTRUSTED
+CORRELATION ECHO only; it never defines trusted registry state. The
+authoritative accepted registry context is HOST-INJECTED. The echo is a
+REQUIRED untrusted operand: missing or malformed → `request-invalid`;
+the operation compares the operand echo against the host-injected
+accepted registry context and a differing echo →
+`registry-context-mismatch`. The request may not replace, configure,
+select, downgrade, or override the authoritative registry.
+
+CONSUMER SUPPORT: `ConsumerSupportDeclaration` is untrusted declarative
+input describing what the requesting consumer claims to support; it
+creates no lifecycle authority. CAPABILITY REQUIREMENTS: the requested
+capability set is untrusted operands. Capability identifiers follow the
+accepted `project-gateway.<class>` convention and the accepted capability
+vocabulary/parser rules; no second capability grammar is invented
+(SCR-W12-S2-005). MALFORMED capability identifier (fails the accepted
+capability identifier syntax) → `request-invalid`. WELL-FORMED but
+UNKNOWN/UNSUPPORTED capability identifier → `eligibility-denied`
+(accepted deny-wins / unknown-denied point-of-use semantics). KNOWN
+capability denied by a current host ceiling → `ceiling-denied`. KNOWN
+capability incompatible with consumer support/policy →
+`eligibility-denied`. No `unknown-capability` or other new token is
+added. Current WP-6 ceilings are always host-injected and re-evaluated.
+
+### 25.6 C3 — `revoke` request model
+
+Exact-key revoke request operands (repository naming conventions):
+`operation = revoke`; `workspaceId`; target record type; target record
+ID; `scope`; `effectiveAt`; `reasonCode`; registry-context echo/reference
+(REQUIRED untrusted operand; missing/malformed → `request-invalid`;
+differing → `registry-context-mismatch` — SCR-W12-S2-003).
+HOST-INJECTED trusted context: genuine WP-6 configuration; trusted
+workspace; accepted registry context; revocation-authority role;
+operator identity; trusted time source; WP-8 store boundary;
+process-local coordinator; record-ID source; write-action provenance.
+The request must NOT supply: revocation role, operator authority, store
+boundary, config, ceilings, trusted registry context, record provenance,
+lock object, or audit authority. Caller attempts to assert/transport
+trusted role authority continue to use the existing structural
+`approver-not-independent` category; `revoker-not-independent` is NOT
+added.
+
+### 25.7 C4 — effectiveAt semantics
+
+`effectiveAt` must be an accepted protocol timestamp; it MAY be in the
+future (no invented bounded future window); it becomes effective when
+`effectiveAt <= trustedNow`; equality counts as effective. The existing
+host-injected trusted time source is used; ambient `Date.now()` is not a
+new authority source. A future-dated `RevocationRecord` is a valid
+historical/authoritative record and is not yet effective for currentness
+evaluation; no mutation of the target occurs at the effective point;
+currentness is always derived. Malformed `effectiveAt` → `request-invalid`.
+
+### 25.8 C4 — revocation scope rules
+
+The accepted schema scope enum is unchanged. Slice 2 validates
+target-class applicability operationally: for `ApprovalRecord` /
+`IssuanceRecord` targets, permitted scopes are `all-uses` and
+`execution-use`; publication/result-only scopes (`ordinary-review`,
+`completion-status`, `downstream-automation`, `authoritative-reporting`)
+used against an approval/issuance target → `request-invalid`. A
+meaningless scope is never reinterpreted as `all-uses`. This is
+operation-level semantic validation only.
+
+SCOPE APPLICATION: a `RevocationRecord` applies when target record ID
+matches exactly AND scope is `all-uses` OR matches the requested
+lifecycle use AND `effectiveAt <= trustedNow`. `reasonCode` is
+descriptive metadata only and MUST NOT change applicability, authority,
+scope, priority, or currentness.
+
+### 25.9 C5 — revoke coordination-key composition
+
+The closed Slice-1 host-side/process-local coordinator is reused; no new
+lock system. Two-stage read discipline:
+
+PRE-LOCK LOCATOR READ: read the target record only to obtain the exact
+target, its canonical lifecycle subject/workspace correlation, and the
+lifecycle coordination key. The pre-lock read is NOT final decision
+authority. Target absent → `lifecycle-state-missing`; target malformed/
+unreadable → `store-failure`; target outside the trusted workspace →
+`lifecycle-state-missing`.
+
+COORDINATION KEY: the same subject/workspace lifecycle-key family as the
+closed Slice-1 operations (the canonical target subject identity
+dimensions used by the Slice-1 lifecycle decision key), so revoke
+competes correctly with approve/issue for the same lifecycle subject. A
+target-record-ID-only lock key is NOT used where it would allow
+`revoke(ApprovalRecord A)` and `issue(subject of A)` to hold different
+locks.
+
+UNDER LOCK (after acquiring the process-local coordination lock): (1)
+re-read the target; (2) re-read relevant `RevocationRecord`s; (3)
+revalidate target class; (4) revalidate workspace; (5) revalidate scope;
+(6) revalidate the current accepted host context; (7) detect an existing
+applicable revocation; (8) build the candidate `RevocationRecord`; (9)
+run the accepted schema/lifecycle checks; (10) publish exactly one
+`RevocationRecord` through WP-8; (11) verify the durable result; (12)
+release in `finally`. Stale pre-lock state never decides the revocation.
+Fail-fast semantics preserved: overlapping same-key operation →
+`lock-conflict`; no queue requirement; no WP-8 filesystem lock artifact
+(FSCR-W12-001).
+
+### 25.10 C6 — revocation of a historical record from an old registry context
+
+TARGET RECORD CONTEXT vs NEW REVOCATION DECISION CONTEXT are distinct. A
+genuine existing `ApprovalRecord`/`IssuanceRecord` created under an older
+registry snapshot MAY be revoked; the operation does not require the
+historical target's own `registry_snapshot_reference` to equal the
+current accepted registry context merely for the target to be revocable.
+The target identity remains exact and immutable. The NEW `RevocationRecord`
+MUST bind the CURRENT host-injected accepted registry context, and the
+request-side registry echo is REQUIRED and must match that current
+accepted context (missing/malformed → `request-invalid`; differing →
+`registry-context-mismatch`; SCR-W12-S2-003). This
+allows trusted-local authority to revoke an old historical usability
+record without pretending the old record was created under the new
+registry. NOT done: rewriting target registry metadata; migrating the
+target; treating revocation as registry migration; requiring target
+re-issuance before revocation. At point of use, the new `RevocationRecord`
+itself must satisfy the current accepted registry-context rules
+applicable to the evaluation (REG-001/002/008, LFC-010). Verification
+currentness and revocation targetability are different questions (§15
+distinction retained).
+
+### 25.11 Revocation target semantics
+
+Slice-2 successful revoke publishes exactly one `RevocationRecord`, leaves
+the target byte-for-byte unchanged, produces the WP-8 mechanical
+write-audit only, and creates no additional lifecycle record. Repeat same
+applicable target+scope → `lifecycle-conflict`. Revocation is append-only
+and one-way. Revocation does NOT: erase an `ApprovalRecord`/`IssuanceRecord`,
+delete any store object, create a new approval/issuance, create a
+`RuntimeGrant`, create an activation, cancel Pi, cancel an
+`ExecutionOccurrence`, revoke a `ValidationRecord`, or create a
+`SupersessionRecord`. Re-approval/re-issuance remains a new later trusted
+command and a new record, consistent with the closed Slice-1 behavior.
+
+### 25.12 Currentness rules (per class)
+
+No single naïve generic `current()` rule applies to every class.
+APPROVAL CURRENTNESS: usable only when exact subject matches; exact
+workspace matches; requested purpose matches; the accepted
+`ValidationRecord` chain is available as required; no applicable effective
+`RevocationRecord`; not expired; exact accepted registry context matches;
+no lifecycle conflict/ambiguity. ISSUANCE CURRENTNESS: usable only when
+exact subject matches; exact workspace matches; requested useClass
+matches; its referenced `ApprovalRecord` is current and usable; no
+applicable effective `RevocationRecord` targets the issuance; issuance
+not expired; exact accepted registry context matches; no lifecycle
+conflict/ambiguity. VALIDATIONRECORD: immutable; not revocable; not
+itself authorizing; supporting correlation evidence only; newer
+validation does not erase older validation; approval references decide
+which validation evidence supports the chain. MULTIPLE CURRENT RECORDS:
+more than one current matching `ApprovalRecord` or `IssuanceRecord` →
+`lifecycle-conflict`; never select one arbitrarily.
+
+### 25.13 Supersession
+
+For Slice-2 approval/issuance currentness, `SupersessionRecord` is
+INAPPLICABLE: the accepted schema targets artifact-revision /
+result-publication forms, not `ApprovalRecord`/`IssuanceRecord`. Do not
+mark approval superseded, do not mark issuance superseded, do not produce
+`SupersessionRecord`, and do not require supersession state in Slice-2
+approval/issuance currentness (SCR-W12-006). The Slice-1 helper's
+defensive supersession handling is schema-unreachable for lifecycle
+records; implementation may preserve it harmlessly or document its
+removal when extracting the shared currentness helper. No new supersession
+semantics are invented.
+
+### 25.14 Trusted time
+
+The existing host-injected control-plane time source is used. Currentness
+boundary: revocation effective when `effectiveAt <= now`; record expired
+when `validUntil <= now`; equality counts as effective/expired. NOT
+invented: grace period, clock tolerance, validity cache, evidence expiry,
+or ambient-time authority distinct from the existing host source.
+Malformed stored authoritative timestamps are impossible through schema
+validation; unreadable/malformed stored authoritative state fails closed
+as `store-failure`.
+
+### 25.15 Registry currentness
+
+The existing WP-4 registry-context evaluation is reused; no second
+registry compatibility algorithm. For CURRENT approval/issuance
+verification, registry-bearing records in the usable chain must match the
+CURRENT accepted host registry snapshot exactly as required by the
+accepted REG rules (REG-001/002/008, LFC-010). An older record may remain
+historical but fail current point-of-use verification. This is distinct
+from C6: an old historical target MAY still be revoked; the new
+`RevocationRecord` binds the current context.
+
+### 25.16 Capability / ceiling / consumer intersection
+
+`verifyCurrentLifecycleState` re-evaluates current host state using the
+existing WP-6 primitives. A previous `ApprovalRecord`/`IssuanceRecord`
+never freezes old ceilings: if current ceilings narrow, verification may
+now fail. Concrete host WP-6 ceiling violation → `ceiling-denied`; other
+consumer-support / policy / requested-capability incompatibility →
+`eligibility-denied` (§13 precedence). Capability-syntax boundary
+(SCR-W12-S2-005): MALFORMED capability identifier → `request-invalid`;
+well-formed but UNKNOWN/UNSUPPORTED → `eligibility-denied`; known
+capability denied by current host ceiling → `ceiling-denied`; known
+capability incompatible with consumer support/policy →
+`eligibility-denied`. Historical records are never
+mutated when configuration changes. `ConsumerSupportDeclaration` and
+`capabilityRequirements` are evidence/operands, not authority.
+
+### 25.17 Verification read consistency
+
+Explicit guarantee: `verifyCurrentLifecycleState` does NOT acquire the
+process-local mutation coordination lock, does NOT reserve lifecycle
+state, is NOT linearizable, is NOT a grant, does NOT freeze the store,
+and does NOT produce transferable authority. It performs bounded
+trusted-store reads and evaluates the state observed during that
+completed evaluation. Success evidence is valid only as NON-AUTHORIZING
+CURRENT-STATE EVIDENCE FOR THAT COMPLETED EVALUATION. Admitted race
+(verify reads a current `ApprovalRecord` → concurrent revoke publishes →
+verify may complete with the earlier observed state) is acceptable
+because: (1) verification evidence itself authorizes nothing; (2)
+downstream privileged use must re-run verification or independently
+revalidate current authoritative state; (3) all later mutations
+re-read/revalidate under their own decision coordination lock. No
+stronger linearizability than WP-8 provides is claimed; no lock is added
+merely to hide this property.
+
+### 25.18 Stale / replay semantics
+
+An old successful verification result is NEVER sufficient for a later
+privileged operation and cannot be replayed as approval, issuance,
+revocation authority, RuntimeGrant, activation, or orchestration
+decision. No explicit freshness token or evidence expiry is needed;
+freshness comes from RE-EVALUATION OF AUTHORITATIVE CURRENT STATE.
+Revocation, expiry, configuration narrowing, registry change, or any new
+conflicting state may invalidate an older result.
+
+### 25.19 WP-8 unavailable / recovery state
+
+Fail closed. WP-8 failures — `recoveryRequired`, unreadable authoritative
+record, malformed envelope/payload, quarantine/foreign-entry conditions,
+store integrity failure, enumeration/read failure — map publicly to
+`store-failure` unless a more specific already-committed semantic-absence
+mapping applies (e.g., `ERR-STO-NOT-FOUND` → internal `not-found` for
+target-existence semantics). Internal WP-8 error codes stay internal;
+`ERR-STO-*`, filesystem paths, errno, raw findings, stack traces, and
+recovery internals are never exposed. Semantic record absence is not an
+infrastructure failure.
+
+### 25.20 Transport / export boundary
+
+Slice 2 remains transport-free. Both operations stay in the internal
+control-plane family. NOT added: MCP tool, CLI, stdio mutation surface,
+HTTP endpoint, network API, package-root lifecycle-authority export, or
+`./mcp` lifecycle-authority export. `verifyCurrentLifecycleState` being
+READ-ONLY does NOT automatically authorize MCP exposure; any transport
+adapter requires separate future authorization (Decision 1).
+
+### 25.21 Implementation decomposition
+
+Slice 2 remains ONE roadmap closure unit. For implementation/review, two
+internal phases: 2A — revoke (request model; trusted revocation role;
+`RevocationRecord` builder; target lookup; coordination; duplicate/
+applicability checks; WP-8 publication; mechanical audit; result
+mapping); 2B — `verifyCurrentLifecycleState` (shared currentness
+extraction; approval verification; issuance verification; revocation/
+expiry evaluation; registry evaluation; WP-6 ceiling/consumer
+intersection; bounded evidence; no mutation). Dependency: 2B depends on
+2A being available so currentness can be tested end-to-end against actual
+`RevocationRecord`s. This internal order does not split or change the
+committed roadmap Slice-2 closure semantics.
+
+### 25.22 Final Slice-2 taxonomy subset
+
+Slice 2 uses only existing committed §13 categories: `request-invalid`,
+`subject-invalid`, `approver-not-independent`, `eligibility-denied`,
+`ceiling-denied`, `lifecycle-state-missing`, `lifecycle-conflict`,
+`approval-revoked`, `issuance-not-authorized`,
+`registry-context-mismatch`, `store-failure`, `lock-conflict`,
+`internal-failure`. `target-unknown` is not added; no revocation-specific
+or verification-specific public tokens are added. Operation-specific
+mappings are fixed in 25.2/25.4 so implementation does not guess.
+
+### 25.23 Minimum test contract
+
+REVOKE: revoke current ApprovalRecord; revoke current IssuanceRecord;
+future-dated revocation; `effectiveAt == now`; immutable/non-revocable
+target → `request-invalid`; nonexistent target →
+`lifecycle-state-missing`; target outside trusted workspace →
+`lifecycle-state-missing`; duplicate applicable revocation →
+`lifecycle-conflict`; wrong/meaningless scope → `request-invalid`; registry
+echo mismatch → `registry-context-mismatch`; untrusted revocation-role
+assertion rejected (`approver-not-independent`); target remains
+byte-identical; exactly one `RevocationRecord`; mechanical audit only; no
+unrelated mutation; same-key revoke contention → `lock-conflict`; revoke
+racing issue uses the same lifecycle coordination-key family; historical
+old-registry target revoked into current registry context.
+
+VERIFY: current approval success; current issuance success; no approval →
+`lifecycle-state-missing`; revoked approval → `approval-revoked`; expired
+approval → `lifecycle-state-missing`; no issuance →
+`issuance-not-authorized`; revoked issuance → `issuance-not-authorized`;
+expired issuance → `issuance-not-authorized`; multiple current approvals
+→ `lifecycle-conflict`; multiple current issuances →
+`lifecycle-conflict`; registry mismatch → `registry-context-mismatch`;
+ceiling narrowed after historical issuance → `ceiling-denied`; unsupported
+capability → `eligibility-denied`; malformed request → `request-invalid`;
+store unavailable → `store-failure`; bounded/redacted success evidence;
+verification performs zero mutation; verification produces no audit
+event; verify racing revoke demonstrates evidence is advisory/
+non-linearizable; a replayed prior success result cannot be supplied as
+later authority.
+
+REAL WP-8 STORE (SCR-W12-S2-004): the minimum test matrix explicitly
+requires REAL WP-8 store coverage for BOTH 2A and 2B; fake stores remain
+useful for focused failure injection but are NOT sufficient alone for
+Slice-2 closure. 2A revoke on a real store must cover: an actual
+`ApprovalRecord`/`IssuanceRecord` target; an actual `RevocationRecord`
+publication; the target remaining byte-identical; exactly one
+`RevocationRecord`; the actual WP-8 mechanical write-audit; duplicate
+revocation behavior; an old-registry historical target; and no
+residual/new WP-12 lock artifact. 2B verify on a real store must cover:
+actual current lifecycle records; actual `RevocationRecord` consumption;
+expired/current state evaluation; an actual registry context; the actual
+store read/enumeration path; zero publication; zero audit side effect;
+and malformed/unavailable-store mapping where practical.
+
+STATIC / REUSE: no direct fs; no network/process/Git; no MCP/CLI; no
+Slice-3+ production vocabulary; no second store; no second audit path; no
+second lifecycle graph; no new WP-8 lock artifact; publishable lifecycle
+classes become exactly `ValidationRecord`, `ApprovalRecord`,
+`IssuanceRecord`, `RevocationRecord`.
+
+### 25.24 Consistency assessment
+
+This record was checked against the full committed contract: the closed
+result taxonomy (§13) is unchanged and `target-unknown` no longer appears
+in any normative Slice-2 table or text (its only remaining mentions are
+this record's own resolution statement, §25.2) (§8 row corrected); approval/issuance revocation, immutable
+target classes, old-registry targets, new-record current-registry binding,
+future effectiveAt, scope applicability, `reasonCode` non-authority,
+revoke coordination key, pre-lock locator vs under-lock revalidation,
+re-approval/re-issuance after revocation, verification currentness,
+`approval-revoked`/`issuance-not-authorized` mappings, multiple-current
+`lifecycle-conflict`, trusted time, registry exact matching, supersession
+inapplicability, consumer/ceiling intersection, advisory read
+consistency, stale evidence, WP-8 `store-failure`, transport exclusion,
+and the Slice-3 boundary (RuntimeGrant revocation arrives with Slice 3;
+Slice-2 evidence forms remain extensible for Slices 3-4 read refinements
+per Decision 5) are all stated above without contradiction. An
+implementer can build 2A `revoke` and 2B `verifyCurrentLifecycleState`
+without inventing any semantic decision: every public result, currentness
+rule, request operand, authority source, registry rule, locking rule,
+and freshness rule is fixed by this record within the accepted
+architecture.
+
+### 25.25 ADR assessment
+
+No new ADR is created or required. As with the Slice-1 correction phase
+(§21), these resolutions interpret accepted ADR-002/011/012/025/027 and
+the trusted-lifecycle-protocol within their terms and change no
+cross-work-package architectural boundary. The MCP prohibition, the
+closed-taxonomy discipline, the host-side/process-level coordination
+boundary (FSCR-W12-001), and the Slice-3 RuntimeGrant/activation
+ownership are preserved unchanged. If the focused senior contract review
+judges that any resolution requires ADR elevation, that is a separate
+human authorization; this record documents the request point.
+
+### 25.26 State
+
+All six bounded Slice-2 clarifications C1–C6 are resolved in this record
+(25.2–25.10), with supporting normative restatement (25.11–25.23). The
+focused senior contract review returned `WP-12 SLICE 2 CONTRACT ACCEPTED
+— READY FOR HUMAN IMPLEMENTATION AUTHORIZATION`; the five editorial
+MINOR findings SCR-W12-S2-001…005 are CLOSED by this final polish (§27).
+The record is documentation only. This documentation closure does NOT
+start Slice-2 implementation; 2A revoke and 2B
+`verifyCurrentLifecycleState` require a subsequent explicit human
+implementation authorization.
+
+### 25.27 Focused senior contract review record (final polish)
+
+Review verdict: `WP-12 SLICE 2 CONTRACT ACCEPTED — READY FOR HUMAN
+IMPLEMENTATION AUTHORIZATION`. Accepted decisions: C1 — ACCEPTED;
+C2 — ACCEPTED; C3 — ACCEPTED; C4 — ACCEPTED; C5 — ACCEPTED;
+C6 — ACCEPTED. Findings: 0 CRITICAL, 0 MAJOR, 0 MODERATE, 5 MINOR
+(non-blocking, editorial/precision-only), all CLOSED:
+
+- **SCR-W12-S2-001 — CLOSED** — §13 `approver-not-independent` wording
+  generalized from approver-specific to ANY trusted operator role
+  (approver, issuer, revocation authority); all roles host-injected;
+  token name unchanged; no `revoker-not-independent` token added.
+- **SCR-W12-S2-002 — CLOSED** — Decision 5 and matrix wording aligned
+  with the non-linearizable verification model: "trusted store snapshot"
+  and "deterministic per snapshot" replaced by trusted observed record
+  set / records observed during the completed evaluation / deterministic
+  for the observed record set; no snapshot ID or freshness token added.
+- **SCR-W12-S2-003 — CLOSED** — the revoke (and verify) registry-context
+  echo is a REQUIRED untrusted correlation-only operand: missing or
+  malformed → `request-invalid`; differing →
+  `registry-context-mismatch`; authoritative registry stays host-injected;
+  synchronized in §25.2, §25.5, §25.6, §25.10.
+- **SCR-W12-S2-004 — CLOSED** — §25.23 now explicitly requires REAL
+  WP-8 store coverage for both 2A and 2B (publication, byte-identical
+  target, single record, mechanical audit, duplicate and old-registry
+  behavior, no lock artifact; verify: real currentness consumption,
+  zero publication/audit, real read/enumeration path, failure mapping);
+  fake stores are not sufficient alone for closure.
+- **SCR-W12-S2-005 — CLOSED** — capability-syntax boundary made
+  explicit: malformed identifier (fails accepted
+  `project-gateway.<class>` syntax) → `request-invalid`; well-formed but
+  unknown/unsupported → `eligibility-denied`; known capability denied by
+  current host ceiling → `ceiling-denied`; known capability incompatible
+  with consumer/policy → `eligibility-denied`; no `unknown-capability`
+  or other token added.
+
+Final consistency assessment: the complete contract was re-read after the
+five fixes; no contradictory Slice-2 wording remains. An implementer can
+build 2A `revoke` and 2B `verifyCurrentLifecycleState` without inventing
+any semantic decision. No ADR is created (ADR assessment unchanged from
+§25.25). This record is committed as the WP-12 Slice 2 contract
+baseline; it does NOT start implementation.

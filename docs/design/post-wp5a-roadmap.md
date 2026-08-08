@@ -674,9 +674,19 @@ started or authorized by WP-9 closure).
   inspection-only, no mutation tools; slices 1-5 committed (Slice 5 at
   `045ae7c2…`); transport decision LOCAL STDIO; F1-F3 startup-config
   corrections closed by the focused rereview; IMPLEMENTATION COMPLETE;
-  independent closure review ACCEPTED — WP-9 CLOSED. The next eligible
-  work package remains subject to separate authorization; WP-10/WP-14
-  have not started (see the WP-9 section above).
+  independent closure review ACCEPTED — WP-9 CLOSED.
+- **Current work package: WP-10 (Artifact drafting tools) — Slice 1
+  implementation candidate exists** (transport-free draft-proposal core,
+  `src/drafting/proposal.ts`; see
+  `docs/reports/wp-10-artifact-drafting-tools-implementation-report.md`).
+  WP-10 is NOT accepted/closed; the first independent review returned
+  CORRECTIONS REQUIRED (F1: valid-JSON non-object envelope input could be
+  misclassified as internal-adapter-failure); the F1 correction is applied
+  and Slice 1 was independently accepted and committed (focused rereview,
+  F1 CLOSED). No MCP draft tool is
+  registered yet (WP-9's six-tool inventory is unchanged). WP-11 NOT
+  STARTED; WP-12 NOT STARTED; WP-14 remains blocked by WP-13 (see the WP-9
+  section above).
 
 No release, publication, installation, or
 deployment action has occurred for WP-8.

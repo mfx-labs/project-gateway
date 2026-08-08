@@ -550,9 +550,19 @@ connectivity remains WP-14-owned.
   `045ae7c2…`); transport decision LOCAL STDIO; F1-F3 startup-config
   corrections closed by the focused rereview; **IMPLEMENTATION COMPLETE**
   (distinct from WORK PACKAGE CLOSED); independent closure review
-  ACCEPTED — **WORK PACKAGE CLOSED**. The current work package / next
-  eligible work remains subject to separate authorization; no later
-  work package has started (see the WP-9 section above).
+  ACCEPTED — **WORK PACKAGE CLOSED**.
+- **Current work package: WP-10 (Artifact drafting tools) — Slice 1
+  implementation candidate exists** (transport-free draft-proposal core,
+  `src/drafting/proposal.ts`; see
+  `docs/reports/wp-10-artifact-drafting-tools-implementation-report.md`).
+  WP-10 is NOT accepted/closed; the first independent review returned
+  CORRECTIONS REQUIRED (F1: valid-JSON non-object envelope input could be
+  misclassified as internal-adapter-failure); the F1 correction is applied
+  and Slice 1 was independently accepted and committed (focused rereview,
+  F1 CLOSED); no MCP draft tool is
+  registered (WP-9's six-tool inventory unchanged). WP-11 NOT STARTED;
+  WP-12 NOT STARTED; WP-14 remains blocked by WP-13 (see the WP-9 section
+  above).
 
 WP-9 and later
 packages are **not authorized**. No push, release, publication,

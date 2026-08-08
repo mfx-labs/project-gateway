@@ -126,8 +126,12 @@ test('security: production modules perform no hidden filesystem/network/process 
   // in STORAGE_FS_DELEGATED_MODULES are delegated to the stricter dedicated
   // storage static guard (tests/unit/storage/static-guard.test.ts); every
   // other compiled storage module remains subject to this assertion.
+  // WP-9 Slice 5 runtime (src/runtime/mcp): the stdio CLI is a dedicated
+  // composition-root boundary with its own security guard
+  // (tests/runtime/static-guard.test.ts) that allows only bounded startup
+  // config reads and forbids network, mutation, stdout, and subprocess I/O.
   const prodFiles = walk(DIST)
-    .filter((p) => !p.includes('conformance') && !p.includes('/adapters/') && !p.includes('/reader/') && !p.includes('/git/') && !p.includes('/fff/'))
+    .filter((p) => !p.includes('conformance') && !p.includes('/adapters/') && !p.includes('/reader/') && !p.includes('/git/') && !p.includes('/fff/') && !p.includes('/runtime/'))
     .filter((p) => !isStorageFsDelegatedModule(p));
   for (const p of prodFiles) {
     if (p.includes('runner.js') || p.includes('corpus-bundle')) continue;

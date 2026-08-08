@@ -461,11 +461,13 @@ evidence.
 > adjudication-only states remain intentional; the next work package
 > remains WP-9.
 
-**WP-9 (MCP inspection surface) — Slice 1 committed at
-`b3cde8bdf853452b57401812708fb3096a65da45`; Slice 2 committed at
-`0f3ac3ae2fcae7deb4bd167659e5d9b1256e764e`; Slice 3 committed at
-`d5418f7475609bbf14bc38c9ed179bdcf5c67e28`; Slice 4 candidate ready for
-independent review**
+**WP-9 (MCP inspection surface) — Slices 1-3 committed
+(`b3cde8b…`, `0f3ac3a…`, `d5418f7…`); Slice 4 committed at
+`ef118fc565ddbb0254c26881d943b52ad3cf3547`; TRANSPORT DECISION: LOCAL
+STDIO (recorded in the transport/runtime decision analysis); Slice 5
+(local stdio MCP runtime) first independent review returned
+CORRECTIONS REQUIRED (F1-F3, startup-config boundary); F1-F3 corrections
+applied; candidate READY FOR INDEPENDENT REREVIEW, NOT accepted**
 (`docs/reports/wp-9-mcp-inspection-surface-implementation-report.md`): the
 **transport-free MCP inspection protocol/tool layer**
 (`src/adapters/mcp/`) exposes the closed read-only tool vocabulary.
@@ -511,10 +513,11 @@ success responses failed to echo `requestId`); the narrow F1 correction was
 applied (success requestId echo uniform across all three tools) and Slice 1
 was accepted and committed at `b3cde8bdf853452b57401812708fb3096a65da45`**;
 acceptance of Slice 2 is not declared by the implementation.
-Remaining WP-9 work: transport/runtime ownership (no MCP transport is
-normatively selected — exact open decision, out of this slice), and
-WP-9 generation seeding (semantics undefined in the repository; not
-required by any committed slice).
+Remaining WP-9 work: WP-9 generation seeding (semantics undefined in the
+repository; not required by any committed slice; removed from WP-9 closure
+criteria by the generation-seeding decision). Transport decision: LOCAL
+STDIO — the Slice 5 runtime implements it; Secure MCP Tunnel / ChatGPT
+connectivity remains WP-14-owned.
 
 - **WP-8-N configuration migration DEFERRED** (human decision (c)
   Deferral) under DS-13 / §23.2 (DCS-002): the live configuration
@@ -538,6 +541,12 @@ required by any committed slice).
 - **Later packages**: WP-9 generation seeding rides with WP-9; WP-12
   integration later-owned.
 - **Current work package: WP-9 (MCP inspection surface)** —
+  read-only inspection MCP tools; prerequisites WP-7 and WP-4 satisfied;
+  inspection-only, no mutation tools; slices 1-4 committed; transport
+  decision LOCAL STDIO; slice 5 (local stdio MCP runtime) F1-F3
+  corrections applied after the first independent review; candidate ready
+  for independent rereview, NOT accepted; WP-9 closure pending rereview
+  (see the WP-9 section above).
   prerequisites WP-7 and WP-4 satisfied; inspection-only; slices 1-3
   committed; slice 4 (multi-store registration) candidate ready for
   independent review (see the WP-9 section above).

@@ -391,14 +391,172 @@ control of roots, locators, or store selection:
   isolation, history store-bound cursor, enumeration position-cursor
   cross-surface behavior, tampered-store isolation, requestId echo,
   authority replay, mutation watchdog, generation-advance probe).
+
+## 12e. Slice 5 — Local stdio MCP runtime
+
+The independently decided transport for WP-9 is **LOCAL STDIO** (decision
+recorded in the transport/runtime decision analysis): one in-package local
+stdio MCP server executable; the OpenAI Secure MCP Tunnel and all ChatGPT
+connector configuration remain **WP-14 / operator integration** and are NOT
+part of this package.
+
+- **SDK (exact pins):** `@modelcontextprotocol/server@2.0.0` (production),
+  `zod@4.4.3` (production, tool schemas), `@modelcontextprotocol/client@2.0.0`
+  (devDependency, conformance tests). Engines: Node >= 20 (package requires
+  >= 22). No HTTP/Tunnel/OAuth packages; no transport beyond stdio.
+- **Modern 2026-07-28 protocol generation:** the CLI serves through the SDK's
+  `serveStdio(factory)` entry, which owns the era decision (modern opening via
+  `server/discover` plus SDK-managed legacy compatibility for 2025-era
+  initialize-based clients; the SDK default `legacy: 'serve'` behavior is
+  used — modern-only rejection is NOT configured). The runtime implements NO
+  manual JSON-RPC framing, NO initialize/initialized handshake, NO
+  `Mcp-Session-Id`, and NO session state. Modern-path conformance is proven by
+  subprocess tests using the client SDK pinned to the modern revision
+  (`getProtocolEra() === 'modern'`, `server/discover` answered).
+- **Runtime layout:** `src/runtime/mcp/{config,compose,server,cli,diagnostics}.ts`
+  + one package `bin` entry `project-gateway-mcp` →
+  `./dist/runtime/mcp/cli.js`. `src/index.ts` remains storage-private; no new
+  package subpath; `./mcp` exports are unchanged.
+- **Startup composition:** the CLI is an in-package trusted composition root.
+  `--config <file>` loads the minimal closed operator config (surfaces with
+  surfaceId, locator, serviceUid, forbiddenRoots, configurationIdentity,
+  configurationVersion, optional limitProfile overrides) and reconstructs
+  genuine trusted registrations through the private/trusted pipeline
+  (configuration brand, bootstrap action provenance, branded trusted input,
+  `createMcpInspectionRegistry`). The config path is operator-owned startup
+  input, never an MCP request field. Loading JSON never bypasses branding. A
+  malformed config or failed registration fails startup with a bounded stderr
+  diagnostic and a non-zero exit; zero registrations are legal (all calls
+  route per the committed unknown-surface semantics).
+  In-process capability-generation seeding: because a fresh gateway process
+  reads stores initialized elsewhere, the composition root re-establishes the
+  verified store instance and seeds the in-process generation registry by
+  creating an initialization capability that is NEVER used for any mutation
+  operation and is disposed immediately (verified by the runtime static
+  guard). No initialization or filesystem mutation is performed.
+- **Six MCP tools:** `validate-artifact`, `inspect-stored-record`,
+  `inspect-registry`, `inspect-audit-history`, `verify-record`,
+  `enumerate-class` — every tool receives a required `surfaceId` argument and
+  routes through `registry.inspect(surfaceId, { tool, params })`; the
+  committed internal envelope is unchanged. Tool names/schemas are stable
+  across surface sets (stable ChatGPT tool metadata). No seventh
+  admin/registration/list-stores/health tool. All tools advertise
+  `annotations.readOnlyHint: true` (a hint, never a security boundary).
+- **Outer schema vs semantics:** SDK zod schemas are strict closed objects
+  enforcing shape/required/primitive types; semantic validation (surface
+  grammar, canonical typed IDs, class vocabulary, paths, cursors, artifact
+  byte limits, revision semantics) remains with the committed adapter/registry
+  (e.g., a malformed surfaceId yields the committed `invalid-request` tool
+  outcome). Unknown outer fields fail the strict SDK schema. `requestId` is
+  NOT exposed as an MCP argument (JSON-RPC ids provide protocol correlation).
+- **Result mapping:** every committed response (`ok: true` or expected
+  `ok: false` taxonomy outcome) is a successful MCP tool result
+  (`isError` absent) with `content` = one compact JSON text block and
+  `structuredContent` = the identical object. An envelope output schema
+  (`{ ok, result?, error?, requestId? }`) is required for the SDK to carry
+  `structuredContent` on the modern path. Protocol failures (malformed
+  messages, unknown methods, outer argument errors) are SDK-owned and never
+  leak stacks; unexpected handler exceptions produce a bounded stderr
+  diagnostic and a generic tool error.
+- **Boundaries:** stdout is MCP protocol only (no banners; proven by a raw
+  startup probe and static guard); diagnostics go to bounded stderr (no raw
+  artifact content, trusted inputs, capabilities, full cursors, or paths
+  beyond the supplied startup-config path where unavoidable). No network
+  listener (proven by a /proc socket probe and static guard), no MCP-layer
+  auth (operator process-launch boundary), no sessions, no generation
+  seeding (deferred/removed), no cancellation propagation (bounded
+  non-cancellable domain calls; documented MVP limitation), no server-side
+  operation timeouts. Process restart does not invalidate domain cursors
+  (content-derived/position-only per accepted semantics); EOF closes the
+  server cleanly with no recovery or mutation.
+- **Tests:** 21 new runtime tests — 9 in-process server-factory tests (tool
+  schemas, stability, surface routing equality vs `registry.inspect`,
+  unknown/malformed surfaces, outer-vs-semantic split, cursor round-trips and
+  multi-page walks, determinism/redaction, fs-mutation watchdog), 6 runtime
+  static guards (SDK import boundary, trust-creator localization,
+  no-stdout/no-network/no-tunnel/no-auth, six-tool vocabulary, bin mapping),
+  and 6 subprocess stdio tests (modern pin and auto negotiation, EOF
+  shutdown, raw stdout/stderr discipline, startup failure modes, two-surface
+  routing through the real CLI, no-network-listener probe, store-immutability
+  snapshot). No live OpenAI/tunnel dependency. MCP Inspector can be used for
+  manual interactive testing (`npx @modelcontextprotocol/inspector
+  node dist/runtime/mcp/cli.js --config <file>`), not required for CI.
+- **Secure MCP Tunnel:** explicitly NOT implemented here. The local CLI is
+  the command WP-14/tunnel-client will launch (`--mcp.command`); tunnel
+  configuration, ChatGPT app configuration, OAuth, and public HTTPS remain
+  WP-14/operator work.
+
+### 12f. Slice 5 — Independent-review corrections F1-F3 (startup config)
+
+The first independent review of Slice 5 returned `CORRECTIONS REQUIRED`
+with exactly three substantive findings, all localized to the
+startup-configuration boundary. All three were corrected as follows; the
+accepted review conclusions (modern 2026-07-28 stdio CONFORMANT,
+capability-generation re-establishment CONTRACT-CONFORMANT, stdio runtime
+security PRESERVED) were NOT reopened and no transport/protocol/tool/
+capability-generation code changed.
+
+- **F1 — unbounded startup-config read (reproduced: ~96 MiB valid config
+  accepted and served).** `src/runtime/mcp/config.ts` now reads through a
+  bounded reader: open the file, fast-path `fstat` rejection when the size
+  exceeds the ceiling, then read at most `MAX_STARTUP_CONFIG_BYTES + 1`
+  bytes with a positioned `readSync` loop, reject when more than the
+  ceiling is present, and close the descriptor on every path — the read
+  stays bounded even if the file grows after the initial `fstat`. The
+  ceiling is a narrow runtime-local constant
+  (`MAX_STARTUP_CONFIG_BYTES = 1024 * 1024`, exported): no accepted
+  existing limit is semantically an operator composition document
+  (METADATA_MAX_BYTES bounds store metadata; WP-3 INPUT_BYTE_LIMITS bound
+  artifact/registry documents), and this deliberately introduces no new
+  storage/domain limit concept — it never enters any limit profile. The
+  same ceiling is passed to the parser as its resource bound. Oversized
+  config fails before MCP serving begins: non-zero exit, one bounded
+  redacted stderr diagnostic, zero stdout protocol bytes, no registry.
+- **F2 — duplicate-key last-wins (reproduced: duplicate top-level
+  `surfaces` and duplicate per-surface `configurationIdentity` both
+  accepted).** The loader now uses the accepted repository raw-JSON intake
+  `parseRawJson` (`src/json/scanner.ts`) instead of ordinary `JSON.parse`:
+  the scanner rejects duplicate object members at every nesting level
+  (plus strict UTF-8, nesting-depth, and resource bounds) BEFORE the single
+  model construction, so exactly one accepted parse representation flows
+  into structural validation — no second, ambiguous parse exists. All
+  existing closed-field validation is unchanged. Prototype-shaped keys
+  (`__proto__`, `constructor`, `prototype`) remain closed-data: the scanner
+  treats them as ordinary keys and the closed-field validator rejects them
+  as unknown fields.
+- **F3 — limit-profile gate bypass (reproduced: `enumerationResults`/
+  `dirEntries` up to 2^53-1 and non-config-selectable names such as
+  `writers`, `pathBytes`, `pathComponentBytes` accepted).** Every
+  `limitProfile` override now routes through the committed
+  configuration-selection gate `validateLimitSelection(name, value, true)`
+  (`src/storage/limits/limits.js`, LMT-013) — the single authority for
+  known limit names, hard minimum, hard maximum, and config-selectability.
+  The runtime contains no copy of the limit table and no weaker check.
+  Invalid selections are startup-config errors (non-zero exit, bounded
+  stderr, no server, no MCP response, no mutation); the validated values
+  are the values composed into the trusted input (no unvalidated shadow
+  object).
+- **Focused verification:** loader-level probes (at-ceiling valid; over-
+  ceiling, 96 MiB, duplicate top-level/nested, `__proto__`, above-hard-max,
+  below-hard-min, non-config-selectable, unknown name, string/fractional/
+  unsafe values rejected; hard-min/hard-max boundaries accepted) plus 4 new
+  subprocess CLI tests in `tests/runtime/stdio.test.ts` (byte ceiling
+  serve/reject with no-mutation snapshot, startup atomicity with a valid
+  surface A and defective surface B, duplicate-key rejection at every
+  nesting level, LMT-013 contract enforcement with boundary acceptance).
+  Runtime test count is now 25 (21 original + 4 correction tests).
+  Same-store alias and restart capability-generation probes remain green.
+- **Status:** the corrected candidate is READY FOR INDEPENDENT REREVIEW.
+  It is NOT accepted; WP-9 closure remains pending the independent
+  rereview.
+
 ## 13. Remaining WP-9 Work (not in this slice)
 
-- **Transport/runtime ownership — exact open decision:** no MCP transport is
-  normatively selected; a transport shim (MCP server runtime, stdio/SSE/SDK
-  ownership, host process wiring) requires a product decision and is
-  explicitly out of this slice.
+- **Transport decision:** LOCAL STDIO (recorded in the transport/runtime
+  decision analysis). The Slice 5 runtime implements it; transport is no
+  longer an open WP-9 question. Secure MCP Tunnel / ChatGPT connectivity is
+  WP-14-owned (not part of this package).
 - WP-9 generation seeding (rides with WP-9 per the WP-8 planning note;
   semantics remain undefined in the repository — registration does not
-  require it).
-- Transport/runtime ownership remains the exact open product decision
-  (unchanged; not part of Slice 1, Slice 2, or Slice 3).
+  require it; removed from WP-9 closure criteria by the generation-seeding
+  decision).

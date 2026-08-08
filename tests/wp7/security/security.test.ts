@@ -108,9 +108,11 @@ describe('WP-7 security: static audits', () => {
     }
   });
 
-  it('no dependency additions (ajv only)', () => {
+  it('no dependency additions beyond the WP-9 Slice 5 runtime SDK', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
-    assert.deepEqual(Object.keys(pkg.dependencies ?? {}), ['ajv']);
+    // WP-9 Slice 5 added the official MCP server SDK + zod for the local
+    // stdio runtime; WP-7 itself added no dependency.
+    assert.deepEqual(Object.keys(pkg.dependencies ?? {}).sort(), ['@modelcontextprotocol/server', 'ajv', 'zod']);
   });
 
   it('no raw absolute-root or stderr disclosure in failure paths', async () => {

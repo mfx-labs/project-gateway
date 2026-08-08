@@ -100,9 +100,9 @@ const BRAND_MODULES = new Set([
 
 /** Exact creator-consumer edges for production sources. */
 const CREATOR_EDGES: Readonly<Record<string, readonly string[]>> = {
-  createStorageBootstrapActionProvenance: [], // future consumer: src/control-plane/storage-bootstrap-action.ts (does not exist)
-  createTrustedStorageBootstrapInput: ['src/storage/initialization/initialize.ts'],
-  createInitializationCapability: ['src/storage/initialization/initialize.ts'],
+  createStorageBootstrapActionProvenance: ['src/runtime/mcp/compose.ts'], // WP-9 Slice 5 trusted composition root; future consumer: src/control-plane/storage-bootstrap-action.ts (does not exist)
+  createTrustedStorageBootstrapInput: ['src/storage/initialization/initialize.ts', 'src/runtime/mcp/compose.ts'],
+  createInitializationCapability: ['src/storage/initialization/initialize.ts', 'src/runtime/mcp/compose.ts'],
   // WP-8-D edges (ADR-029 implementation constraints):
   createStorageWriteActionProvenance: [], // future consumer: src/control-plane/storage-write-action.ts (does not exist)
   createTrustedWriteRequest: ['src/storage/publication/index.ts'],
@@ -371,9 +371,14 @@ test('static guard: creator-consumer edges hold for production sources', () => {
       assert.ok(allowed.includes(consumer), `${creator} imported by unauthorized production consumer ${consumer}`);
     }
   }
-  // The production action-provenance creator must have ZERO production importers
-  // (its only consumer, src/control-plane/storage-bootstrap-action.ts, does not exist).
-  assert.equal((consumers.get('createStorageBootstrapActionProvenance') ?? []).length, 0, 'action-provenance creator must have no production importer');
+  // The production action-provenance creator may be imported ONLY by the
+  // WP-9 Slice 5 trusted composition root (the runtime CLI); its future
+  // control-plane consumer does not exist yet.
+  assert.deepEqual(
+    [...(consumers.get('createStorageBootstrapActionProvenance') ?? [])].sort(),
+    ['src/runtime/mcp/compose.ts'],
+    'action-provenance creator must be imported only by the runtime composition root',
+  );
   // The private storage barrel must not re-export the creators.
   const barrel = readFileSync(join(STORAGE_SRC, 'index.ts'), 'utf8');
   for (const creator of Object.keys(CREATOR_EDGES)) {
@@ -510,7 +515,9 @@ test('static guard: package exports and dependencies unchanged', () => {
     dependencies?: Record<string, string>;
   };
   assert.deepEqual(Object.keys(pkg.exports ?? {}).sort(), ['.', './mcp', './pi-adapter']);
-  assert.deepEqual(pkg.dependencies, { ajv: '8.20.0' });
+  // WP-9 Slice 5: the local stdio MCP runtime adds the official MCP server
+  // SDK (and its zod schema peer) as the first runtime dependencies.
+  assert.deepEqual(pkg.dependencies, { '@modelcontextprotocol/server': '2.0.0', ajv: '8.20.0', zod: '4.4.3' });
 });
 
 test('static guard: configuration-recovery vocabulary is dual-gated, overwrite-free, and confined (WP-8-M)', () => {

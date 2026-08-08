@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 /**
- * WP-9 Slice 5 — local stdio MCP runtime CLI (project-gateway-mcp).
+ * WP-9 Slice 5 / WP-10 Slice 3 — local stdio MCP runtime CLI
+ * (project-gateway-mcp).
  *
  * Trusted composition root: loads the operator-owned startup configuration
  * (--config), reconstructs genuine trusted registrations through the
  * private/trusted composition pipeline, builds the committed host-owned
- * registry, and serves the six read-only inspection tools over stdio MCP
- * through the official SDK's `serveStdio` entry (which owns protocol
+ * inspection AND drafting registries (one shared SchemaRegistry instance
+ * per logical surface), and serves the six WP-9 read-only inspection tools
+ * plus the one WP-10 `draft-artifact` tool over stdio MCP through the
+ * official SDK's `serveStdio` entry (which owns protocol
  * negotiation/framing for the modern 2026-07-28 protocol generation and
  * SDK-managed legacy compatibility).
  *
@@ -69,7 +72,7 @@ function main(): void {
     process.exit(1);
   }
   const identity = packageIdentity();
-  const server = createMcpServer(composed.registry, identity);
+  const server = createMcpServer(composed.registry, composed.draftingRegistry, identity);
   // The SDK owns the stdio transport, the era decision (modern 2026-07-28
   // opening plus SDK-managed legacy compatibility), framing, and shutdown on
   // EOF. No manual JSON-RPC parsing/writing; no session state; no listener.

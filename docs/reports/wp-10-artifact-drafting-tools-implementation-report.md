@@ -362,7 +362,164 @@ allowlist extended with `./registry.js`, `./drafting.js`,
 
 ### 14.10 Remaining WP-10 Work
 
-- stdio registration of `draft-artifact` (six → seven tools; a later,
-  separately reviewed slice);
+- stdio registration of `draft-artifact` (six → seven tools) — COMPLETED by
+  Slice 3 (see §15);
 - controlled-reader drafting assist only if still required/authorized;
 - final WP-10 integration/closure.
+
+## 15. Slice 3 — Local stdio registration of draft-artifact (implementation candidate)
+
+**Status:** implementation candidate; Slice 3 independently accepted and
+committed by independent review (WP-10 remains NOT closed).
+**Baseline:** `09e48332b97dfe12e344bb6d37e902c856798e1c` (Slice 2 commit).
+**Authorized:** HUMAN AUTHORIZATION to implement the next accepted WP-10
+slice; local stdio registration of exactly ONE new tool (`draft-artifact`)
+through the already-accepted Slice 2 drafting adapter.
+
+### 15.1 Runtime inventory
+
+The runtime now serves exactly SEVEN stdio MCP tools:
+
+1. `validate-artifact`
+2. `inspect-stored-record`
+3. `inspect-registry`
+4. `inspect-audit-history`
+5. `verify-record`
+6. `enumerate-class`
+7. `draft-artifact`
+
+`MCP_INSPECTION_TOOLS` remains exactly the six accepted WP-9 inspection
+tools (WP-9 CLOSED, six-tool inspection surface unchanged); `MCP_DRAFT_TOOLS
+= ['draft-artifact']` (accepted Slice 2 constant) is the one drafting
+vocabulary — no second runtime spelling/list exists. The runtime static
+guard asserts distinct tool classes: six inspection registrations + one
+drafting registration + overall seven, and rejects tool names implying
+save/write/persist/publish/approve/issue/execute/activate/revoke.
+
+### 15.2 Server is a pure routing layer (no new draft semantics)
+
+`src/runtime/mcp/server.ts` registers `draft-artifact` with the accepted
+`McpDraftingRegistry`: the handler passes the MCP arguments `{ surfaceId,
+kind, content }` to `draftingRegistry.draft(surfaceId, { kind, content })`
+— no invented requestId — and presents the accepted transport-free result
+through the existing text + `structuredContent` convention. The server
+implements NO draft parsing, five-kind checks, digest calculation, WP-4
+validation, surface lookup, or drafting error mapping: those remain owned
+by the accepted Slice 1 core / Slice 2 adapter.
+
+### 15.3 SDK input schema — shape/type only
+
+`inputSchema: z.object({ surfaceId: z.string(), kind: z.string(), content:
+z.string() }).strict()` with `annotations: { readOnlyHint: true }` (the
+operation creates no external persistent side effect; no destructiveHint).
+The SDK validates TYPE/SHAPE; semantics stay in the adapter/core:
+
+- `kind` is a plain string (no five-kind enum): `ExecutionResult` and
+  other unsupported string kinds reach the inner drafting outcome
+  `unsupported-artifact-kind` as a successful tool execution — the SDK
+  never preempts it;
+- `content` is a plain string (no byte ceiling): oversize content reaches
+  the inner `limit-exceeded` outcome;
+- `surfaceId` is a plain string: malformed selectors reach the outer
+  adapter `invalid-request` outcome;
+- wrong argument TYPES (surfaceId number, kind object, content array) and
+  unknown outer fields remain SDK/protocol input errors (closed strict
+  schema) — distinct from semantically invalid string values;
+- no `requestId` tool argument; no root/path/destination/workspace/
+  approve/issue/activate/execute/RuntimeGrant operand.
+
+### 15.4 Result / isError mapping
+
+Every expected adapter/drafting outcome is a successful MCP tool result
+(`isError` absent/false): outer `ok:true` with the complete inner Slice 1
+`DraftProposalResult` verbatim (including inner `ok:false` outcomes:
+`invalid-draft-request`, `unsupported-artifact-kind`, `limit-exceeded`,
+`internal-adapter-failure`, and `ok:true valid:false` conclusions with
+findings), and outer `ok:false` routing outcomes (`invalid-request`,
+`not-found`) presented through the same normal tool-result convention used
+for expected WP-9 adapter outcomes. Only true runtime/handler exceptions
+become MCP execution failures (bounded stderr diagnostic, generic error,
+no internal details). `structuredContent` is the exact machine response
+object; the text block is the compact JSON of the same object (parity
+verified by JSON-normalized deep comparison in tests).
+
+### 15.5 Host composition — same-registry-instance
+
+`src/runtime/mcp/compose.ts` now builds BOTH registries. For each
+configured logical surface it creates exactly ONE `SchemaRegistry` and
+passes that SAME object into the inspection registration
+(`McpStoreRegistrationInput.schemaRegistry`) and the drafting registration
+(`McpDraftingRegistration.schemaRegistry`) — so `validate-artifact` and
+`draft-artifact` self-validate under the identical schema context for the
+same surface. No startup-config change: the existing `surfaces` entries
+automatically gain drafting validation context (WP-10 drafting
+availability is part of this runtime version, not a per-surface
+client-granted authority flag); no `"drafting": true` flag. The startup
+JSON does not serialize custom schema registries (one fresh registry per
+surface is created by composition and shared). The registry factory is an
+optional pure composition dependency (`ComposeDependencies`) defaulting to
+`createSchemaRegistry`; tests use it to PROVE same-instance sharing (an
+instrumented `CountingRegistry` subclass created once per surface is
+consulted by BOTH the drafting route and the inspection route, and a
+surface's drafting never consults another surface's instance). No mutable
+production instrumentation was added.
+
+### 15.6 Config security (F1-F3) preserved
+
+`src/runtime/mcp/config.ts` is UNCHANGED: 1 MiB true byte-bounded config
+read (F1), duplicate-key-rejecting raw JSON intake (F2), and
+`validateLimitSelection(name, value, true)` for configurable limits (F3)
+are untouched and re-verified by the existing startup-config regression
+tests.
+
+### 15.7 Boundary preservation
+
+No persistence: runtime invocation of `draft-artifact` writes no project
+files, storage, temp files, registry, or audit/lifecycle store (fs-mutation
+watchdog now covers drafting paths — valid draft, invalid draft,
+unsupported kind, malformed JSON, oversize, unknown surface, malformed
+surface — plus the stdio store-snapshot test runs drafting calls in the
+same session and asserts zero store mutation). No lifecycle authority
+(AuthorityPolicy drafts remain plain candidate data; no activation/grant),
+no execution (ExecutionBundle drafts are not resolved/executed), no
+project/context read (ContextManifest drafting loads nothing), no network
+change (local stdio only; the no-listener probe covers the session that
+performs drafting calls), stdout protocol-only with bounded stderr
+diagnostics, modern `serveStdio(() => server)` factory preserved (no
+direct transport connection), drafting registry lives in the same
+server/runtime composition lifetime as the inspection registry (no
+process-global mutable drafting state). No new dependency; package export
+map unchanged (runtime imports internal modules directly).
+
+### 15.8 Tests
+
+Runtime suite extended: `tests/runtime/server.test.ts` (six new tests:
+seven-tool inventory + draft-artifact schema shape/type assertions;
+semantic passthrough with outer/inner taxonomy and text/structuredContent
+parity; wrong-type/unknown-field SDK errors; all five draftable kinds;
+draft/validate consistency through MCP; same-instance composition proof
+through `composeTrustedRegistry` with the injected factory; no-authority
+probe; watchdog extended with drafting calls), `tests/runtime/stdio.test.ts`
+(modern pinned path: seven tools, draft-artifact schema, valid draft,
+unsupported-kind regression, unknown surface; auto path: all seven tools +
+draft failure paths under store snapshot; two-surface drafting routing
+with no global fallback), and `tests/runtime/static-guard.test.ts`
+(exactly seven registrations with distinct tool classes, no
+write-implying tool names, shape/type-only input schema assertions,
+runtime envelope `{ kind, content }` without requestId).
+
+### 15.9 Remaining WP-10 work (reassessed)
+
+- WP-10 IMPLEMENTATION COMPLETE — CLOSURE REVIEW PENDING (WP-10 is NOT
+  closed; the independent Slice 3 review concluded that controlled-reader
+  drafting assist is NOT required for the normative WP-10 closure gate
+  "Drafts validate but never self-approve": WP-7 is a satisfied
+  prerequisite, not a drafting-assist output obligation);
+- controlled-reader drafting assist: NOT implemented and NOT required for
+  WP-10 closure; it would be an optional separately-authorized enhancement
+  (never invented automatically).
+
+Slice 3 does NOT start WP-11 (persistence), WP-12 (lifecycle authority),
+WP-13 (Pi execution), or WP-14 (tunnel/ChatGPT configuration); the runtime
+remains the local stdio command an external tunnel client will launch
+later under WP-14.

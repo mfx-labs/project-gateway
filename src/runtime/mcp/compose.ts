@@ -1,13 +1,25 @@
 /**
- * WP-9 Slice 5 — trusted startup composition root for the local stdio MCP
- * runtime.
+ * WP-9 Slice 5 / WP-10 Slice 3 — trusted startup composition root for the
+ * local stdio MCP runtime.
  *
  * The CLI is an in-package trusted composition root: it uses the exact
  * PRIVATE/TRUSTED repository composition APIs (genuine validated trusted
  * workspace configuration, genuine storage bootstrap action provenance,
  * genuine branded `TrustedStorageBootstrapInput`) to reconstruct existing
  * trusted registrations from the operator-owned startup configuration, then
- * builds the committed host-owned registry.
+ * builds the committed host-owned inspection registry AND the WP-10
+ * host-owned drafting registry.
+ *
+ * SAME-INSTANCE COMPOSITION (WP-10 Slice 3): for each configured logical
+ * surface, exactly ONE `SchemaRegistry` is created and that SAME object is
+ * passed to BOTH the inspection registration and the drafting registration.
+ * `validate-artifact` and `draft-artifact` therefore self-validate under the
+ * identical schema context for the same surface (the accepted
+ * DRAFT/VALIDATE SURFACE CONSISTENCY invariant at runtime composition). The
+ * startup JSON does not serialize custom schema registries: one fresh
+ * registry per surface is created here and shared. The factory dependency is
+ * a pure composition seam (defaults to `createSchemaRegistry`); tests use it
+ * to prove same-instance sharing without production instrumentation.
  *
  * Trust creators are imported HERE ONLY (localized composition root, per the
  * runtime static guard). They are never re-exported through `./mcp` or any
@@ -21,16 +33,39 @@ import {
 import { createInitializationCapability } from '../../storage/capabilities/authenticity.js';
 import { verifyStoreInstance } from '../../storage/read/read-record.js';
 import { defaultLimitProfile, type SelectedLimitProfile } from '../../storage/limits/limits.js';
-import { createMcpInspectionRegistry, type McpInspectionRegistry } from '../../adapters/mcp/index.js';
+import { createSchemaRegistry } from '../../api/validate.js';
+import type { SchemaRegistry } from '../../schema/registry.js';
+import {
+  createMcpDraftingRegistry,
+  createMcpInspectionRegistry,
+  type McpDraftingRegistration,
+  type McpDraftingRegistry,
+  type McpInspectionRegistry,
+  type McpStoreRegistrationInput,
+} from '../../adapters/mcp/index.js';
 import type { RuntimeConfig } from './config.js';
 
 const BOOTSTRAP_ACTION_IDENTITY = 'project-gateway-mcp-bootstrap';
 
-export type ComposeResult = { readonly ok: true; readonly registry: McpInspectionRegistry } | { readonly ok: false; readonly code: string; readonly message: string };
+/**
+ * Pure composition dependencies (optional). The schema-registry factory is
+ * the ONLY injected seam: it lets composition tests prove that the SAME
+ * registry object instance is shared between the inspection and drafting
+ * registrations of one surface. No mutable instrumentation, no state.
+ */
+export interface ComposeDependencies {
+  readonly createSchemaRegistry?: () => SchemaRegistry;
+}
 
-/** Build the trusted registry from the validated operator startup configuration. */
-export function composeTrustedRegistry(config: RuntimeConfig): ComposeResult {
-  const registrations: { readonly surfaceId: string; readonly trustedConfiguration: object; readonly trustedInput: unknown }[] = [];
+export type ComposeResult =
+  | { readonly ok: true; readonly registry: McpInspectionRegistry; readonly draftingRegistry: McpDraftingRegistry }
+  | { readonly ok: false; readonly code: string; readonly message: string };
+
+/** Build the trusted registries (inspection + drafting) from the validated operator startup configuration. */
+export function composeTrustedRegistry(config: RuntimeConfig, deps: ComposeDependencies = {}): ComposeResult {
+  const createRegistry = deps.createSchemaRegistry ?? createSchemaRegistry;
+  const inspectionRegistrations: McpStoreRegistrationInput[] = [];
+  const draftingRegistrations: McpDraftingRegistration[] = [];
   for (const surface of config.surfaces) {
     const limitProfile: SelectedLimitProfile = { ...defaultLimitProfile(), ...surface.limitProfile };
     // The trusted configuration object carries the standard repository facts;
@@ -91,17 +126,24 @@ export function composeTrustedRegistry(config: RuntimeConfig): ComposeResult {
       return { ok: false, code: 'ERR-STO-REQ-INVALID', message: `surface ${surface.surfaceId} generation seeding failed` };
     }
     generationCapability.dispose();
-    registrations.push({ surfaceId: surface.surfaceId, trustedConfiguration, trustedInput: inputResult.input });
+    // ONE schema registry per logical surface, shared verbatim by the
+    // inspection registration and the drafting registration of the SAME
+    // surface (WP-10 Slice 3 same-instance composition).
+    const schemaRegistry = createRegistry();
+    inspectionRegistrations.push({ surfaceId: surface.surfaceId, trustedConfiguration, trustedInput: inputResult.input, schemaRegistry });
+    draftingRegistrations.push({ surfaceId: surface.surfaceId, schemaRegistry });
   }
   const registryResult = createMcpInspectionRegistry({
-    registrations: registrations.map((r) => ({
-      surfaceId: r.surfaceId,
-      trustedConfiguration: r.trustedConfiguration,
-      trustedInput: r.trustedInput,
-    })),
+    registrations: inspectionRegistrations,
   });
   if (!registryResult.ok || registryResult.registry === undefined) {
     return { ok: false, code: registryResult.code ?? 'ERR-STO-REQ-INVALID', message: registryResult.message ?? 'registry composition failed' };
   }
-  return { ok: true, registry: registryResult.registry };
+  const draftingResult = createMcpDraftingRegistry({
+    registrations: draftingRegistrations,
+  });
+  if (!draftingResult.ok || draftingResult.registry === undefined) {
+    return { ok: false, code: draftingResult.code ?? 'ERR-DRAFT-REQ-INVALID', message: draftingResult.message ?? 'drafting registry composition failed' };
+  }
+  return { ok: true, registry: registryResult.registry, draftingRegistry: draftingResult.registry };
 }

@@ -1,31 +1,40 @@
 /**
- * WP-9 Slice 5 — MCP server factory for the local stdio runtime.
+ * WP-9 Slice 5 / WP-10 Slice 3 — MCP server factory for the local stdio
+ * runtime.
  *
  * PURE ROUTING LAYER: accepts an already-created trusted
- * `McpInspectionRegistry`, registers exactly the six committed inspection
- * tools, and contains NO storage/domain logic. Trusted startup composition
- * lives in `compose.ts`; protocol framing/negotiation lives in the SDK
+ * `McpInspectionRegistry` (WP-9) and the host-owned `McpDraftingRegistry`
+ * (WP-10 Slice 2 adapter), registers exactly the six committed inspection
+ * tools plus the one WP-10 drafting tool (`draft-artifact`), and contains
+ * NO storage/domain/drafting logic. Trusted startup composition lives in
+ * `compose.ts`; protocol framing/negotiation lives in the SDK
  * (`serveStdio`); this module only maps MCP tool arguments onto the
- * committed internal request envelope and routes through the registry.
+ * committed internal request envelopes and routes through the registries.
  *
  * TOOL RESULT MAPPING: every committed adapter response — success
- * (`ok: true`) or expected inspection outcome (`ok: false` with the closed
- * taxonomy: invalid-request / not-found / invalid-cursor / stale-cursor /
- * integrity-conflict / limit-exceeded / unsupported / adapter-error) — is a
- * successful MCP tool result (`isError` absent/false): the tool executed
- * correctly and reported an inspection outcome. Protocol errors
- * (malformed messages, unknown methods, outer argument-shape failures) are
- * owned by the SDK and never carry internal stack material.
+ * (`ok: true`) or expected inspection/drafting outcome (`ok: false` with
+ * the closed taxonomy) — is a successful MCP tool result (`isError`
+ * absent/false): the tool executed correctly and reported an outcome.
+ * For `draft-artifact`, routing success carries the complete Slice 1
+ * `DraftProposalResult` VERBATIM (including inner `ok:false` drafting
+ * outcomes such as `invalid-draft-request`, `unsupported-artifact-kind`,
+ * `limit-exceeded`, and `valid:false` conclusions); only the outer
+ * adapter routing failures (`invalid-request`, `not-found`) surface as
+ * outer `ok:false` tool results. Protocol errors (malformed messages,
+ * unknown methods, outer argument-shape failures) are owned by the SDK
+ * and never carry internal stack material.
  *
  * The SDK input schema is an OUTER syntax/type boundary only (object shape,
  * required fields, primitive types, closed fields). Semantic validation
- * (surface grammar, canonical typed identifiers, record-class vocabulary,
- * path-shaped identifiers, cursor semantics, artifact byte limits, revision
- * semantics) remains owned by the committed adapter/registry.
+ * (surface grammar, artifact kind vocabulary, artifact byte limits, raw
+ * JSON intake, WP-4 semantics) remains owned by the committed
+ * adapter/registry/core: the SDK must NOT preempt `unsupported-artifact-kind`
+ * (no kind enum), `limit-exceeded` (no byte ceiling), or outer
+ * `invalid-request` for malformed selectors (plain string surfaceId).
  */
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import type { McpInspectionRegistry, McpInspectionResponse } from '../../adapters/mcp/index.js';
+import type { McpInspectionRegistry, McpInspectionResponse, McpDraftingRegistry, DraftingResponse } from '../../adapters/mcp/index.js';
 import { writeDiagnostic } from './diagnostics.js';
 
 /** Informational server identity (never trust/authorization/cursor material). */
@@ -65,9 +74,11 @@ const TOOL_DESCRIPTIONS: Readonly<Record<string, string>> = {
     'Verify one exact stored record by logical class and canonical typed identity on the selected surface through the WP-8 verify-by-identity API. Answers verified exact match or a mapped fail-closed condition (not-found, integrity-conflict, limit-exceeded, unsupported); never returns record content; never implies approval, issuance, activation, or lifecycle validity. The required surfaceId selects the registered host-owned inspection surface.',
   'enumerate-class':
     'Bounded deterministic enumeration of one record class on the selected surface through the WP-8 enumeration API: verified record identities and bounded findings, deterministic shard order, opaque position continuation, truncation reported truthfully. Not a registry view and not a filesystem listing. The required surfaceId selects the registered host-owned inspection surface.',
+  'draft-artifact':
+    'Create an in-memory draft proposal for one prospective artifact kind and self-validate it under the selected surface host-owned schema context. The draft is plain in-memory data only: nothing is persisted, approved, issued, activated, or executed, and the result confers no authority. The required surfaceId selects host-owned validation context only — it is never a destination, write target, or authority grant.',
 };
 
-/** Route one tool call through the committed registry and map to an MCP tool result. */
+/** Route one inspection tool call through the committed registry and map to an MCP tool result. */
 function runTool(registry: McpInspectionRegistry, tool: string, args: Readonly<Record<string, unknown>>): { content: { type: 'text'; text: string }[]; structuredContent: McpInspectionResponse } {
   try {
     const { surfaceId, ...params } = args;
@@ -85,15 +96,37 @@ function runTool(registry: McpInspectionRegistry, tool: string, args: Readonly<R
   }
 }
 
+/** Route one draft tool call through the committed drafting registry and map to an MCP tool result. */
+function runDraftTool(draftingRegistry: McpDraftingRegistry, args: Readonly<Record<string, unknown>>): { content: { type: 'text'; text: string }[]; structuredContent: DraftingResponse } {
+  try {
+    const { surfaceId, kind, content } = args;
+    // No invented requestId: the runtime calls the transport-free adapter
+    // with the closed drafting envelope only.
+    const response = draftingRegistry.draft(surfaceId as string, { kind, content });
+    return {
+      content: [{ type: 'text', text: JSON.stringify(response) }],
+      structuredContent: response,
+    };
+  } catch (err) {
+    // Unexpected runtime failure: bounded stderr diagnostic; generic tool
+    // error to the client (the SDK surfaces it without internal details).
+    const detail = err instanceof Error ? err.message : 'unknown error';
+    writeDiagnostic(`unexpected failure while executing drafting tool: ${detail}`);
+    throw new Error('drafting failed unexpectedly');
+  }
+}
+
 /**
- * Create the MCP server bound to one trusted registry.
+ * Create the MCP server bound to one trusted inspection registry and one
+ * host-owned drafting registry.
  *
- * Exactly six tools are registered; no seventh admin/registration/
+ * Exactly seven tools are registered: the six WP-9 inspection tools plus the
+ * one WP-10 drafting tool (`draft-artifact`); no eighth admin/registration/
  * list-stores/health/transport tool exists. Tool names and schemas are
  * stable regardless of which surfaces are registered (only routing data
  * changes), preserving stable ChatGPT tool metadata.
  */
-export function createMcpServer(registry: McpInspectionRegistry, identity: McpServerIdentity): McpServer {
+export function createMcpServer(registry: McpInspectionRegistry, draftingRegistry: McpDraftingRegistry, identity: McpServerIdentity): McpServer {
   const server = new McpServer({ name: identity.name, version: identity.version }, { capabilities: { tools: {} } });
 
   server.registerTool(
@@ -160,6 +193,24 @@ export function createMcpServer(registry: McpInspectionRegistry, identity: McpSe
       outputSchema: RESPONSE_OUTPUT_SCHEMA,
     },
     (args) => runTool(registry, 'enumerate-class', args),
+  );
+
+  // WP-10 Slice 3 — the ONE drafting tool. The SDK schema is shape/type only:
+  // `kind` is a plain string (the core owns the closed producer vocabulary,
+  // so `ExecutionResult` must reach the inner `unsupported-artifact-kind`
+  // outcome, never an SDK error); `content` is a plain string with no byte
+  // ceiling (the core owns the accepted `limit-exceeded` bound); `surfaceId`
+  // is a plain string (the outer adapter owns the selector grammar, so
+  // malformed selectors reach the outer `invalid-request` outcome).
+  server.registerTool(
+    'draft-artifact',
+    {
+      description: TOOL_DESCRIPTIONS['draft-artifact'],
+      inputSchema: z.object({ surfaceId: z.string(), kind: z.string(), content: z.string() }).strict(),
+      annotations: { readOnlyHint: true },
+      outputSchema: RESPONSE_OUTPUT_SCHEMA,
+    },
+    (args) => runDraftTool(draftingRegistry, args),
   );
 
   return server;

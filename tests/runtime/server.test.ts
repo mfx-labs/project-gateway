@@ -1,24 +1,28 @@
 /**
- * WP-9 Slice 5 — MCP server factory tests (in-process, SDK client over
- * paired in-memory transports).
+ * WP-9 Slice 5 / WP-10 Slice 3 — MCP server factory tests (in-process, SDK
+ * client over paired in-memory transports).
  *
  * NOTE ON PROTOCOL ERA: `server.connect(transport)` is the SDK's 2025-era
  * direct pattern; the MODERN 2026-07-28 path is owned by `serveStdio` and is
  * proven by the subprocess stdio tests (`stdio.test.ts`). These in-process
- * tests exercise tool schemas, routing, cursor round-trips, and
- * read-only/non-escalation semantics — never claimed as modern-era proof.
+ * tests exercise tool schemas, routing, cursor round-trips, drafting
+ * passthrough, and read-only/non-escalation semantics — never claimed as
+ * modern-era proof.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, chmodSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, chmodSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 const fs = createRequire(import.meta.url)('node:fs');
 import { McpServer, InMemoryTransport } from '@modelcontextprotocol/server';
 import { Client } from '@modelcontextprotocol/client';
-import { createInspectionContext, createMcpInspectionRegistry, createMcpInspectionSurface } from '../../src/adapters/mcp/index.js';
+import { createInspectionContext, createMcpInspectionRegistry, createMcpInspectionSurface, createMcpDraftingRegistry, MCP_INSPECTION_TOOLS } from '../../src/adapters/mcp/index.js';
+import type { McpDraftingRegistry, DraftingResponse } from '../../src/adapters/mcp/index.js';
 import { createMcpServer } from '../../src/runtime/mcp/server.js';
+import { composeTrustedRegistry } from '../../src/runtime/mcp/compose.js';
+import type { RuntimeConfig } from '../../src/runtime/mcp/config.js';
 import { markValidatedTrustedWorkspaceConfiguration } from '../../src/trusted/configuration-brand.js';
 import { createStorageBootstrapActionProvenance, createStorageWriteActionProvenance, createTrustedStorageBootstrapInput } from '../../src/storage/trusted-input/bootstrap-input.js';
 import { initializeTrustedStore } from '../../src/storage/initialization/initialize.js';
@@ -27,15 +31,49 @@ import { buildAuthorizedWriteAuditEvent, buildRecoveryAuditReconstructionEvent }
 import { verifyStoreInstance } from '../../src/storage/read/read-record.js';
 import { deriveRecordRelativePath } from '../../src/storage/layout/layout.js';
 import { canonicalEnvelopeBytes, computePayloadDigest } from '../../src/storage/format/envelope.js';
-import { createSchemaRegistry } from '../../src/api/validate.js';
+import { createSchemaRegistry, computeArtifactDigest } from '../../src/api/validate.js';
+import { SchemaRegistry, type SchemaErrorLike } from '../../src/schema/registry.js';
 import { defaultLimitProfile, type SelectedLimitProfile } from '../../src/storage/limits/limits.js';
 import type { McpInspectionRegistry } from '../../src/adapters/mcp/index.js';
 
+const REPO = join(import.meta.dirname, '..', '..', '..');
 const UID = process.getuid?.() ?? 0;
 const CID = 'sha-256:' + 'a'.repeat(64);
 const RECORD_ID = 'pgw:r:aaaa0000000000000000000000000001';
 
 const VALID_TASKSPEC = JSON.stringify({ protocol: { id: 'project-gateway.artifact', version: '1.0', canonicalization: 'jcs-rfc8785-v1' }, kind: { id: 'TaskSpec', version: '1.0' }, instance_id: 'pgw:i:9e74f09cf0287d6787d69e8ebddb5157', revision: { id: 'pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f', generation: 0, predecessor: null, digest: 'sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b' }, workspace_binding: { mode: 'portable' }, requirements: { protocol_features: [], consumer_capabilities: [] }, extensions: [], body: { objective: 'Produce a fixture conformance note.', instructions: [{ instruction_id: 'prepare-note', text: 'Create the requested conformance note.' }], expected_deliverables: [{ deliverable_id: 'conformance-note', description: 'A project-visible conformance note.', kind: 'document' }], outcome_constraints: [], project_data_citations: [] } });
+
+const VALID_FIXTURES: Readonly<Record<string, string>> = {
+  TaskSpec: 'task-minimal-genesis.json',
+  AuthorityPolicy: 'policy-minimal-genesis.json',
+  ContextManifest: 'context-minimal-genesis.json',
+  CompletionContract: 'completion-minimal-genesis.json',
+  ExecutionBundle: 'bundle-minimal-genesis.json',
+};
+
+function fixture(name: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(join(REPO, 'fixtures', 'artifacts', 'valid', name), 'utf8')) as Record<string, unknown>;
+}
+
+function invalidFixture(name: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(join(REPO, 'fixtures', 'artifacts', 'invalid', name), 'utf8')) as Record<string, unknown>;
+}
+
+/** Draft content: the canonical envelope with the derived digest member removed. */
+function draftContent(model: Readonly<Record<string, unknown>>): string {
+  const revision = { ...(model['revision'] as Readonly<Record<string, unknown>>) };
+  delete revision['digest'];
+  return JSON.stringify({ ...model, revision });
+}
+
+/** Counts every structural schema-validation call — proves exact registry-instance consultation. */
+class CountingRegistry extends SchemaRegistry {
+  validateCalls = 0;
+  override validate(schemaId: string, instance: unknown): { valid: boolean; errors: readonly SchemaErrorLike[] } {
+    this.validateCalls++;
+    return super.validate(schemaId, instance);
+  }
+}
 
 function profile(overrides: Partial<Record<string, number>> = {}): SelectedLimitProfile {
   const base: Record<string, number> = { ...defaultLimitProfile() };
@@ -72,6 +110,20 @@ function registryFor(envs: { surfaceId: string; env: { dir: string; config: obje
   return built.registry as McpInspectionRegistry;
 }
 
+/** Drafting registry for the same surfaces (fresh registry per surface; the shared-instance tests build both explicitly). */
+function draftingFor(envs: { surfaceId: string }[]): McpDraftingRegistry {
+  const built = createMcpDraftingRegistry({
+    registrations: envs.map(({ surfaceId }) => ({ surfaceId, schemaRegistry: createSchemaRegistry() })),
+  });
+  assert.equal(built.ok, true, built.message ?? '');
+  return built.registry as McpDraftingRegistry;
+}
+
+/** Server bound to inspection + drafting registries for the same surface set. */
+function serverFor(envs: { surfaceId: string; env: { dir: string; config: object; trustedInput: unknown } }[], identity: { name: string; version: string } = { name: 'test-server', version: '0.0.0' }): McpServer {
+  return createMcpServer(registryFor(envs), draftingFor(envs), identity);
+}
+
 async function connectClient(server: McpServer): Promise<{ client: Client; close: () => Promise<void> }> {
   const [clientT, serverT] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 's5-test-client', version: '0.0.0' });
@@ -84,15 +136,17 @@ function structured(result: { structuredContent?: unknown }): unknown {
   return result.structuredContent;
 }
 
-test('runtime: tools/list exposes exactly six tools with required surfaceId and readOnlyHint', async () => {
+test('runtime: tools/list exposes exactly seven tools — six WP-9 inspection tools plus one WP-10 drafting tool', async () => {
   const env = makeStore();
   try {
-    const registry = registryFor([{ surfaceId: 'alpha', env }]);
-    const server = createMcpServer(registry, { name: 'test-server', version: '0.0.0' });
+    const server = serverFor([{ surfaceId: 'alpha', env }]);
     const { client, close } = await connectClient(server);
     try {
       const { tools } = await client.listTools();
-      assert.deepEqual(tools.map((t) => t.name).sort(), ['enumerate-class', 'inspect-audit-history', 'inspect-registry', 'inspect-stored-record', 'validate-artifact', 'verify-record']);
+      assert.deepEqual(tools.map((t) => t.name).sort(), ['draft-artifact', 'enumerate-class', 'inspect-audit-history', 'inspect-registry', 'inspect-stored-record', 'validate-artifact', 'verify-record'], 'overall inventory is exactly seven');
+      assert.equal(tools.length, 7);
+      // The accepted WP-9 inspection vocabulary remains exactly six — never widened.
+      assert.deepEqual([...MCP_INSPECTION_TOOLS], ['validate-artifact', 'inspect-stored-record', 'inspect-registry', 'inspect-audit-history', 'verify-record', 'enumerate-class']);
       for (const tool of tools) {
         const schema = tool.inputSchema as { type: string; properties?: Record<string, unknown>; required?: string[]; additionalProperties?: boolean };
         assert.equal(schema.type, 'object');
@@ -105,6 +159,19 @@ test('runtime: tools/list exposes exactly six tools with required surfaceId and 
           assert.equal(forbidden in (schema.properties ?? {}), false, `no ${forbidden} parameter in ${tool.name}`);
         }
       }
+      // The draft-artifact input schema is shape/type only: plain strings for
+      // surfaceId, kind, and content; no kind enum, no byte ceiling, no
+      // requestId, no destination/authority operand.
+      const draft = tools.find((t) => t.name === 'draft-artifact')!;
+      const dSchema = draft.inputSchema as { properties?: Record<string, unknown>; required?: string[] };
+      assert.deepEqual(Object.keys(dSchema.properties ?? {}).sort(), ['content', 'kind', 'surfaceId']);
+      assert.deepEqual((dSchema.required ?? []).sort(), ['content', 'kind', 'surfaceId']);
+      const kindSchema = dSchema.properties?.['kind'] as { type?: string; enum?: unknown };
+      assert.equal(kindSchema.type, 'string');
+      assert.equal(kindSchema.enum, undefined, 'no kind enum at the SDK layer — the core owns the closed producer vocabulary');
+      const contentSchema = dSchema.properties?.['content'] as { type?: string; maxLength?: unknown };
+      assert.equal(contentSchema.type, 'string');
+      assert.equal(contentSchema.maxLength, undefined, 'no byte ceiling at the SDK layer — the core owns limit-exceeded');
     } finally {
       await close();
     }
@@ -116,10 +183,8 @@ test('runtime: tools/list exposes exactly six tools with required surfaceId and 
 test('runtime: tool definitions are stable across different registered surface sets', async () => {
   const env = makeStore();
   try {
-    const registry1 = registryFor([{ surfaceId: 'alpha', env }]);
-    const registry2 = registryFor([{ surfaceId: 'alpha', env }, { surfaceId: 'beta', env }]);
-    const server1 = createMcpServer(registry1, { name: 't', version: '1' });
-    const server2 = createMcpServer(registry2, { name: 't', version: '1' });
+    const server1 = serverFor([{ surfaceId: 'alpha', env }], { name: 't', version: '1' });
+    const server2 = serverFor([{ surfaceId: 'alpha', env }, { surfaceId: 'beta', env }], { name: 't', version: '1' });
     const c1 = await connectClient(server1);
     const c2 = await connectClient(server2);
     try {
@@ -127,7 +192,7 @@ test('runtime: tool definitions are stable across different registered surface s
       const t2 = (await c2.client.listTools()).tools;
       assert.deepEqual(t1.map((t) => t.name), t2.map((t) => t.name));
       assert.deepEqual(t1.map((t) => JSON.stringify(t.inputSchema)).sort(), t2.map((t) => JSON.stringify(t.inputSchema)).sort());
-      assert.equal(t1.length, 6);
+      assert.equal(t1.length, 7);
     } finally {
       await c1.close();
       await c2.close();
@@ -144,7 +209,7 @@ test('runtime: surface routing — MCP results equal the committed registry resu
     publish(envA, { marker: 'A' });
     publish(envB, { marker: 'B' });
     const registry = registryFor([{ surfaceId: 'alpha', env: envA }, { surfaceId: 'beta', env: envB }]);
-    const server = createMcpServer(registry, { name: 'test-server', version: '0.0.0' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }, { surfaceId: 'beta' }]), { name: 'test-server', version: '0.0.0' });
     const { client, close } = await connectClient(server);
     try {
       const cases: { tool: string; args: Record<string, unknown> }[] = [
@@ -180,7 +245,7 @@ test('runtime: unknown surface is a committed not-found tool outcome, never a pr
   const env = makeStore();
   try {
     const registry = registryFor([{ surfaceId: 'alpha', env }]);
-    const server = createMcpServer(registry, { name: 't', version: '1' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     try {
       const r = await client.callTool({ name: 'validate-artifact', arguments: { surfaceId: 'not-registered', content: '{}' } });
@@ -200,7 +265,7 @@ test('runtime: malformed surfaceId reaches the committed registry invalid-reques
   const env = makeStore();
   try {
     const registry = registryFor([{ surfaceId: 'alpha', env }]);
-    const server = createMcpServer(registry, { name: 't', version: '1' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     try {
       // A malformed surfaceId is semantically invalid: the SDK schema only
@@ -221,7 +286,7 @@ test('runtime: outer schema rejects wrong primitive types, missing fields, and u
   const env = makeStore();
   try {
     const registry = registryFor([{ surfaceId: 'alpha', env }]);
-    const server = createMcpServer(registry, { name: 't', version: '1' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     try {
       // Wrong primitive type.
@@ -283,7 +348,7 @@ test('runtime: cursor round-trips and multi-page walks through MCP', async () =>
       fs.chmodSync(`${env.storeRoot}/${dPath}`, 0o600);
     }
     const registry = registryFor([{ surfaceId: 'alpha', env }]);
-    const server = createMcpServer(registry, { name: 't', version: '1' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     try {
       // History multi-page walk through MCP: continuation strings pass through unchanged.
@@ -326,7 +391,7 @@ test('runtime: results are deterministic and contain no host paths or internals'
   try {
     publish(env, { marker: 'A' });
     const registry = registryFor([{ surfaceId: 'alpha', env }]);
-    const server = createMcpServer(registry, { name: 't', version: '1' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     try {
       const args = { surfaceId: 'alpha', recordClass: 'approval-record', recordId: RECORD_ID };
@@ -354,7 +419,7 @@ test('runtime: fs mutation watchdog — no tool invocation reaches project/store
     publish(envA, { marker: 'A' });
     publish(envB, { marker: 'B' });
     const registry = registryFor([{ surfaceId: 'alpha', env: envA }, { surfaceId: 'beta', env: envB }]);
-    const server = createMcpServer(registry, { name: 't', version: '1' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }, { surfaceId: 'beta' }]), { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     for (const g of guards) {
       originals[g] = (fs as unknown as Record<string, unknown>)[g];
@@ -371,11 +436,25 @@ test('runtime: fs mutation watchdog — no tool invocation reaches project/store
           { tool: 'inspect-audit-history', args: { recordClass: 'approval-record', recordId: RECORD_ID } },
           { tool: 'verify-record', args: { recordClass: 'approval-record', recordId: RECORD_ID } },
           { tool: 'enumerate-class', args: { recordClass: 'approval-record' } },
+          { tool: 'draft-artifact', args: { kind: 'TaskSpec', content: draftContent(fixture('task-minimal-genesis.json')) } },
+          { tool: 'draft-artifact', args: { kind: 'ExecutionResult', content: '{}' } },
+          { tool: 'draft-artifact', args: { kind: 'TaskSpec', content: 'not json' } },
+          { tool: 'draft-artifact', args: { kind: 'TaskSpec', content: '{"a":' + ' '.repeat(1024 * 1024) + '}' } },
+          { tool: 'draft-artifact', args: { kind: 'AuthorityPolicy', content: draftContent(fixture('policy-minimal-genesis.json')) } },
+          { tool: 'draft-artifact', args: { kind: 'ContextManifest', content: draftContent(fixture('context-minimal-genesis.json')) } },
+          { tool: 'draft-artifact', args: { kind: 'ExecutionBundle', content: draftContent(fixture('bundle-minimal-genesis.json')) } },
         ]) {
           const r = await client.callTool({ name: c.tool, arguments: { surfaceId, ...c.args } });
           assert.equal(r.isError, undefined, `${surfaceId} ${c.tool} must not hit a guarded mutation API`);
         }
       }
+      // Drafting failures and routing failures are also mutation-free.
+      const r1 = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'not-registered', kind: 'TaskSpec', content: '{}' } });
+      assert.equal(r1.isError, undefined);
+      const r2 = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: '../bad', kind: 'TaskSpec', content: '{}' } });
+      assert.equal(r2.isError, undefined);
+      const r3 = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content: draftContent(invalidFixture('semantic-task-delegated-context-instruction.json')) } });
+      assert.equal(r3.isError, undefined);
     } finally {
       for (const g of guards) (fs as unknown as Record<string, unknown>)[g] = originals[g];
       await close();
@@ -383,5 +462,273 @@ test('runtime: fs mutation watchdog — no tool invocation reaches project/store
   } finally {
     rmSync(envA.dir, { recursive: true, force: true });
     rmSync(envB.dir, { recursive: true, force: true });
+  }
+});
+
+// ─── WP-10 Slice 3 — draft-artifact runtime registration ───────────────────
+
+test('runtime: draft-artifact — semantic passthrough, outer/inner taxonomy, and text/structuredContent parity', async () => {
+  const env = makeStore();
+  try {
+    const server = serverFor([{ surfaceId: 'alpha', env }]);
+    const { client, close } = await connectClient(server);
+    try {
+      // Valid TaskSpec draft → outer ok:true, inner ok:true valid:true.
+      const ok = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content: draftContent(fixture('task-minimal-genesis.json')) } });
+      assert.equal(ok.isError, undefined);
+      const okSc = ok.structuredContent as Extract<DraftingResponse, { ok: true }>;
+      assert.equal(okSc.ok, true, 'routing success');
+      assert.equal(okSc.result.ok, true);
+      if (okSc.result.ok === true) {
+        assert.equal(okSc.result.valid, true);
+        assert.equal(okSc.result.kind, 'TaskSpec');
+        assert.ok(okSc.result.proposal.digest.startsWith('sha-256:'));
+        assert.equal(Array.isArray(okSc.result.validation.ruleIds), true, 'ruleIds is a bounded array (may be empty for minimal genesis fixtures)');
+      }
+      // Text content is the compact JSON of the exact same object
+      // (normalized through JSON: structuredContent may retain the JSON
+      // scanner's null-prototype objects, text is plain JSON).
+      const text = (ok.content[0] as { type: 'text'; text: string }).text;
+      assert.deepEqual(JSON.parse(text), JSON.parse(JSON.stringify(okSc)));
+      // Unsupported kind (ExecutionResult) must reach the inner drafting
+      // taxonomy as a successful tool execution — never an SDK error.
+      const unsupported = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'ExecutionResult', content: draftContent(fixture('task-minimal-genesis.json')) } });
+      assert.equal(unsupported.isError, undefined, 'unsupported kind must not be an SDK protocol error');
+      const us = unsupported.structuredContent as Extract<DraftingResponse, { ok: true }>;
+      assert.equal(us.ok, true);
+      assert.equal(us.result.ok, false);
+      if (us.result.ok === false) assert.equal(us.result.error.code, 'unsupported-artifact-kind');
+      assert.deepEqual(JSON.parse((unsupported.content[0] as { text: string }).text), JSON.parse(JSON.stringify(us)));
+      // Malformed JSON → inner invalid-draft-request (not a protocol exception).
+      const badJson = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content: '{bad' } });
+      assert.equal(badJson.isError, undefined);
+      const bj = badJson.structuredContent as Extract<DraftingResponse, { ok: true }>;
+      assert.equal(bj.ok, true);
+      assert.equal(bj.result.ok, false);
+      if (bj.result.ok === false) assert.equal(bj.result.error.code, 'invalid-draft-request');
+      // Oversize content → inner limit-exceeded (the SDK imposes no ceiling).
+      const over = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content: '{"a":' + ' '.repeat(1024 * 1024) + '}' } });
+      assert.equal(over.isError, undefined);
+      const ov = over.structuredContent as Extract<DraftingResponse, { ok: true }>;
+      assert.equal(ov.ok, true);
+      assert.equal(ov.result.ok, false);
+      if (ov.result.ok === false) assert.equal(ov.result.error.code, 'limit-exceeded');
+      // WP-4-invalid proposal → outer ok:true, inner ok:true valid:false with findings.
+      const invalid = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content: draftContent(invalidFixture('semantic-task-delegated-context-instruction.json')) } });
+      assert.equal(invalid.isError, undefined);
+      const iv = invalid.structuredContent as Extract<DraftingResponse, { ok: true }>;
+      assert.equal(iv.ok, true);
+      assert.equal(iv.result.ok, true);
+      if (iv.result.ok === true) {
+        assert.equal(iv.result.valid, false);
+        assert.ok(iv.result.findings.length > 0);
+        assert.ok(iv.result.findings[0]!.ruleIds.length > 0);
+      }
+      // Unknown surface → outer not-found, successful tool execution.
+      const unknown = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'not-registered', kind: 'TaskSpec', content: '{}' } });
+      assert.equal(unknown.isError, undefined);
+      const un = unknown.structuredContent as Extract<DraftingResponse, { ok: false }>;
+      assert.equal(un.ok, false);
+      assert.equal(un.error.code, 'not-found');
+      // Malformed string surface → outer invalid-request (SDK accepts the string).
+      const malformed = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: '../escape', kind: 'TaskSpec', content: '{}' } });
+      assert.equal(malformed.isError, undefined);
+      const ma = malformed.structuredContent as Extract<DraftingResponse, { ok: false }>;
+      assert.equal(ma.ok, false);
+      assert.equal(ma.error.code, 'invalid-request');
+    } finally {
+      await close();
+    }
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('runtime: draft-artifact — wrong types and unknown outer fields are SDK input errors; text/structured parity holds', async () => {
+  const env = makeStore();
+  try {
+    const server = serverFor([{ surfaceId: 'alpha', env }]);
+    const { client, close } = await connectClient(server);
+    try {
+      const content = draftContent(fixture('task-minimal-genesis.json'));
+      const wrongKindType = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 42, content } });
+      assert.equal(wrongKindType.isError, true, 'kind must be a string at the SDK boundary');
+      const wrongContentType = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content: ['x'] } });
+      assert.equal(wrongContentType.isError, true, 'content must be a string at the SDK boundary');
+      const wrongSurfaceType = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 7, kind: 'TaskSpec', content } });
+      assert.equal(wrongSurfaceType.isError, true, 'surfaceId must be a string at the SDK boundary');
+      const missingKind = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', content } });
+      assert.equal(missingKind.isError, true, 'kind is required');
+      const extraField = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content, destination: '/tmp' } });
+      assert.equal(extraField.isError, true, 'unknown outer fields fail the closed strict schema');
+      // Determinism: identical calls produce identical serialized results.
+      const a = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content } });
+      const b = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content } });
+      assert.equal((a.content[0] as { text: string }).text, (b.content[0] as { text: string }).text);
+      assert.deepEqual(a.structuredContent, b.structuredContent);
+      // No host paths or internals in drafting results.
+      const serialized = JSON.stringify(a.structuredContent);
+      assert.equal(serialized.includes(env.dir), false);
+      assert.equal(/stack|errno|ENOENT|EACCES/.test(serialized), false);
+    } finally {
+      await close();
+    }
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('runtime: draft-artifact — all five draftable kinds succeed through the MCP surface', async () => {
+  const env = makeStore();
+  try {
+    const server = serverFor([{ surfaceId: 'alpha', env }]);
+    const { client, close } = await connectClient(server);
+    try {
+      for (const [kind, name] of Object.entries(VALID_FIXTURES)) {
+        const r = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind, content: draftContent(fixture(name)) } });
+        assert.equal(r.isError, undefined, kind);
+        const sc = r.structuredContent as Extract<DraftingResponse, { ok: true }>;
+        assert.equal(sc.ok, true, kind);
+        assert.equal(sc.result.ok, true, kind);
+        if (sc.result.ok === true) {
+          assert.equal(sc.result.valid, true, kind);
+          assert.equal(sc.result.kind, kind);
+          assert.deepEqual(JSON.parse((r.content[0] as { text: string }).text), JSON.parse(JSON.stringify(sc)), kind);
+        }
+      }
+    } finally {
+      await close();
+    }
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('runtime: draft/validate surface consistency through MCP — same candidate agrees under validate-artifact and draft-artifact', async () => {
+  const env = makeStore();
+  try {
+    const schemaRegistry = createSchemaRegistry();
+    const built = createMcpInspectionRegistry({ registrations: [{ surfaceId: 'alpha', trustedConfiguration: env.config, trustedInput: env.trustedInput, schemaRegistry }] });
+    assert.equal(built.ok, true, built.message ?? '');
+    const drafting = createMcpDraftingRegistry({ registrations: [{ surfaceId: 'alpha', schemaRegistry }] });
+    assert.equal(drafting.ok, true, drafting.message ?? '');
+    const server = createMcpServer(built.registry as McpInspectionRegistry, drafting.registry as McpDraftingRegistry, { name: 't', version: '1' });
+    const { client, close } = await connectClient(server);
+    try {
+      // Valid candidate: draft self-validation facts equal validate-artifact facts.
+      const model = fixture('task-minimal-genesis.json');
+      const draftR = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content: draftContent(model) } });
+      const { digest } = computeArtifactDigest(model);
+      const full = { ...model, revision: { ...(model['revision'] as Record<string, unknown>), digest } };
+      const validateR = await client.callTool({ name: 'validate-artifact', arguments: { surfaceId: 'alpha', content: JSON.stringify(full) } });
+      const draftSc = draftR.structuredContent as Extract<DraftingResponse, { ok: true }>;
+      const validateSc = validateR.structuredContent as { ok: boolean; result: { valid: boolean; digest: string; ruleIds: readonly string[] } };
+      assert.equal(draftSc.ok, true);
+      assert.equal(validateSc.ok, true);
+      if (draftSc.result.ok === true && draftSc.result.valid) {
+        assert.equal(draftSc.result.valid, validateSc.result.valid);
+        assert.equal(draftSc.result.proposal.digest, validateSc.result.digest);
+        assert.deepEqual(draftSc.result.validation.ruleIds, validateSc.result.ruleIds);
+      }
+      // Invalid candidate: both reject with the same digest/rule conclusion.
+      const invalidModel = invalidFixture('semantic-task-delegated-context-instruction.json');
+      const invalidDraft = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content: draftContent(invalidModel) } });
+      const { digest: invalidDigest } = computeArtifactDigest(invalidModel);
+      const invalidFull = { ...invalidModel, revision: { ...(invalidModel['revision'] as Record<string, unknown>), digest: invalidDigest } };
+      const invalidValidate = await client.callTool({ name: 'validate-artifact', arguments: { surfaceId: 'alpha', content: JSON.stringify(invalidFull) } });
+      const idSc = invalidDraft.structuredContent as Extract<DraftingResponse, { ok: true }>;
+      const ivSc = invalidValidate.structuredContent as { ok: boolean; result: { valid: boolean } };
+      assert.equal(idSc.ok, true);
+      assert.equal(ivSc.ok, true);
+      if (idSc.result.ok === true) {
+        assert.equal(idSc.result.valid, false);
+        assert.equal(idSc.result.valid, ivSc.result.valid);
+      }
+    } finally {
+      await close();
+    }
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
+  }
+});
+
+test('runtime: composition — inspection and drafting registries share the EXACT same SchemaRegistry instance per surface', async () => {
+  const envA = makeStore();
+  const envB = makeStore();
+  try {
+    const created: CountingRegistry[] = [];
+    const config: RuntimeConfig = {
+      surfaces: [
+        { surfaceId: 'alpha', locator: envA.dir, serviceUid: UID, forbiddenRoots: [], configurationIdentity: CID, configurationVersion: '1', limitProfile: {} },
+        { surfaceId: 'beta', locator: envB.dir, serviceUid: UID, forbiddenRoots: [], configurationIdentity: CID, configurationVersion: '1', limitProfile: {} },
+      ],
+    };
+    const composed = composeTrustedRegistry(config, {
+      createSchemaRegistry: () => {
+        const counting = new CountingRegistry();
+        created.push(counting);
+        return counting;
+      },
+    });
+    assert.equal(composed.ok, true, composed.ok ? '' : composed.message);
+    if (!composed.ok) return;
+    assert.equal(created.length, 2, 'exactly one registry instance per configured surface');
+    const [alphaRegistry, betaRegistry] = created;
+    const server = createMcpServer(composed.registry, composed.draftingRegistry, { name: 't', version: '1' });
+    const { client, close } = await connectClient(server);
+    try {
+      // Draft routing on alpha consults ALPHA's instance only.
+      const content = draftContent(fixture('task-minimal-genesis.json'));
+      const dA = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content } });
+      assert.equal(dA.isError, undefined);
+      assert.ok(alphaRegistry!.validateCalls > 0, 'draft-artifact on alpha consulted the alpha registry instance');
+      assert.equal(betaRegistry!.validateCalls, 0, 'beta registry untouched by alpha drafting');
+      const alphaCallsAfterDraft = alphaRegistry!.validateCalls;
+      // validate-artifact on alpha consults the SAME instance (proof of
+      // same-instance sharing between inspection and drafting registries).
+      const vA = await client.callTool({ name: 'validate-artifact', arguments: { surfaceId: 'alpha', content: VALID_TASKSPEC } });
+      assert.equal(vA.isError, undefined);
+      assert.ok(alphaRegistry!.validateCalls > alphaCallsAfterDraft, 'validate-artifact on alpha consulted the same alpha registry instance');
+      // Draft routing on beta consults BETA's instance only.
+      const dB = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'beta', kind: 'TaskSpec', content } });
+      assert.equal(dB.isError, undefined);
+      assert.ok(betaRegistry!.validateCalls > 0, 'draft-artifact on beta consulted the beta registry instance');
+      // Unknown surface drafts consult nothing.
+      const before = betaRegistry!.validateCalls;
+      const dU = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'nope', kind: 'TaskSpec', content } });
+      assert.equal(dU.isError, undefined);
+      assert.equal((dU.structuredContent as Extract<DraftingResponse, { ok: false }>).error.code, 'not-found');
+      assert.equal(alphaRegistry!.validateCalls, alphaRegistry!.validateCalls, 'no consultation on unknown surface');
+      assert.equal(betaRegistry!.validateCalls, before, 'no consultation on unknown surface');
+    } finally {
+      await close();
+    }
+  } finally {
+    rmSync(envA.dir, { recursive: true, force: true });
+    rmSync(envB.dir, { recursive: true, force: true });
+  }
+});
+
+test('runtime: draft-artifact results confer no authority — plain data, no trusted brand', async () => {
+  const env = makeStore();
+  try {
+    const server = serverFor([{ surfaceId: 'alpha', env }]);
+    const { client, close } = await connectClient(server);
+    try {
+      for (const [kind, name] of Object.entries(VALID_FIXTURES)) {
+        const r = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind, content: draftContent(fixture(name)) } });
+        const sc = r.structuredContent as Extract<DraftingResponse, { ok: true }>;
+        assert.equal(sc.ok, true, kind);
+        if (sc.result.ok === true && sc.result.valid === true) {
+          const model = (sc.result as { proposal: { model: unknown } }).proposal.model;
+          assert.equal(Object.getOwnPropertySymbols(model).length, 0, `${kind}: no brand symbols on draft data`);
+          assert.equal(Object.getOwnPropertySymbols(sc).length, 0, `${kind}: no brand symbols on the response`);
+        }
+      }
+    } finally {
+      await close();
+    }
+  } finally {
+    rmSync(env.dir, { recursive: true, force: true });
   }
 });

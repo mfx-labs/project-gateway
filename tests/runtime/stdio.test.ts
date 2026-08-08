@@ -35,6 +35,18 @@ const CLI_PATH = join(import.meta.dirname, '..', '..', '..', 'dist', 'runtime', 
 
 const VALID_TASKSPEC = JSON.stringify({ protocol: { id: 'project-gateway.artifact', version: '1.0', canonicalization: 'jcs-rfc8785-v1' }, kind: { id: 'TaskSpec', version: '1.0' }, instance_id: 'pgw:i:9e74f09cf0287d6787d69e8ebddb5157', revision: { id: 'pgw:r:8d4203d7ec45e4f3c4bbba7a9c69042f', generation: 0, predecessor: null, digest: 'sha-256:b6418a37095af165a87a38affb609f42b331d80b15f7d3ed2796bf780ae1868b' }, workspace_binding: { mode: 'portable' }, requirements: { protocol_features: [], consumer_capabilities: [] }, extensions: [], body: { objective: 'Produce a fixture conformance note.', instructions: [{ instruction_id: 'prepare-note', text: 'Create the requested conformance note.' }], expected_deliverables: [{ deliverable_id: 'conformance-note', description: 'A project-visible conformance note.', kind: 'document' }], outcome_constraints: [], project_data_citations: [] } });
 
+const REPO = join(import.meta.dirname, '..', '..', '..');
+
+/** Draft content: the canonical envelope with the derived digest member removed. */
+function draftContent(model: Readonly<Record<string, unknown>>): string {
+  const revision = { ...(model['revision'] as Readonly<Record<string, unknown>>) };
+  delete revision['digest'];
+  return JSON.stringify({ ...model, revision });
+}
+
+const DRAFT_TASKSPEC = draftContent(JSON.parse(VALID_TASKSPEC) as Record<string, unknown>);
+const DRAFT_AUTHORITY_POLICY = draftContent(JSON.parse(readFileSync(join(REPO, 'fixtures', 'artifacts', 'valid', 'policy-minimal-genesis.json'), 'utf8')) as Record<string, unknown>);
+
 interface StoreFixture {
   readonly dir: string;
   readonly storeRoot: string;
@@ -139,7 +151,7 @@ function assertNoListeningSockets(pid: number): void {
   }
 }
 
-test('stdio: modern 2026-07-28 path — pinned negotiation, discover, six tools, surface routing', async () => {
+test('stdio: modern 2026-07-28 path — pinned negotiation, discover, seven tools, surface routing', async () => {
   const env = makeStore();
   try {
     const configPath = writeConfig(env.dir, [surfaceConfig(env, 'alpha')]);
@@ -157,9 +169,20 @@ test('stdio: modern 2026-07-28 path — pinned negotiation, discover, six tools,
       if (serverVersion !== undefined) {
         assert.equal(serverVersion.name, '@project-gateway/artifact-core');
       }
-      // Exactly six tools.
+      // Exactly seven tools: six WP-9 inspection + one WP-10 drafting.
       const { tools } = await client.listTools();
-      assert.deepEqual(tools.map((t) => t.name).sort(), ['enumerate-class', 'inspect-audit-history', 'inspect-registry', 'inspect-stored-record', 'validate-artifact', 'verify-record']);
+      assert.deepEqual(tools.map((t) => t.name).sort(), ['draft-artifact', 'enumerate-class', 'inspect-audit-history', 'inspect-registry', 'inspect-stored-record', 'validate-artifact', 'verify-record']);
+      assert.equal(tools.length, 7);
+      // The draft-artifact schema is shape/type only (plain strings), with no
+      // requestId and no destination/authority operand.
+      const draft = tools.find((t) => t.name === 'draft-artifact');
+      assert.ok(draft !== undefined);
+      const dSchema = draft.inputSchema as { properties?: Record<string, unknown>; required?: string[]; additionalProperties?: boolean };
+      assert.deepEqual(Object.keys(dSchema.properties ?? {}).sort(), ['content', 'kind', 'surfaceId']);
+      assert.deepEqual((dSchema.required ?? []).sort(), ['content', 'kind', 'surfaceId']);
+      assert.equal(dSchema.additionalProperties, false);
+      assert.equal((dSchema.properties?.['kind'] as { type?: string }).type, 'string');
+      assert.equal(draft.annotations?.readOnlyHint, true);
       // Representative success with surface routing.
       const ok = await client.callTool({ name: 'validate-artifact', arguments: { surfaceId: 'alpha', content: VALID_TASKSPEC } });
       assert.equal(ok.isError, undefined);
@@ -168,16 +191,32 @@ test('stdio: modern 2026-07-28 path — pinned negotiation, discover, six tools,
       assert.equal(okSc.result.valid, true);
       const rec = await client.callTool({ name: 'inspect-stored-record', arguments: { surfaceId: 'alpha', recordClass: 'approval-record', recordId: RECORD_ID } });
       assert.equal((rec.structuredContent as { ok: boolean }).ok, true);
+      // Representative draft-artifact call through the real CLI: valid draft.
+      const draftOk = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content: DRAFT_TASKSPEC } });
+      assert.equal(draftOk.isError, undefined);
+      const draftSc = draftOk.structuredContent as { ok: boolean; result: { ok: boolean; valid?: boolean; kind?: string } };
+      assert.equal(draftSc.ok, true, 'routing success');
+      assert.equal(draftSc.result.ok, true);
+      assert.equal(draftSc.result.valid, true);
+      assert.equal(draftSc.result.kind, 'TaskSpec');
+      // Unsupported kind through a valid surface → inner drafting outcome,
+      // successful tool execution (proves the SDK schema is not over-constrained).
+      const unsupported = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'ExecutionResult', content: DRAFT_TASKSPEC } });
+      assert.equal(unsupported.isError, undefined);
+      const us = unsupported.structuredContent as { ok: boolean; result: { ok: boolean; error?: { code: string } } };
+      assert.equal(us.ok, true);
+      assert.equal(us.result.ok, false);
+      assert.equal(us.result.error?.code, 'unsupported-artifact-kind');
+      // Unknown surface → committed not-found outcome.
+      const unknown = await client.callTool({ name: 'validate-artifact', arguments: { surfaceId: 'nope', content: '{}' } });
+      assert.equal(unknown.isError, undefined);
+      assert.equal((unknown.structuredContent as { ok: boolean; error?: { code: string } }).error?.code, 'not-found');
       // Representative committed ok:false outcome (not a protocol exception).
       const missing = await client.callTool({ name: 'inspect-stored-record', arguments: { surfaceId: 'alpha', recordClass: 'approval-record', recordId: 'pgw:r:' + 'c'.repeat(32) } });
       assert.equal(missing.isError, undefined);
       const ms = missing.structuredContent as { ok: boolean; error?: { code: string } };
       assert.equal(ms.ok, false);
       assert.equal(ms.error?.code, 'not-found');
-      // Unknown surface → committed not-found outcome.
-      const unknown = await client.callTool({ name: 'validate-artifact', arguments: { surfaceId: 'nope', content: '{}' } });
-      assert.equal(unknown.isError, undefined);
-      assert.equal((unknown.structuredContent as { ok: boolean; error?: { code: string } }).error?.code, 'not-found');
       // No-network-listener probe while the server is live.
       const pid = transport.pid;
       assert.ok(pid !== null);
@@ -215,12 +254,23 @@ test('stdio: auto negotiation also selects the modern era; store is never mutate
     try {
       assert.equal(client.getProtocolEra(), 'modern', 'auto negotiation must select the modern era against serveStdio');
       const { tools } = await client.listTools();
-      assert.equal(tools.length, 6);
-      for (const tool of ['validate-artifact', 'inspect-stored-record', 'inspect-registry', 'inspect-audit-history', 'verify-record', 'enumerate-class']) {
-        const r = await client.callTool({ name: tool, arguments: tool === 'validate-artifact' ? { surfaceId: 'alpha', content: VALID_TASKSPEC } : tool === 'inspect-registry' ? { surfaceId: 'alpha' } : tool === 'enumerate-class' ? { surfaceId: 'alpha', recordClass: 'approval-record' } : { surfaceId: 'alpha', recordClass: 'approval-record', recordId: RECORD_ID } });
+      assert.equal(tools.length, 7, 'overall inventory is exactly seven');
+      for (const tool of ['validate-artifact', 'inspect-stored-record', 'inspect-registry', 'inspect-audit-history', 'verify-record', 'enumerate-class', 'draft-artifact']) {
+        const args = tool === 'validate-artifact' ? { surfaceId: 'alpha', content: VALID_TASKSPEC } : tool === 'draft-artifact' ? { surfaceId: 'alpha', kind: 'TaskSpec', content: DRAFT_TASKSPEC } : tool === 'inspect-registry' ? { surfaceId: 'alpha' } : tool === 'enumerate-class' ? { surfaceId: 'alpha', recordClass: 'approval-record' } : { surfaceId: 'alpha', recordClass: 'approval-record', recordId: RECORD_ID };
+        const r = await client.callTool({ name: tool, arguments: args });
         assert.equal(r.isError, undefined, `${tool} must succeed`);
         assert.equal((r.structuredContent as { ok: boolean }).ok, true, `${tool} must return ok`);
       }
+      // Drafting through the real CLI does not mutate the store (valid draft,
+      // invalid draft, unsupported kind, malformed JSON, unknown surface).
+      const bad = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content: '{bad' } });
+      assert.equal(bad.isError, undefined);
+      assert.equal((bad.structuredContent as { ok: boolean }).ok, true);
+      const invalid = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content: DRAFT_AUTHORITY_POLICY.replace('"kind":{"id":"AuthorityPolicy"', '"kind":{"id":"TaskSpec"') } });
+      assert.equal(invalid.isError, undefined);
+      const unknown = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'nope', kind: 'TaskSpec', content: DRAFT_TASKSPEC } });
+      assert.equal(unknown.isError, undefined);
+      assert.equal((unknown.structuredContent as { ok: boolean; error?: { code: string } }).error?.code, 'not-found');
     } finally {
       await client.close();
     }
@@ -480,6 +530,15 @@ test('stdio: two registered surfaces route independently through the real CLI', 
       const rb = await client.callTool({ name: 'inspect-stored-record', arguments: { surfaceId: 'beta', recordClass: 'approval-record', recordId: RECORD_ID } });
       assert.equal((ra.structuredContent as { result: { record: { payload: { marker: string } } } }).result.record.payload.marker, 'A');
       assert.equal((rb.structuredContent as { result: { record: { payload: { marker: string } } } }).result.record.payload.marker, 'B');
+      // Drafting routes independently over the same two surfaces (no
+      // cross-surface leakage, no global fallback surface).
+      const da = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content: DRAFT_TASKSPEC } });
+      const db = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'beta', kind: 'TaskSpec', content: DRAFT_TASKSPEC } });
+      assert.equal((da.structuredContent as { ok: boolean; result: { ok: boolean } }).result.ok, true, 'draft on alpha succeeds');
+      assert.equal((db.structuredContent as { ok: boolean; result: { ok: boolean } }).result.ok, true, 'draft on beta succeeds');
+      // No default/global drafting surface: unregistered selector is not-found.
+      const dn = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'gamma', kind: 'TaskSpec', content: DRAFT_TASKSPEC } });
+      assert.equal((dn.structuredContent as { ok: boolean; error?: { code: string } }).error?.code, 'not-found');
     } finally {
       await client.close();
     }

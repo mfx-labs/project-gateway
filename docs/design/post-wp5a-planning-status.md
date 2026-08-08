@@ -560,9 +560,18 @@ connectivity remains WP-14-owned.
   candidate**: host/surface-aware transport-free drafting adapter
   (`src/adapters/mcp/drafting.ts` — surfaceId → exact registered
   SchemaRegistry instance → accepted Slice 1 core; verbatim drafting
-  taxonomy; no runtime registration). WP-10 is
-  NOT accepted/closed; no MCP draft tool is registered (WP-9's six-tool
-  inventory unchanged). WP-11
+  taxonomy; no runtime registration).
+  **Slice 3 implementation candidate exists**: local stdio registration of
+  `draft-artifact` — the runtime now serves exactly seven tools (six WP-9
+  inspection + one WP-10 drafting), with same-registry-instance host
+  composition (one `SchemaRegistry` per logical surface shared by
+  inspection and drafting) and a shape/type-only SDK input schema.
+  WP-10 is
+  NOT accepted/closed; Slice 3 was independently accepted and committed
+  (seven-tool runtime); WP-10 IMPLEMENTATION COMPLETE — CLOSURE REVIEW
+  PENDING (WP-10 is NOT closed; controlled-reader drafting assist is not
+  required for the closure gate) (WP-9's
+  six-tool inspection inventory unchanged). WP-11
   NOT STARTED; WP-12 NOT STARTED; WP-14 remains blocked by WP-13 (see
   the WP-9 section above).
 

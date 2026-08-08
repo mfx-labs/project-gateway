@@ -18,6 +18,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { MCP_INSPECTION_TOOLS, MCP_DRAFT_TOOLS } from '../../src/adapters/mcp/index.js';
 
 const REPO = join(import.meta.dirname, '..', '..', '..');
 const RUNTIME_SRC = join(REPO, 'src', 'runtime', 'mcp');
@@ -100,21 +101,51 @@ test('runtime static guard: no storage mutation vocabulary in the runtime', () =
   }
 });
 
-test('runtime static guard: exactly the six committed tools are registered', () => {
+test('runtime static guard: exactly seven tools are registered — six WP-9 inspection plus one WP-10 drafting', () => {
   const serverSrc = readFileSync(join(RUNTIME_SRC, 'server.ts'), 'utf8');
   const types = readFileSync(join(REPO, 'src', 'adapters', 'mcp', 'types.ts'), 'utf8');
-  // The committed vocabulary remains exactly six.
+  // The committed WP-9 inspection vocabulary remains exactly six — never widened.
   assert.equal(/MCP_INSPECTION_TOOLS = \['validate-artifact', 'inspect-stored-record', 'inspect-registry', 'inspect-audit-history', 'verify-record', 'enumerate-class'\]/.test(types), true);
-  for (const tool of ['validate-artifact', 'inspect-stored-record', 'inspect-registry', 'inspect-audit-history', 'verify-record', 'enumerate-class']) {
+  for (const tool of MCP_INSPECTION_TOOLS) {
     assert.equal(serverSrc.includes(`registerTool(\n    '${tool}'`), true, `server.ts must register ${tool}`);
   }
-  // No seventh tool registration.
+  // The WP-10 drafting vocabulary is exactly one tool, registered once.
+  assert.deepEqual([...MCP_DRAFT_TOOLS], ['draft-artifact']);
+  assert.equal(serverSrc.includes("registerTool(\n    'draft-artifact'"), true, 'server.ts must register draft-artifact');
+  // Distinct classes: inspection registrations = 6, drafting registrations = 1, overall = 7.
   const registered = [...serverSrc.matchAll(/registerTool\(\n\s*'([^']+)'/g)].map((m) => m[1]);
-  assert.equal(registered.length, 6, `exactly six registerTool calls, got ${registered.length}`);
+  assert.equal(registered.length, 7, `exactly seven registerTool calls, got ${registered.length}`);
+  const inspection = registered.filter((t): t is string => typeof t === 'string' && (MCP_INSPECTION_TOOLS as readonly string[]).includes(t));
+  const drafting = registered.filter((t): t is string => typeof t === 'string' && (MCP_DRAFT_TOOLS as readonly string[]).includes(t));
+  assert.equal(inspection.length, 6, 'exactly six inspection registrations');
+  assert.equal(drafting.length, 1, 'exactly one drafting registration');
+  assert.deepEqual(registered.sort(), [...MCP_INSPECTION_TOOLS, ...MCP_DRAFT_TOOLS].sort(), 'no eighth tool');
   // No admin/registration/health/list-stores tool names anywhere in the runtime.
   for (const forbidden of ['list-stores', 'register-store', 'select-store', 'unregister-store', 'health']) {
     assert.equal(serverSrc.includes(`'${forbidden}'`), false, `no ${forbidden} tool`);
   }
+  // No tool name implying save/write/persist/publish/approve/issue/execute:
+  // drafting creates in-memory proposals only (WP-11/WP-12 boundaries).
+  for (const forbidden of ['save-artifact', 'write-artifact', 'persist-artifact', 'publish-artifact', 'approve-artifact', 'issue-artifact', 'execute-artifact', 'activate-artifact', 'revoke-artifact']) {
+    assert.equal(serverSrc.includes(`'${forbidden}'`), false, `no ${forbidden} tool`);
+  }
+  // The drafting input schema is shape/type only: no kind enum, no byte
+  // ceiling, no requestId, no destination/authority operand.
+  const draftBlock = serverSrc.match(/registerTool\(\n    'draft-artifact',\n[\s\S]*?annotations:/);
+  assert.ok(draftBlock !== null, 'draft-artifact registration block must be findable');
+  const block = draftBlock[0] ?? '';
+  assert.equal(/kind: z\.string\(\)/.test(block), true, 'kind is a plain string at the SDK layer');
+  assert.equal(block.includes('z.enum'), false, 'no kind enum at the SDK layer (inner unsupported-artifact-kind must be reachable)');
+  assert.equal(/content: z\.string\(\)/.test(block), true, 'content is a plain string at the SDK layer');
+  assert.equal(block.includes('requestId'), false, 'no requestId tool argument');
+  assert.equal(block.includes('maxLength'), false, 'no byte ceiling at the SDK layer (inner limit-exceeded must be reachable)');
+  // The drafting handler must route through the accepted drafting registry
+  // envelope { kind, content } without inventing a requestId.
+  const draftCall = serverSrc.match(/draftingRegistry\.draft\([^;]*\);/);
+  assert.ok(draftCall !== null, 'the drafting handler must route through draftingRegistry.draft');
+  const call = draftCall[0] ?? '';
+  assert.equal(call.includes('requestId'), false, 'the runtime must not invent a requestId');
+  assert.equal(/draft\(surfaceId as string, \{ kind, content \}\)/.test(call), true, 'the runtime envelope is exactly { kind, content }');
 });
 
 test('runtime static guard: the package bin entry maps to the runtime CLI', () => {

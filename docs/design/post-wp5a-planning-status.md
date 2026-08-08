@@ -551,18 +551,20 @@ connectivity remains WP-14-owned.
   corrections closed by the focused rereview; **IMPLEMENTATION COMPLETE**
   (distinct from WORK PACKAGE CLOSED); independent closure review
   ACCEPTED — **WORK PACKAGE CLOSED**.
-- **Current work package: WP-10 (Artifact drafting tools) — Slice 1
-  implementation candidate exists** (transport-free draft-proposal core,
-  `src/drafting/proposal.ts`; see
+- **Current work package: WP-10 (Artifact drafting tools).** Slice 1
+  (transport-free draft-proposal core, `src/drafting/proposal.ts`) was
+  independently accepted and committed at `5c560f48…` (F1 focused
+  rereview CLOSED; see
   `docs/reports/wp-10-artifact-drafting-tools-implementation-report.md`).
-  WP-10 is NOT accepted/closed; the first independent review returned
-  CORRECTIONS REQUIRED (F1: valid-JSON non-object envelope input could be
-  misclassified as internal-adapter-failure); the F1 correction is applied
-  and Slice 1 was independently accepted and committed (focused rereview,
-  F1 CLOSED); no MCP draft tool is
-  registered (WP-9's six-tool inventory unchanged). WP-11 NOT STARTED;
-  WP-12 NOT STARTED; WP-14 remains blocked by WP-13 (see the WP-9 section
-  above).
+  **Slice 2 was independently accepted and committed as the committed
+  candidate**: host/surface-aware transport-free drafting adapter
+  (`src/adapters/mcp/drafting.ts` — surfaceId → exact registered
+  SchemaRegistry instance → accepted Slice 1 core; verbatim drafting
+  taxonomy; no runtime registration). WP-10 is
+  NOT accepted/closed; no MCP draft tool is registered (WP-9's six-tool
+  inventory unchanged). WP-11
+  NOT STARTED; WP-12 NOT STARTED; WP-14 remains blocked by WP-13 (see
+  the WP-9 section above).
 
 WP-9 and later
 packages are **not authorized**. No push, release, publication,

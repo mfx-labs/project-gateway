@@ -219,3 +219,150 @@ fixed redacted `internal-adapter-failure`.
 **Status:** the corrected candidate passed the focused independent rereview
 with F1 CLOSED and zero substantive regression; Slice 1 was independently
 accepted and committed as the committed candidate.
+
+## 14. Slice 2 — Host/Surface-Aware Transport-Free Drafting Adapter (committed candidate)
+
+**Status:** independently accepted and committed as the committed
+candidate (independent review ACCEPTED; zero substantive findings).
+**Baseline:** `5c560f4804e029f25b11b6eb1dc7cd45dcf9c7e7` (Slice 1 commit).
+**Authorized decision:** `DRAFT/VALIDATE SURFACE CONSISTENCY: REQUIRED`;
+`DRAFT TOOL SURFACE ROUTING: REQUIRED`; `WP-6 NEXT-SLICE ROLE: NOT
+REQUIRED`; `WP-7 NEXT-SLICE ROLE: NOT REQUIRED`; one generic future tool
+`draft-artifact ({surfaceId, kind, content})`; verbatim Slice 1 result in
+the accepted envelope; controlled-context ordering: validation-context
+routing first, project-reader assist later.
+
+### 14.1 Slice-1 Injection Seam (registry as validation context)
+
+`src/drafting/proposal.ts` now exposes the shared implementation
+`createDraftProposalWithSchemaRegistry(request, schemaRegistry)` — the
+exact accepted Slice 1 algorithm with the ONLY difference being the
+registry source. `createDraftProposal(request)` remains the public/default
+wrapper supplying the fresh default registry (accepted Slice 1 semantics
+unchanged; existing 22/22 drafting tests pass unmodified). A `SchemaRegistry`
+is validation context ONLY: injecting one grants no persistence, approval,
+issuance, activation, execution, or workspace access. The seam is exported
+at module level only (not the package root).
+
+### 14.2 Drafting Context / Registry Model
+
+`src/adapters/mcp/drafting.ts` (transport-free sibling of the WP-9
+inspection modules; no MCP SDK, no stdio runtime):
+
+- `DraftingContext` — the narrowest drafting context: exactly one essential
+  fact, the host-supplied `schemaRegistry`. No workspace root, storage
+  locator, trusted configuration, reader, write authority, lifecycle state,
+  RuntimeGrant, or transport state.
+- `createDraftingContext({ schemaRegistry })` — host composition; the
+  registry must be a genuine `SchemaRegistry` instance (`ERR-DRAFT-REQ-INVALID`
+  otherwise).
+- `McpDraftingRegistration = { surfaceId, schemaRegistry }` — host-owned;
+  no storage/trusted bootstrap input required for pure draft
+  self-validation (WP-6/WP-7 non-use, accepted decision).
+- `createMcpDraftingRegistry({ registrations })` — immutable after
+  construction, insertion-order-independent (canonical sorted `surfaces`),
+  no client mutation/inventory API, empty registry legal (consistent with
+  WP-9 host registration), exact duplicate/conflicting duplicate surfaceIds
+  fail construction deterministically.
+- `MCP_DRAFT_TOOLS = ['draft-artifact']` — distinct future vocabulary
+  constant, strictly separate from `MCP_INSPECTION_TOOLS`; nothing is
+  registered in this slice.
+
+### 14.3 SurfaceId Grammar
+
+The exact accepted WP-9 constants are reused (`SURFACE_ID_RE`,
+`SURFACE_ID_MAX_LENGTH` from `src/adapters/mcp/registry.ts`); no second
+regex, no copy. Selector semantics preserved: malformed → outer
+`invalid-request`; well-formed but unregistered → outer `not-found` (no
+inventory/path leakage, no fuzzy matching, no cross-surface fallback).
+
+### 14.4 Same-Registry-Instance Mechanism
+
+Routing resolves the registered surface and invokes
+`createDraftProposalWithSchemaRegistry(inner, context.schemaRegistry)` —
+the EXACT object registered by the host. Not a fresh registry, clone,
+reconstructed equivalent, or default. Proven by an instrumented
+`CountingRegistry` subclass (test seam; no production hooks): routing to
+surface A consults registry A exactly once and never registry B. The
+accepted same-instance contract is established and testable; the future
+runtime composition root must register the same instance for the same
+logical `surfaceId` in both registries (no process-global enforcement —
+host composition owns pairing).
+
+### 14.5 Request / Outer Routing / Result Model
+
+- Request envelope: `{ kind, content, requestId? }` (closed fields;
+  `requestId` bounded 1..128, echoed consistently, never enters draft
+  content, and will NOT be a future stdio tool argument). No root, path,
+  destination, workspace, approve, issue, activate, execute, or
+  RuntimeGrant operand.
+- Routing failure (malformed selector/envelope) → outer `{ ok: false,
+  error: { code: 'invalid-request' | 'not-found', ... } }`.
+- Successful surface selection → outer `{ ok: true, result: <complete
+  Slice 1 DraftProposalResult verbatim> }`. The inner drafting taxonomy
+  (`invalid-draft-request`, `unsupported-artifact-kind`,
+  `limit-exceeded`, `internal-adapter-failure`, `valid:false` conclusions)
+  is NEVER remapped to inspection/storage codes.
+- Genuine post-routing internal failures (host-supplied broken registry
+  test seam) remain `internal-adapter-failure` with the fixed redacted
+  message.
+- `surfaceId` selects host-owned validation context ONLY — never a
+  persistence destination, workspace write target, or storage authority
+  (WP-11 remains the persistence boundary).
+
+### 14.6 Draft/Validate Surface Consistency
+
+Tests construct one `SchemaRegistry` instance and bind the SAME object into
+an accepted WP-9 inspection surface/context and a drafting surface under the
+same logical `surfaceId`. For all five draftable kinds (valid) and three
+representative invalid candidates: draft self-validation conclusion ≡
+`validate-artifact` conclusion — identical validity, digest, instanceId,
+revisionId, ruleIds, level, and identical finding projection
+(phase/category/ruleIds/messageKey/location/subjectIdentity). Envelope
+shapes differ by design (draft result carries `proposal`/`validation`;
+`validate-artifact` carries `valid`/`firstFailingPhase`/`digest` at top
+level); semantic results are equivalent.
+
+### 14.7 Boundary Preservation
+
+No persistence (no file/store/temp writes; fs-mutation watchdog covers
+valid routing, invalid drafts, unknown/malformed selectors, duplicate
+construction failure — zero mutation), no lifecycle/authority (no
+approval/issuance/activation/grant vocabulary, zero brand symbols, genuine
+verifiers reject draft data), no execution, no network/tunnel, no WP-6
+consumption (no trusted configuration operand), no WP-7 consumption (no
+project reads), no runtime modification (`src/runtime/mcp/server.ts`
+untouched; stdio inventory remains exactly six WP-9 inspection tools), and
+`createMcpInspectionRegistry` is NOT widened into drafting (no drafting
+method on it; WP-9 registry tests unchanged).
+
+### 14.8 Exports / Dependencies
+
+The drafting adapter is exported additively from the `./mcp` adapter entry
+(`src/adapters/mcp/index.ts`); `package.json` exports map is unchanged
+(`./mcp` remains the adapter library boundary; no new subpath — the package
+is private and no external consumer justifies one). No new dependency
+(zod + `@modelcontextprotocol/server` remain runtime-layer only; the
+adapter imports zero SDK/transport modules).
+
+### 14.9 Tests
+
+`tests/mcp/unit/drafting.test.ts` (16 tests) + one drafting-adapter static
+guard test in `tests/mcp/unit/static-guard.test.ts`: registration
+(empty/single/two surfaces, duplicate, non-genuine registry, ordering,
+immutability), malformed/unknown selectors (with no-registry-consultation
+proof), five-kind routing equivalence with the direct seam, exact-instance
+consultation, closed envelope, inner taxonomy preservation, internal-
+failure preservation, draft/validate surface consistency (valid + invalid),
+no-authority, determinism, fs-mutation watchdog, vocabulary separation, and
+inspection-registry stability. Drafting static guard allowlist extended
+with `../schema/registry.js` (the seam's registry type); MCP adapter
+allowlist extended with `./registry.js`, `./drafting.js`,
+`../../drafting/proposal.js`.
+
+### 14.10 Remaining WP-10 Work
+
+- stdio registration of `draft-artifact` (six → seven tools; a later,
+  separately reviewed slice);
+- controlled-reader drafting assist only if still required/authorized;
+- final WP-10 integration/closure.

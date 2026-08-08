@@ -51,9 +51,12 @@ test('mcp static guard: imports stay inside the exact read-only/pure domain allo
     './validate.js',
     './context.js',
     './inspect.js',
+    './registry.js',
+    './drafting.js',
     './index.js',
     'node:buffer',
     '../../api/validate.js',
+    '../../drafting/proposal.js',
     '../../schema/registry.js',
     '../../storage/read/index.js',
     '../../storage/read/read-record.js',
@@ -141,5 +144,37 @@ test('mcp static guard: the adapter is transport-free (no server/runtime imports
     for (const forbidden of ['@modelcontextprotocol', 'mcp/', 'net.createServer', 'http.createServer', 'WebSocket', 'node:net', 'node:http']) {
       assert.equal(content.includes(forbidden), false, `${rel(file)} must not import a transport or server runtime`);
     }
+  }
+});
+
+test('mcp static guard: drafting adapter routes through the accepted Slice 1 core with the exact registered registry (WP-10 Slice 2)', () => {
+  const drafting = readFileSync(join(MCP_SRC, 'drafting.ts'), 'utf8');
+  // The adapter composes the accepted Slice 1 injection seam — it never reimplements drafting.
+  assert.equal(drafting.includes('createDraftProposalWithSchemaRegistry'), true, 'the adapter must consume the accepted core seam');
+  assert.equal(/createDraftProposal\(/.test(drafting), false, 'the adapter must not call the default-registry wrapper');
+  assert.equal(drafting.includes('context.schemaRegistry'), true, 'routing must use the exact registered registry instance');
+  // The exact accepted WP-9 selector grammar is reused, never re-derived.
+  assert.equal(drafting.includes('SURFACE_ID_RE'), true, 'the closed surfaceId grammar must be the accepted constant');
+  assert.equal(drafting.includes('SURFACE_ID_MAX_LENGTH'), true, 'the selector bound must be the accepted constant');
+  // No storage, lifecycle, authority, execution, or workspace vocabulary
+  // (tokens chosen to avoid the boundary documentation itself).
+  for (const forbidden of ['trustedConfiguration', 'trustedInput', 'verifyStoreInstance', 'publishRecord', 'createWriteCapability', 'createReadCapability', 'RuntimeGrant', 'approve', 'issue(', 'activate(', 'locator:', 'readFileSync', 'require(']) {
+    assert.equal(drafting.includes(forbidden), false, `drafting.ts must not reach ${forbidden}`);
+  }
+  // The drafting vocabulary is separate from the inspection inventory (the
+  // docstring may reference the constant; the code must not import it).
+  assert.equal(/MCP_DRAFT_TOOLS = \['draft-artifact'\]/.test(drafting), true, 'the future drafting vocabulary is exactly one tool');
+  const importSection = drafting.split('\n').filter((l) => l.startsWith('import'));
+  assert.equal(importSection.some((l) => l.includes('MCP_INSPECTION_TOOLS')), false, 'drafting.ts must not import the inspection inventory');
+  // The inspection registry is NOT widened into drafting operations.
+  const registry = readFileSync(join(MCP_SRC, 'registry.ts'), 'utf8');
+  assert.equal(registry.includes('createDraftProposal'), false, 'the inspection registry must not route drafting');
+  assert.equal(registry.includes('MCP_DRAFT_TOOLS'), false, 'the inspection registry must not know the drafting vocabulary');
+  // The entry point exports the drafting registry/context but no authority.
+  const entry = readFileSync(join(MCP_SRC, 'index.ts'), 'utf8');
+  assert.equal(/createMcpDraftingRegistry/.test(entry), true, 'the ./mcp entry exports the drafting registry factory');
+  assert.equal(/createDraftingContext/.test(entry), true, 'the ./mcp entry exports the drafting context factory');
+  for (const forbidden of ['createTrustedStorageBootstrapInput', 'createRecoveryCapability', 'createWriteCapability', 'persistRecoveryConfigurationMetadata']) {
+    assert.equal(entry.includes(forbidden), false, `entry must not export ${forbidden}`);
   }
 });

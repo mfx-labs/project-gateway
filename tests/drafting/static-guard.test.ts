@@ -42,6 +42,7 @@ assert.ok(draftingFiles.length >= 1, 'the drafting source tree must exist');
 const ALLOWED_IMPORTS: readonly string[] = [
   '../api/validate.js',
   '../api/types.js',
+  '../schema/registry.js',
 ];
 
 test('drafting static guard: imports stay within the pure validation/canonicalization allowlist', () => {

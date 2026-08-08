@@ -36,8 +36,17 @@
  * result. WP-4 remains the sole validation authority; construction reuses
  * only accepted repository APIs and introduces no second serializer, no
  * second schema, and no second digest computation.
+ *
+ * SLICE 2 INJECTION SEAM: `createDraftProposalWithSchemaRegistry` is the
+ * shared implementation under an explicit host-supplied `SchemaRegistry`
+ * (WP-10 host/surface-aware drafting: a selected surface's exact registered
+ * registry is the validation context). `createDraftProposal` remains the
+ * public/default wrapper that supplies the fresh default registry. The
+ * registry is validation context ONLY: injecting one grants no persistence,
+ * approval, issuance, activation, execution, or workspace access.
  */
 import { parseRawJsonInput, createSchemaRegistry, validateArtifactSelf, computeArtifactDigest } from '../api/validate.js';
+import type { SchemaRegistry } from '../schema/registry.js';
 import type { ValidatedArtifact, ValidationLevel } from '../api/types.js';
 
 /** Exact ChatGPT-producible (draftable) prospective artifact kinds (WP-1 responsibility matrix). */
@@ -149,15 +158,30 @@ function deepFreeze<T>(value: T): T {
 }
 
 /**
- * Construct and validate one draft proposal (deterministic; no side effects).
+ * Public/default draft entry: construct and validate one draft proposal under
+ * the fresh default schema registry (accepted Slice 1 semantics, unchanged).
+ * Deterministic; no side effects.
+ */
+export function createDraftProposal(request: DraftProposalRequest): DraftProposalResult {
+  return createDraftProposalWithSchemaRegistry(request, createSchemaRegistry());
+}
+
+/**
+ * Shared implementation (WP-10 Slice 2 injection seam): construct and
+ * validate one draft proposal under an EXPLICIT host-supplied schema
+ * registry. This is the exact accepted Slice 1 algorithm; the ONLY difference
+ * is the registry source. The registry is host-owned validation context and
+ * never grants persistence, lifecycle authority, execution, or workspace
+ * access.
  *
  * Request errors (closed shape, vocabulary, kind correlation, derived-member
  * presence, raw JSON intake, size bound) return `ok: false` with the closed
  * code. A well-formed request whose candidate artifact fails accepted WP-4
  * validation returns a normal `ok: true, valid: false` draft conclusion with
- * bounded findings — never a flattened generic error.
+ * bounded findings — never a flattened generic error. Deterministic; no side
+ * effects.
  */
-export function createDraftProposal(request: DraftProposalRequest): DraftProposalResult {
+export function createDraftProposalWithSchemaRegistry(request: DraftProposalRequest, schemaRegistry: SchemaRegistry): DraftProposalResult {
   try {
     if (typeof request !== 'object' || request === null || Array.isArray(request)) {
       return errorResult('invalid-draft-request', 'draft request must be an object');
@@ -212,7 +236,7 @@ export function createDraftProposal(request: DraftProposalRequest): DraftProposa
     // no reordering, no normalization, no identity minting.
     const { digest } = computeArtifactDigest(model);
     const candidate: Readonly<Record<string, unknown>> = { ...model, revision: { ...revision, digest } };
-    const report = validateArtifactSelf(candidate, createSchemaRegistry());
+    const report = validateArtifactSelf(candidate, schemaRegistry);
     if (!report.ok || report.value === undefined) {
       return Object.freeze({
         ok: true,

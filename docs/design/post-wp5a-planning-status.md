@@ -461,13 +461,16 @@ evidence.
 > adjudication-only states remain intentional; the next work package
 > remains WP-9.
 
-**WP-9 (MCP inspection surface) — Slices 1-3 committed
-(`b3cde8b…`, `0f3ac3a…`, `d5418f7…`); Slice 4 committed at
-`ef118fc565ddbb0254c26881d943b52ad3cf3547`; TRANSPORT DECISION: LOCAL
-STDIO (recorded in the transport/runtime decision analysis); Slice 5
-(local stdio MCP runtime) first independent review returned
-CORRECTIONS REQUIRED (F1-F3, startup-config boundary); F1-F3 corrections
-applied; candidate READY FOR INDEPENDENT REREVIEW, NOT accepted**
+**WP-9 (MCP inspection surface) — CLOSED. Implementation complete;
+Slices 1-4 committed (`b3cde8b…`, `0f3ac3a…`, `d5418f7…`, `ef118fc…`);
+Slice 5 (local stdio MCP runtime) committed at
+`045ae7c2f4a980d392333ac6823e33ffa5513d24` after the F1-F3 focused
+rereview closed all three startup-config findings; TRANSPORT DECISION:
+LOCAL STDIO (recorded in the transport/runtime decision analysis);
+closure independently accepted
+(`docs/reports/wp-9-mcp-inspection-surface-closure-report.md`);
+WP-9 CLOSED — no remaining implementation work; no later work package
+started or authorized**
 (`docs/reports/wp-9-mcp-inspection-surface-implementation-report.md`): the
 **transport-free MCP inspection protocol/tool layer**
 (`src/adapters/mcp/`) exposes the closed read-only tool vocabulary.
@@ -538,18 +541,18 @@ connectivity remains WP-14-owned.
   automatic-mutation obligation; deletion authority not broadened.
 - **Lifecycle approval decisions**: later-owned by WP-12 (TAU-009 —
   maintenance procedures never invent lifecycle decisions).
-- **Later packages**: WP-9 generation seeding rides with WP-9; WP-12
-  integration later-owned.
-- **Current work package: WP-9 (MCP inspection surface)** —
-  read-only inspection MCP tools; prerequisites WP-7 and WP-4 satisfied;
-  inspection-only, no mutation tools; slices 1-4 committed; transport
-  decision LOCAL STDIO; slice 5 (local stdio MCP runtime) F1-F3
-  corrections applied after the first independent review; candidate ready
-  for independent rereview, NOT accepted; WP-9 closure pending rereview
-  (see the WP-9 section above).
-  prerequisites WP-7 and WP-4 satisfied; inspection-only; slices 1-3
-  committed; slice 4 (multi-store registration) candidate ready for
-  independent review (see the WP-9 section above).
+- **Later packages**: WP-9 generation seeding removed from WP-9 closure
+  criteria by the generation-seeding decision; WP-12 integration
+  later-owned.
+- **Current work package: WP-9 (MCP inspection surface) — CLOSED.**
+  Read-only inspection MCP tools; prerequisites WP-7 and WP-4 satisfied;
+  inspection-only, no mutation tools; slices 1-5 committed (Slice 5 at
+  `045ae7c2…`); transport decision LOCAL STDIO; F1-F3 startup-config
+  corrections closed by the focused rereview; **IMPLEMENTATION COMPLETE**
+  (distinct from WORK PACKAGE CLOSED); independent closure review
+  ACCEPTED — **WORK PACKAGE CLOSED**. The current work package / next
+  eligible work remains subject to separate authorization; no later
+  work package has started (see the WP-9 section above).
 
 WP-9 and later
 packages are **not authorized**. No push, release, publication,

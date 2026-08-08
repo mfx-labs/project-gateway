@@ -546,9 +546,15 @@ capability-generation code changed.
   nesting level, LMT-013 contract enforcement with boundary acceptance).
   Runtime test count is now 25 (21 original + 4 correction tests).
   Same-store alias and restart capability-generation probes remain green.
-- **Status:** the corrected candidate is READY FOR INDEPENDENT REREVIEW.
-  It is NOT accepted; WP-9 closure remains pending the independent
-  rereview.
+- **Status:** the F1-F3 corrections were independently rereviewed and all
+  three findings were closed with no substantive regression; Slice 5 was
+  accepted and committed at
+  `045ae7c2f4a980d392333ac6823e33ffa5513d24`. The implementation report
+  above is historical evidence of the accepted slices; WP-9's final
+  closure decision is recorded in
+  `docs/reports/wp-9-mcp-inspection-surface-closure-report.md`:
+  **WP-9 INDEPENDENT CLOSURE REVIEW: ACCEPTED — WP-9 STATUS: CLOSED**
+  (no remaining WP-9 implementation work).
 
 ## 13. Remaining WP-9 Work (not in this slice)
 

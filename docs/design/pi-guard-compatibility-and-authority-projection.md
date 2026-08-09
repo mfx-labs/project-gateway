@@ -119,8 +119,8 @@ authority. **The evidence covers `pi-guard` 0.1.1 only.**
   `allowedToolNames` (exact case-sensitive allowed tool-name set; NO
   explicit denied-tool list — absence from `allowedToolNames` denies the
   tool), and `inventoryFingerprint` (canonical observed effective-surface
-  fingerprint over sorted name+source entries; checked exactly before
-  activation; mismatch fails closed). Delivery is process-local only
+  fingerprint — NORMATIVE v1 algorithm in the block below; checked exactly
+  before activation; mismatch fails closed). Delivery is process-local only
   (extension factory's returned trusted API object captured by the
   environment-gated Gateway harness); no prompt/tool/command/project-file/
   environment-string authority channel; no persistence; one active
@@ -344,6 +344,63 @@ Deterministic projection rules:
   shutdown, restoration to the pre-activation tool set is verified and
   recorded in enforcement evidence.
 
+### Inventory fingerprint — NORMATIVE v1 canonicalization (SIR-PG-012-001)
+
+WP-5B and pi-guard MUST independently converge on exactly the same bytes.
+The v1 `inventoryFingerprint` is computed as follows (platform-independent):
+
+1. **Observed entry shape:** one entry per effective tool as exposed by the
+   Pi surface, `{ name, source }`.
+2. **`name` derivation:** the exact `ToolInfo.name` string as observed;
+   admitted verbatim — no trimming, no normalization, no case folding.
+3. **`source` derivation:** the exact `ToolInfo.sourceInfo.source` string
+   as observed; admitted verbatim. (The surviving effective registration
+   is the only observable source; F-R1.)
+4. **Entry ordering:** sort entries by `name` ascending, ties broken by
+   `source` ascending, comparing the canonical UTF-8 byte sequences of the
+   strings (byte-wise lexicographic). This equals code-point order and is
+   platform-independent; it is NOT the UTF-16 code-unit order produced by
+   the JavaScript `<` operator, which diverges for supplementary
+   characters (e.g. U+E000 vs U+10000).
+5. **Array serialization:** a JSON array of objects, each with EXACTLY the
+   keys `name` then `source` (that key order), using ECMAScript
+   `JSON.stringify` escaping: `"`, `\`, and control characters
+   U+0000..U+001F are escaped (`\"`, `\\\\`, `\\b`, `\\f`, `\\n`, `\\r`,
+   `\\t`, and `\\uXXXX` for the remaining control characters; lone
+   surrogates as `\\uXXXX`); all other code points — including non-ASCII
+   and supplementary characters — are emitted literally. No insignificant
+   whitespace anywhere (no spaces after `:` or `,`).
+6. **Encoding:** the serialized string is encoded as UTF-8 (no BOM).
+7. **Digest:** SHA-256 over those exact bytes, output as lowercase
+   hexadecimal (64 ASCII characters).
+
+**Normative golden vector (v1):** input entries observed in this (shuffled)
+order — `web_search`/`pi-web-access`, `\u{10000}`/`x`, `bash`/`builtin`,
+`\uE000`/`x`, `read`/`builtin`, `café`/`builtin`. Canonical UTF-8
+serialization (literal characters; `é` = U+00E9, `\uE000` = U+E000,
+`\u{10000}` = U+10000):
+
+```text
+[{"name":"bash","source":"builtin"},{"name":"café","source":"builtin"},{"name":"read","source":"builtin"},{"name":"web_search","source":"pi-web-access"},{"name":"\uE000","source":"x"},{"name":"\u{10000}","source":"x"}]
+```
+
+Exact UTF-8 bytes (hex) of that serialization:
+
+```text
+5b7b226e616d65223a2262617368222c22736f75726365223a226275696c74696e227d2c7b226e616d65223a22636166c3a9222c22736f75726365223a226275696c74696e227d2c7b226e616d65223a2272656164222c22736f75726365223a226275696c74696e227d2c7b226e616d65223a227765625f736561726368222c22736f75726365223a2270692d7765622d616363657373227d2c7b226e616d65223a22ee8080222c22736f75726365223a2278227d2c7b226e616d65223a22f0908080222c22736f75726365223a2278227d5d
+```
+
+Expected `inventoryFingerprint` (SHA-256 hex, lowercase):
+
+```text
+02c896667bb20ac3813e2eb65aa5cda4bd46a4d4acb16588cc1611e49dd97261
+```
+
+Note: `\uE000` (UTF-8 `ee 80 80`) sorts before `\u{10000}` (UTF-8
+`f0 90 80 80`) in the canonical order — the vector pins the UTF-8-byte
+ordering against the UTF-16 code-unit order a JavaScript `<` comparator
+would produce.
+
 ### Trusted Projection Interface (authorized — ADR-037)
 
 The process-local trusted interface (intended lane pi-guard v0.1.2; NOT
@@ -351,18 +408,25 @@ yet implemented) consists of exactly three operations:
 
 - **`applyTrustedProjection(projection)`** — validates the projection
   object (shape, `projectionVersion`, `inventoryFingerprint` against the
-  current observed surface, replay/conflict identity), captures the
-  pre-activation original tool set, applies `allowedToolNames` as the
+  current observed surface, replay/conflict identity), captures the exact
+  pre-projection controller state and active-tool surface (the current
+  user-mode profile when projection begins in INSPECT/EDIT/WRITE, or the
+  OFF tool set when it begins in OFF), applies `allowedToolNames` as the
   exact active-tool profile with verification, and transitions the
-  controller to `PROJECTED`. Any failure restores the original tool set
+  controller to `PROJECTED`. Any failure restores that exact
+  pre-projection state (mode, profile, original snapshot, tool surface)
   with verification and reports a fail-closed outcome; no partial
   activation ever remains.
 - **`inspectActiveProjection()`** — returns the active projection state
   (`projectionIdentity`, fingerprint, applied profile, activation
   outcome) for WP-5B enforcement evidence (Part E); never mutates.
 - **`restoreTrustedProjection()`** — verified restoration to the
-  pre-activation tool set and exit from `PROJECTED`; restoration outcome
-  (verified / failed / not-applicable) returned for evidence.
+  exact pre-projection state captured at activation (NOT merely the
+  session OFF baseline): the pre-projection mode and profile are
+  re-established together with the pre-projection active-tool surface,
+  so controller mode/profile are never left inconsistent with the
+  restored surface; restoration outcome (verified / failed /
+  not-applicable) returned for evidence.
 
 Projection object — EXACTLY four fields:
 `projectionVersion` · `projectionIdentity` · `allowedToolNames` ·

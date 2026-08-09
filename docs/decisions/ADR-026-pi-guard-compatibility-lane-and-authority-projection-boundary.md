@@ -11,6 +11,17 @@ POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED; open findings at
 approval: zero). Acceptance derives from the external human decision, not
 from the documentation operator.
 
+**Partial supersession — ADR-037:** the separate explicit human
+authorization this ADR requires before the pi-guard authority-projection
+input interface may be introduced is granted by ADR-037
+(`ADR-037-pi-guard-trusted-projection-interface-authorization.md`). The
+interface contract (four-field trusted projection; process-local
+apply/inspect/restore; PROJECTED state) is normative in
+`pi-guard-compatibility-and-authority-projection.md` Parts B/D as updated
+by ADR-037. All other content of this ADR remains in force, including the
+v0.1.1 lane pin until the v0.1.2 implementation exists and is separately
+verified.
+
 ## Context
 
 WP-5A reserved tool inventory and authority projection for WP-5B, and

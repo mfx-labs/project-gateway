@@ -617,11 +617,17 @@ DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
 
 ## Sequencing Dispositions
 
-- **WP-5B eligibility** — **STILL BLOCKING until closed**: WP-6 (ceilings,
-  workspace identity) and WP-12 (activation decisions) are normative
-  prerequisites (ADR-023); the pi-guard projection interface requires
-  separate explicit authorization (ADR-026). These are open gates, not
-  open design decisions of this package.
+- **WP-5B eligibility** — **RESOLVED as an authorization gate**: WP-6
+  (ceilings, workspace identity) and WP-12 (activation decisions) are
+  closed (ADR-023 satisfied); the pi-guard trusted projection interface
+  is now explicitly authorized by **ADR-037** (process-local
+  apply/inspect/restore; four-field projection;
+  `pi-guard-compatibility-and-authority-projection.md` Parts B/D). WP-5B
+  implementation remains gated on the interface ACTUALLY existing: the
+  authorized pi-guard v0.1.2 implementation (next release version in the
+  pi-guard project's version sequence) must be built and the new
+  compatibility lane separately verified before WP-5B implementation is
+  authorized. The v0.1.1 lane pin is unchanged until then.
 - **WP-6 eligibility** — **NOT BLOCKED by any open decision**: WP-6
   depends on WP-0…WP-4 and the planning contracts; no unresolved decision
   blocks it once the planning package is approved.
@@ -809,8 +815,11 @@ DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
   approval: zero). No contract semantics changed; implementation-scope
   caveats remain; no eligibility-prerequisite finding remains open
   according to the F-EL-R1 correction report. WP-6 remains unauthorized
-  and not started; the separate pi-guard-side authorization remains
-  pending.
+  and not started. The separate pi-guard-side interface authorization
+  required by ADR-026 is now granted by ADR-037
+  (`ADR-037-pi-guard-trusted-projection-interface-authorization.md`);
+  the pi-guard v0.1.2 implementation and its compatibility-lane
+  verification remain pending.
 
 ## F-SEQ Dispositions
 
@@ -825,9 +834,11 @@ DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
 
 ## Known Non-Blocking Limitations
 
-- pi-guard 0.1.1 has no external authority-projection input API; the
-  required interface is documented (ADR-026) and requires separate
-  authorization — a deferred implementation item, not an unresolved
+- pi-guard 0.1.1 still has no external authority-projection input API; the
+  required interface is documented (ADR-026) and the interface
+  authorization is now granted by ADR-037. The pi-guard v0.1.2
+  implementation and the new compatibility-lane verification remain
+  outstanding — a deferred implementation item, not an unresolved
   architecture decision of this package.
 - The v1 capability vocabulary is approved (ADR-025 Accepted); no
   implementation consumes it before a separate WP-6

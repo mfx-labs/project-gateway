@@ -106,7 +106,48 @@ authority. **The evidence covers `pi-guard` 0.1.1 only.**
 - **Required public interface (v1 contract):** mode enumeration
   (`OFF|INSPECT|EDIT|WRITE`), tool-profile application, verified
   restoration, `git_inspect` read-only contract, trusted-project config
-  semantics, and (future) the authority-projection input (Part D).
+  semantics, and the trusted authority-projection input (Part D; interface
+  authorized by ADR-037, intended lane pi-guard v0.1.2 — the next release
+  version in the pi-guard project's version sequence; not yet implemented).
+- **Trusted projection interface (authorized — ADR-037; intended lane
+  pi-guard v0.1.2):** the process-local trusted interface consists
+  conceptually of exactly three operations — `applyTrustedProjection`,
+  `inspectActiveProjection`, `restoreTrustedProjection`. The projection
+  object contains EXACTLY four fields: `projectionVersion` (interface
+  contract version; currently `1`; unsupported versions fail closed),
+  `projectionIdentity` (canonical F-R4 identity; replay/conflict binding),
+  `allowedToolNames` (exact case-sensitive allowed tool-name set; NO
+  explicit denied-tool list — absence from `allowedToolNames` denies the
+  tool), and `inventoryFingerprint` (canonical observed effective-surface
+  fingerprint over sorted name+source entries; checked exactly before
+  activation; mismatch fails closed). Delivery is process-local only
+  (extension factory's returned trusted API object captured by the
+  environment-gated Gateway harness); no prompt/tool/command/project-file/
+  environment-string authority channel; no persistence; one active
+  trusted projection per session; identical replay may be idempotent and
+  conflicting replay fails closed; no partial activation; verified
+  restoration on failure; restart requires a fresh WP-5B decision and
+  projection. `PROJECTED` is a new controller state reachable ONLY through
+  the trusted API — `/guard` cannot enter or exit it, and user mode
+  transitions while PROJECTED fail closed; OFF/INSPECT/EDIT/WRITE
+  semantics are unchanged. pi-guard receives only derived enforcement
+  data, never Gateway lifecycle records.
+- **Compatibility predicate additions for the trusted projection
+  interface (v0.1.2 lane, when implemented and verified):**
+  12. extension factory returns the trusted API object exposing exactly
+      `applyTrustedProjection`, `inspectActiveProjection`,
+      `restoreTrustedProjection`;
+  13. projection object shape exactly the four fields above;
+  14. `PROJECTED` state present with the composition rules above (user
+      mode transitions rejected while PROJECTED; status observable);
+  15. activation applies the allowed-tool profile with exact verification
+      and restores with verification on failure (existing apply/verify
+      semantics);
+  16. inventory-fingerprint check at activation (fail closed on drift);
+  17. compatibility fingerprint updated over the new public surface
+      (identity, manifest version, extension identity, required exports,
+      mode set incl. PROJECTED, reserved ids, config contract shape,
+      projection schema shape).
 - **Tool inventory source (F-04/F-R1):** Pi 0.83.0 observability, accurately
   stated:
   1. `getAllTools()` returns one effective `ToolInfo` per surviving tool
@@ -225,11 +266,14 @@ authority. **The evidence covers `pi-guard` 0.1.1 only.**
   activation evidence is retrospective only. Restoration ownership is
   WP-5B's, and restoration failures are recorded as typed enforcement
   evidence.
-- **pi-guard modifications are NOT authorized by this document.** The
-  authority-projection input interface is a required future pi-guard-side
-  change that requires a separate explicit human authorization (see
-  ADR-026). This planning package defines the contract Project Gateway
-  needs; it does not design pi-guard internals beyond the public interface.
+- **pi-guard modifications ARE authorized — ADR-037.** The separate
+  explicit human authorization required by ADR-026 for the
+  authority-projection input interface is granted by ADR-037; the
+  interface contract is defined below (Parts B/D). This document defines
+  the contract Project Gateway needs; it does not design pi-guard
+  internals beyond the public interface. The pi-guard v0.1.2
+  implementation itself remains outside this repository and requires its
+  own reviewed implementation and lane verification.
 
 ## Part C — Effective Authority Rule and Ownership
 
@@ -299,6 +343,47 @@ Deterministic projection rules:
 - **Restoration boundary:** on completion, cancellation, error, or
   shutdown, restoration to the pre-activation tool set is verified and
   recorded in enforcement evidence.
+
+### Trusted Projection Interface (authorized — ADR-037)
+
+The process-local trusted interface (intended lane pi-guard v0.1.2; NOT
+yet implemented) consists of exactly three operations:
+
+- **`applyTrustedProjection(projection)`** — validates the projection
+  object (shape, `projectionVersion`, `inventoryFingerprint` against the
+  current observed surface, replay/conflict identity), captures the
+  pre-activation original tool set, applies `allowedToolNames` as the
+  exact active-tool profile with verification, and transitions the
+  controller to `PROJECTED`. Any failure restores the original tool set
+  with verification and reports a fail-closed outcome; no partial
+  activation ever remains.
+- **`inspectActiveProjection()`** — returns the active projection state
+  (`projectionIdentity`, fingerprint, applied profile, activation
+  outcome) for WP-5B enforcement evidence (Part E); never mutates.
+- **`restoreTrustedProjection()`** — verified restoration to the
+  pre-activation tool set and exit from `PROJECTED`; restoration outcome
+  (verified / failed / not-applicable) returned for evidence.
+
+Projection object — EXACTLY four fields:
+`projectionVersion` · `projectionIdentity` · `allowedToolNames` ·
+`inventoryFingerprint` (schema and semantics per Part B; absence from
+`allowedToolNames` denies the tool — no denied-tool list exists).
+
+Behavioral pins (ADR-037): process-local delivery only; no
+prompt/tool/command/project-file/environment-string authority channel; no
+persistence (session-local in-memory state; session start resets to OFF);
+one active trusted projection per session; identical replay
+(same `projectionIdentity`, same fingerprint, same session) may be
+idempotent and conflicting replay fails closed (F-R3 factors preserved);
+restart requires a fresh WP-5B decision and projection; OFF/INSPECT/EDIT/
+WRITE semantics unchanged; `PROJECTED` is trusted-API-only — `/guard`
+cannot enter or exit it and user mode transitions while PROJECTED fail
+closed; pi-guard receives only derived enforcement data, never Gateway
+lifecycle records.
+
+Activation/restoration outcomes (consumed by Part E evidence):
+`applied` / `failed-closed` for activation (with `restorationVerified`
+boolean); `verified` / `failed` / `not-applicable` for restoration.
 
 ## Part E — Enforcement Evidence Contract
 

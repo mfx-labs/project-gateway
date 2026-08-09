@@ -2356,3 +2356,427 @@ No ADR is required for this correction path. Specifically,
 SCR-W12-S3-002 is resolved by REMOVING the invented
 max-resources/action-ceiling comparison, not by introducing a numeric
 resource-ceiling feature.
+
+## 27. Slice-4 clarification record (S4-D1…D6)
+
+### 27.0 Scope and status
+
+This record resolves the six operation-level Slice-4 decisions identified by
+the completed Slice-4 eligibility analysis (S4-D1…D6) plus the bounded
+evidence/test-contract/allowlist pins recorded here. Scope: **documentation
+only**. NOT authorized by this record: Slice-4 implementation, any schema
+change, any new ADR, any public taxonomy expansion, any transport expansion,
+any execution authority expansion, any new lifecycle record class. No
+source/test/schema/fixture/package change was made. This record is appended
+to the accepted WP-12 pre-implementation contract. **Current Slice-4
+clarification baseline:** HEAD `e6cfab6b44cda528746c5cefa15ea7b46b15dd63`
+(`feat: close WP-12 runtime grant and activation slice 3`); Slice 4 is
+prerequisite-ELIGIBLE (Slices 1–3 closed; WP-11 explicitly NOT required;
+WP-13/WP-5B are consumers, not prerequisites). The eligibility analysis
+returned `WP-12 SLICE 4 ELIGIBLE — CONTRACT CLARIFICATIONS REQUIRED BEFORE
+IMPLEMENTATION`; this record supplies exactly the required clarification
+set. The focused senior contract review of this record returned `WP-12
+SLICE 4 CONTRACT FOCUSED REVIEW ACCEPTED — READY FOR CONTRACT BASELINE
+CLOSURE` with 0 CRITICAL / 0 MAJOR / 0 MODERATE / 0 MINOR unresolved
+findings; the two MINOR precision findings (SCR-W12-S4-001,
+SCR-W12-S4-002) are folded into this record (§27.6/§27.7 and §27.8
+respectively) and CLOSED. This documentation commit closes the Slice-4
+CONTRACT baseline. Slice-4 IMPLEMENTATION remains NOT STARTED and NOT
+AUTHORIZED: a subsequent explicit human implementation authorization is
+still required. WP-12 itself remains NOT CLOSED (Slice 4 implementation
+and the §4/§17 WP-12 closure gate are outstanding).
+
+Preserved fixed boundaries (not reopened): WP-12 never executes Pi, never
+activates pi-guard, never spawns processes, never streams execution, never
+produces `ExecutionResult`; WP-12 is not an artifact-content store
+(SCR-W12-002); WP-13 owns execution, attempt-ordering decisions, result
+production, execution-time revalidation, and (with WP-15) receipt facts;
+`TrustedReceipt`, `ResultPublicationRecord`, `ExecutionSummaryRecord`,
+`MigrationRecord`, and `SupersessionRecord` production remain outside
+WP-12 Slices 1–4; no transport/MCP/CLI/HTTP lifecycle mutation surface;
+the closed §13 taxonomy is not expanded; WP-12 coordination remains
+host-side/process-level (no new WP-8 filesystem lock protocol).
+
+### 27.1 S4-D1 — orchestrationDecision persistence
+
+`orchestrationDecision` is a DECISION-ONLY operation: it performs the
+bounded correlation/currentness/allowance evaluation under the Slice-3
+coordination discipline and returns bounded non-record orchestration
+decision evidence. It produces **zero lifecycle records and zero WP-8
+mechanical write-audits** (it never invokes `publishRecord`).
+
+The durable attempt-start / orchestration fact is the `ExecutionAttemptRecord`
+created by `recordExecutionAttempt`. This is the normative reading of §12
+item 1 ("an immutable orchestration decision record (bounded; correlates
+activation, occurrence, grant, bundle revision, workspace, registry
+context)"): that correlation set is EXACTLY the committed
+`execution-attempt-record` schema's non-identity binding fields
+(`activation_record_id`, `occurrence_id`, `runtime_grant_id`, `bundle`,
+`workspace_id`, `registry_snapshot_reference`); the schema registry
+(`schemas/lifecycle/1.0/records/`) contains NO orchestration-decision class;
+the §9 record ownership table lists no such class (Slice-4 row =
+`ExecutionAttemptRecord` only); ADR-011's record responsibility list
+contains no such class; and the §26.21 static-guard allowlist progression
+names `ExecutionAttemptRecord` as the sole Slice-4 addition. **No separate
+`OrchestrationDecisionRecord` is introduced.** A durable orchestration
+decision that adds nothing beyond the attempt record's committed bindings
+would duplicate the attempt record; adding a new class would require a
+schema + allowlist change and is NOT authorized here.
+
+**Slice-4 primary publication allowlist:** the store-boundary
+`CONTROL_PLANE_PUBLISH_CLASSES` set gains ONLY `execution-attempt-record`,
+becoming EXACTLY eight classes: `validation-record`, `approval-record`,
+`issuance-record`, `revocation-record`, `runtime-grant`, `activation-record`,
+`execution-occurrence-record`, `execution-attempt-record`. No other class
+becomes publishable by the control plane.
+
+### 27.2 S4-D2 — exact request and trusted authority boundary
+
+Exact-key untrusted requests (per-operation key sets; unknown keys →
+`request-invalid`; trusted-role assertion keys → `approver-not-independent`
+via the existing structural rejection):
+
+- `orchestrationDecision`: `operation`; `workspaceId`; `registryEcho`;
+  `reservedOccurrenceId`.
+- `recordExecutionAttempt`: `operation`; `workspaceId`; `registryEcho`;
+  `reservedOccurrenceId`; `ordinal`.
+
+NOT accepted from the caller (rejected as unknown keys): grant ID,
+activation record ID, attempt record ID, bundle subject, member/policy
+identities, approval/issuance IDs, consumer support, configuration,
+ceilings, store, coordinator, clock, roles, provenance, evidence objects.
+
+Authority boundaries:
+
+- The **occurrence is the caller correlation anchor**: `reservedOccurrenceId`
+  is an untrusted correlation operand only (exact syntax `^pgw:o:[0-9a-f]{32}$`);
+  the authoritative `ExecutionOccurrenceRecord` binds the exact
+  `activation_record_id` and `runtime_grant_id`, and the grant binds the
+  exact bundle reference — **activation/grant/bundle/lifecycle authority is
+  store-derived** from the correlated occurrence record, never caller-
+  supplied.
+- **`ordinal` is an untrusted caller-proposed input** (S4-D3 validation
+  applies). WP-13 owns attempt ordering (§19) and proposes the ordinal;
+  WP-12 validates it against authoritative state.
+- **The attempt ID is allocated INTERNALLY** from the host-injected trusted
+  identity source (format `pgw:a:` + 32 lowercase hex, the committed
+  attemptId rule), under the coordination lock, before publication — the
+  caller can never supply it.
+- **Execution-recorder authority is host-asserted only**: the host context
+  gains one new operator role named **`executionRecorderRole`** (pattern-
+  consistent with `approverRole`/`issuerRole`/`revokerRole`/`grantRole`/
+  `activationRole`); missing host role → `lifecycle-state-missing`; caller
+  role transport (`executionRecorderRole`, `executionRecorderAuthority`, or
+  any role-assertion key) → `approver-not-independent`. The schema record
+  field `responsible_role = 'trusted-execution-recorder'` is a record-field
+  constant, never a host operator role token (S3-D2 pattern).
+- No caller-supplied lifecycle record ID ever becomes authority; the
+  returned evidence is bounded correlation data only (S4-D7).
+
+### 27.3 S4-D3 — ordinal semantics
+
+The committed EXE-005/EXE-006 graph rules are the authoritative ordinal
+semantics (no restated algorithm):
+
+- **First ordinal = 1.**
+- **Every new ordinal must equal the existing durable attempt count for the
+  occurrence + 1** (the EXE-005 rule requires the occurrence's ordinals to
+  be unique and increasing from one with no gaps over the eligible attempt
+  context).
+- **Ordinals are unique and gapless** for the occurrence.
+- **Retry means ordinal > 1**; a retry MUST preserve the exact
+  bundle/workspace/occurrence/grant correlation of the first attempt
+  (EXE-006; bundle-reference byte equality, exact workspace, exact
+  occurrence, exact grant). A retry never changes policy, context, task,
+  completion, extension set, consumer compatibility, or workspace through
+  retry metadata (protocol).
+- **Duplicate, stale, skipped, or otherwise invalid ordinal →
+  `attempt-ordinal-conflict`** (a proposed ordinal that is not exactly
+  `count + 1`, a duplicate of a durable ordinal, or a proposal that would
+  create a gap).
+- **No created_at / record-ID / first-enumeration-order / newest-record
+  winner rule** ever selects or breaks an ordinal sequence; the count is
+  always derived from the immutable durable `ExecutionAttemptRecord` set
+  for the exact occurrence.
+
+### 27.4 S4-D4 — attempt allowance / consumption
+
+- **The proposed ordinal must be within the correlated `RuntimeGrant`'s
+  `attempt_limit`** (EXE-005 graph rule: `ordinal > attempt_limit` is a
+  finding → `attempt-ordinal-conflict`).
+- **The existing durable attempt count for the occurrence must remain
+  below `attempt_limit`** (the committed point-of-use EXE-005 check
+  `attempts >= limit` → `pou.attempt-allowance` finding).
+- **A durable `ExecutionAttemptRecord` consumes one attempt allowance** —
+  consumption happens at durability, exactly as §26.11 ("actual
+  `ExecutionAttemptRecord`s consume attempt allowance later in Slice 4
+  (point-of-use EXE-005 counting)").
+- **No durable attempt record = zero consumption** (an ineligible or
+  rejected attempt start consumes nothing; `orchestrationDecision` never
+  consumes).
+- **A started attempt that later crashes/abandons remains consumed**: its
+  durable `ExecutionAttemptRecord` is an immutable historical fact and the
+  protocol requires an attempt record for every started attempt ("A started
+  attempt that is abandoned, rejected, denied during enforcement,
+  cancelled, timed out, crashed, or otherwise incomplete MUST have an
+  attempt record and trusted receipt(s) describing the trusted facts
+  available").
+- **No counter or mutable allowance state is introduced**; the count is
+  always derived from immutable records (same discipline as
+  `activation_limit`, §26.12).
+- **Graph and point-of-use machinery remain authoritative**: EXE-004/005/
+  006 (graph) and EXE-007/LFC-007 (point-of-use) are the single evaluation
+  authorities; no second evaluator is created.
+
+### 27.5 S4-D5 — coordination key
+
+The §8 matrix wording "Host-side coordination lock (occurrence/attempt
+decision key)" is resolved as follows: `orchestrationDecision` and
+`recordExecutionAttempt` **reuse the existing canonical bundle
+subject/workspace coordination-key family** (`kindId|instanceId|revisionId|
+canonicalDigest|workspaceId`, §26.1/§25.9 C5), derived from the correlated
+occurrence's grant bundle reference — the SAME key family used by
+`issueRuntimeGrant`, `decideActivation`, `createOccurrence`, and
+`revoke(RuntimeGrant)`.
+
+- **No occurrence-ID lock dimension is added** (the §26.1 "no reservation
+  dimension" rule extends to attempt decisions: the occurrence is bound to
+  the bundle key through the grant's exact bundle reference).
+- **No new lock family** exists; `coordinationKeyOfPayload`-style derivation
+  is reused unchanged.
+- **No multi-key or nested locking** (exactly one key per mutation, never
+  nested; §15 fixed order preserved).
+- This **serializes attempt decisions with relevant same-bundle lifecycle
+  mutations, including RuntimeGrant revocation**: a concurrently committing
+  grant revocation cannot land between the attempt's under-lock re-read and
+  its publication (the §26.1 rationale (1) argument, applied to attempt
+  start). Revoke-first → attempt start denied (`eligibility-denied` per
+  S4-D6); attempt-first → the historical attempt remains historical;
+  later grant-dependent actions (including further retries and WP-13
+  execution-time actions) fail closed on the revocation (§10: WP-13
+  consumes current grant/revocation state at each authority-dependent
+  action).
+
+Verified against the existing concurrency model: no repository evidence
+requires occurrence-scoped coordination; the §8 matrix wording names the
+operation's decision key without defining a new dimension, and the
+one-family property is the confirmed integrated Slice-3 design. The
+"occurrence/attempt" wording is therefore read as naming WHICH decision the
+key serializes, not as a new key dimension.
+
+### 27.6 S4-D6 — failure mapping and crash/retry
+
+Closed mapping using existing §13 tokens ONLY (no new token):
+
+| Condition | Result |
+|---|---|
+| Malformed request / unknown key / malformed occurrence or ordinal operand | `request-invalid` |
+| Caller role assertion / role transport | `approver-not-independent` |
+| Missing host execution-recorder role | `lifecycle-state-missing` |
+| Missing grant / missing accepted activation / missing occurrence (correlation absence; non-disclosing) | `lifecycle-state-missing` |
+| Occurrence without a valid accepted activation, or attempt without accepted activation + matching occurrence (EXE-004 family) | `occurrence-conflict` |
+| Ordinal duplicate / stale / skipped / gaplessness / sequence violation (EXE-005) | `attempt-ordinal-conflict` |
+| Retry subject-stability substitution — bundle, workspace, occurrence, or grant differs from the first attempt (EXE-006) | `attempt-ordinal-conflict` |
+| Attempt allowance exhausted or proposed ordinal above `attempt_limit` (EXE-005, graph + point-of-use) | `attempt-ordinal-conflict` |
+| Revoked / expired / not-yet-valid / otherwise currently unusable grant at attempt start (LFC-007/EXE-007 point-of-use) | `eligibility-denied` |
+| Prerequisite issuance revoked or otherwise unusable at attempt start (EXE-007/LFC-007), consumer/capability/policy/ceiling intersection failure | `eligibility-denied` |
+| Registry echo mismatch / REG findings | `registry-context-mismatch` |
+| Store/integrity failure | `store-failure` |
+| Coordination contention | `lock-conflict` |
+| Host/context/internal shape failure | `internal-failure` |
+
+**Revoked/expired grant token resolution.** The exact existing token for a
+revoked/expired/unusable grant at attempt start is `eligibility-denied` —
+the closed point-of-use eligibility category used since Slice 1 for
+currentness/intersection failures (mapGraphFindings/mapVerificationFindings
+fallback), matching the committed point-of-use behavior (LFC-007/EXE-007
+findings). `grant-revoked` / `grant-expired` remain the committed READ-FORM
+(verify-surface) categories (§26.5) and are NOT used as attempt-start
+mutation result tokens — the same refinement discipline Slice 3 applied for
+activation decisions (`activation-denied`). No new token is added.
+
+**Stale-wording resolution (same pattern as §26.18).** The §8
+`orchestrationDecision` / `recordExecutionAttempt` matrix idempotency cell
+contained `attempt-conflict`, a token absent from the closed §13 taxonomy
+(same stale-matrix-wording pattern as §25.2 C1 `target-unknown` and §26.18
+`reservation-invalid`). Resolution (removed, not added): duplicate/stale/
+invalid ordinal conditions map to the §13 token `attempt-ordinal-conflict`.
+No new token.
+
+**Crash/retry behavior.**
+
+- **Crash/failure BEFORE `ExecutionAttemptRecord` durability:** the store
+  contains no attempt record (WP-8 per-record atomicity, §15); the same
+  ordinal may be retried — it is still `count + 1` because nothing durable
+  exists. No replay conflict.
+- **Once `ExecutionAttemptRecord` is durable:** that ordinal is consumed;
+  retrying the same ordinal yields `attempt-ordinal-conflict` (the durable
+  record is the one-way fact; WP-13 discovers it through the existing
+  read/enumeration surface).
+- **No Slice-4 recovery operation is created**: unlike the accepted-
+  activation pair (§15 SCR-W12-005), attempt recording is a SINGLE-record
+  operation with no partial transition — crash-before-durability leaves
+  nothing to repair; crash-after-durability leaves a complete immutable
+  record.
+
+### 27.7 Evidence, WP-13 handoff, test contract, allowlist
+
+**Bounded orchestration evidence** (`orchestrationDecision`; non-record):
+`outcome = 'orchestrated'`; occurrence identity; accepted activation record
+ID; RuntimeGrant ID; exact bundle revision identity; workspace; registry
+snapshot id + digest; derived currentness facts (grant current within its
+validity window, non-revoked; remaining allowance = `attempt_limit` −
+durable attempt count). No raw record payloads, roles, store paths,
+config, coordinator, or transferable authority.
+
+**Bounded successful attempt-recording evidence** (`recordExecutionAttempt`):
+`outcome = 'attempt-recorded'`; record class `execution-attempt-record`;
+record ID, digest, mechanical-audit event ID; internally allocated attempt
+ID (`pgw:a:`); ordinal; occurrence identity; accepted activation record ID;
+RuntimeGrant ID; exact bundle revision identity; workspace; registry
+snapshot id + digest.
+
+**WP-13 handoff.** WP-13 MAY consume the orchestration evidence and the
+durable `ExecutionAttemptRecord` (and the existing read/verify surfaces) as
+correlation and currentness facts, but **never gains authority from returned
+evidence alone** — the stored records are authoritative (evidence is
+replay-bound correlation data; §12.2/§19). WP-13 still owns: end-to-end Pi
+execution, exact bundle-content acquisition and cryptographic correlation
+(SCR-W12-002), retry DECISIONS (proposing ordinals through
+`recordExecutionAttempt`), `ExecutionResult` production, and execution-time
+revalidation at every authority-dependent action (§10; fails closed on
+missing/stale/revoked state). WP-12 never executes and never cancels
+already-started execution.
+
+**Minimum Slice-4 implementation test contract.**
+
+FOCUSED: exact request boundary (unknown keys, role assertion →
+`approver-not-independent`, malformed occurrence/ordinal → `request-invalid`,
+echo mismatch → `registry-context-mismatch`, missing host
+`executionRecorderRole` → `lifecycle-state-missing` with zero records);
+missing/ambiguous correlation → `lifecycle-state-missing` / `occurrence-
+conflict` with zero records; ordinal sequence (first = 1; `count + 1`
+accepted; duplicate, stale, skipped, gap → `attempt-ordinal-conflict`);
+allowance (within `attempt_limit` accepted; exhaustion and
+above-limit ordinal → `attempt-ordinal-conflict`); retry (ordinal > 1)
+subject stability — bundle/workspace/grant substitution → EXE-006
+`attempt-ordinal-conflict` (the explicit §27.6 mapping);
+revoked grant at attempt start → `eligibility-denied`, zero records;
+expired/not-yet-valid grant → `eligibility-denied`; revoked prerequisite
+issuance → `eligibility-denied`; internally allocated `pgw:a:` attempt ID
+(deterministic test identity source; caller cannot supply it);
+`orchestrationDecision` produces zero records and zero audits; crash
+injection before durability → clean same-ordinal retry; crash after
+durability → retry → `attempt-ordinal-conflict`.
+
+REAL STORE (mandatory, SCR-W12-S2-004 precedent): genuine WP-8 store —
+`ExecutionAttemptRecord` publication with exact stored bindings (occurrence/
+activation/grant/bundle bytes/workspace/registry); exactly one record + one
+mechanical `authorized-write` audit per accepted attempt; `orchestrationDecision`
+zero records + zero audits; ordinal/allowance enforcement against real
+stored state; revoked-grant-at-attempt-start denial; crash-before/after-
+durability scenarios with real read/enumeration discovery; byte-identity
+(append-only; target records never mutated); zero project-file mutation; no
+WP-8 lock-layout artifact.
+
+STATIC: Slice-4 vocabulary (`orchestrationDecision`, `recordExecutionAttempt`,
+`ExecutionAttemptRecord`, `execution-attempt-record`, `pgw:a:`,
+`executionRecorderRole`, `ordinal`) confined to owning modules; primary
+publication allowlist EXACTLY the eight classes of §27.1
+(`execution-attempt-record` present; `trusted-receipt`,
+`result-publication-record`, `execution-summary-record`, `migration-record`,
+`supersession-record` absent); `TrustedReceipt`/`ResultPublicationRecord`/
+`ExecutionSummaryRecord`/orchestration/`pi-guard`/transport vocabulary still
+banned family-wide; family stays I/O-free.
+
+**Eight-class primary publication allowlist.** Confirmed: exactly
+`validation-record | approval-record | issuance-record | revocation-record |
+runtime-grant | activation-record | execution-occurrence-record |
+execution-attempt-record` (final Slice-4 state; the Slice-5/non-WP-12 future
+record classes — `TrustedReceipt` (WP-15), `ResultPublicationRecord`
+(WP-13 publisher), `ExecutionSummaryRecord`, `MigrationRecord`,
+`SupersessionRecord` production — and ALL transport (MCP/CLI/HTTP/network)
+remain prohibited).
+
+### 27.8 Consistency assessment
+
+The complete contract was re-read after applying this record. One final
+behavior now exists for each material Slice-4 question:
+
+- **Durable orchestration fact:** the `ExecutionAttemptRecord` (sole
+  Slice-4 record; no `OrchestrationDecisionRecord`; §27.1).
+- **Attempt ID ownership:** internally allocated `pgw:a:` identity from the
+  host identity source; never a caller operand (§27.2).
+- **Ordinal sequencing:** caller-proposed; must equal durable count + 1;
+  unique and gapless; retry = ordinal > 1 with EXE-006 subject stability
+  (§27.3).
+- **Allowance consumption:** durable attempt record consumes one; zero
+  without durability; abandoned/crashed started attempts remain consumed;
+  no counter (§27.4).
+- **Coordination:** the existing canonical bundle subject/workspace key
+  family, one key per mutation, no occurrence dimension, no nesting;
+  serializes with same-bundle grant revocation (§27.5).
+- **Crash-before-durability:** zero records; same ordinal retryable
+  (§27.6).
+- **Crash-after-durability:** ordinal consumed; same-ordinal retry →
+  `attempt-ordinal-conflict`; no recovery operation (§27.6).
+- **Revoked/expired grant at attempt start:** `eligibility-denied`
+  (§27.6).
+- **WP-13 handoff:** records + bounded evidence consumed as correlation
+  facts; evidence alone never confers authority; WP-13 keeps execution,
+  bundle-content acquisition, retry decisions, `ExecutionResult`,
+  execution-time revalidation (§27.7).
+
+Superseded/stale wording is resolved IN this record, not rewritten in place
+(historical provenance is preserved per the established pattern): the §8
+`attempt-conflict` cell maps to `attempt-ordinal-conflict` (§27.6,
+stale-wording resolution); §12 item 1's "immutable orchestration decision
+record" is the `ExecutionAttemptRecord` under the §27.1 normative reading;
+the §8 "occurrence/attempt decision key" wording is the operation's key in
+the existing family, not a new dimension (§27.5); and the §8 Slice-4
+"New records" cell phrase "Bounded orchestration-decision evidence" refers
+to the §27.7 bounded NON-RECORD evidence object returned by
+`orchestrationDecision` — it does NOT introduce another lifecycle record
+class (the cell's record list remains "bounded orchestration-decision
+evidence; `ExecutionAttemptRecord`", read as evidence + the single durable
+attempt record, consistent with §27.1). No contradictory operational model
+remains.
+
+### 27.9 ADR assessment
+
+No new ADR is created or required. S4-D1…D6 are operation-level
+clarifications within already accepted WP-12 scope (ADR-002, ADR-011,
+ADR-027, the trusted-lifecycle-protocol Attempt/Retry sections, the
+committed EXE-004…009 graph rules, and the committed point-of-use EXE-007
+machinery). They create no new cross-work-package architectural boundary,
+no new record class, no transport, no execution authority, and no taxonomy
+change.
+
+### 27.10 Implementation-readiness statement
+
+**YES** — an implementer can now build `orchestrationDecision` →
+`recordExecutionAttempt` (including attempt-ID allocation, ordinal
+validation, allowance enforcement, coordination, failure mapping, bounded
+evidence, and crash/retry behavior) without inventing semantics, provided
+S4-D1…D6 are internally consistent (assessed consistent in §27.8).
+Slice-4 implementation remains UNAUTHORIZED pending focused senior contract
+review of this record and subsequent explicit human implementation
+authorization.
+
+### 27.11 State
+
+This record is documentation only. No source/test/schema/fixture/package/
+generated/runtime change was made; no Slice-4 implementation was started;
+no Slice-5/WP-13/WP-14/WP-15 work was started. The focused senior contract
+review ACCEPTED this record (`WP-12 SLICE 4 CONTRACT FOCUSED REVIEW
+ACCEPTED — READY FOR CONTRACT BASELINE CLOSURE`); SCR-W12-S4-001 and
+SCR-W12-S4-002 are CLOSED by the precision edits folded into §27.6/§27.7
+and §27.8; zero unresolved CRITICAL/MAJOR/MODERATE/MINOR findings remain.
+This documentation commit closes the Slice-4 contract baseline. Slice-4
+implementation remains NOT STARTED and NOT AUTHORIZED and requires a
+separate explicit human implementation authorization; WP-12 overall is
+NOT CLOSED (Slice 4 implementation and the §4/§17 WP-12 closure gate
+remain outstanding).
+
+Recommended next gate: `WP-12 SLICE 4 IMPLEMENTATION AUTHORIZATION`
+(after contract baseline closure).

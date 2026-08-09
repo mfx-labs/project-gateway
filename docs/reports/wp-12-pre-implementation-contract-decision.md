@@ -18,7 +18,15 @@ as the WP-12 Slice 2 contract baseline (documentation closure commit).
 Not self-approved; WP-12 Slice 2 implementation (2A revoke, 2B
 `verifyCurrentLifecycleState`) requires a subsequent explicit human
 implementation authorization.
-**Baseline:** HEAD `9695c5d8a5f42404884f11c02c493ed56d6f9e72`
+Slice 2 is CLOSED at commit `5989018` (`feat: close WP-12 revocation
+and lifecycle verification slice 2`). The Slice-3 clarification record
+(§26, S3-D1…D8) is appended below — documentation only. Focused senior
+contract rereview ACCEPTED (§26.25/§26.26); this documentation commit
+closes the Slice-3 CONTRACT baseline. Slice-3 implementation remains
+NOT STARTED and requires a separate explicit human implementation
+authorization.
+**Baseline:** Original pre-implementation contract baseline
+(historical): HEAD `9695c5d8a5f42404884f11c02c493ed56d6f9e72`
 (`feat: close WP-11 controlled artifact writing slice 1`, parent
 `e4b85daee8fc2cd51919232b417d25dee72c7401`); working tree clean; staging
 empty.
@@ -347,7 +355,7 @@ itself (Slice 3, WP-12 decision coordination lock; §15).
 | `approve` | Trusted operator (approver role) | Canonical revision (5 kinds incl. bundle) | Valid `ValidationRecord`; no conflicting approval | Eligibility checks; LFC-001/002 via graph | Ceilings; registry context | `ValidationRecord`, existing approvals/revocations | Host-side coordination lock (approval decision key) + publishRecord writer lock (§15) | `ApprovalRecord` | WP-8 mechanical write-audit (D-6) | Prior approval for same subject/workspace/purpose becomes non-current (conflict or supersession) | Exact duplicate → already-approved; re-approval after revocation → requires new command (new record) | lifecycle-state-missing / approver-not-independent / eligibility-denied / ceiling-denied / store-failure | Issuer (Slice 1), activation (Slice 3) |
 | `issue` | Trusted operator (issuer role) | Approved canonical revision | Active matching approval; no revocation | LFC-003 via graph | Registry context; ceilings | `ApprovalRecord`, revocation state | Host-side coordination lock (issuance decision key) + publishRecord writer lock (§15) | `IssuanceRecord` | WP-8 mechanical write-audit (D-6) | Prior issuance for same scope becomes non-current | Duplicate → already-issued | issuance-not-authorized / approval-revoked / lifecycle-state-missing | Activation (Slice 3), bounded consumer |
 | `revoke` | Trusted operator (revocation authority) | One exact Approval/Issuance/Grant (Slice 3+)/Publication record | Record exists | None (targeting check) | None | Target record, current revocation state | Host-side coordination lock (revocation decision key, §25 C5) + publishRecord writer lock (§15) | `RevocationRecord` | WP-8 mechanical write-audit (D-6) | Target usability for stated scope | Repeat same target+scope → lifecycle-conflict (already revoked) | lifecycle-state-missing (absent/out-of-workspace target) / request-invalid (immutable or malformed target, meaningless scope) / lifecycle-conflict (already revoked) / registry-context-mismatch / store-failure (§25 C1) | Every point-of-use verifier |
-| `issueRuntimeGrant` (Slice 3) | Trusted operator (grant authority) | Bundle revision + reserved occurrence ID | Fresh reservation; active bundle+member approvals/issuances; ceilings | EXE-eligible state via graph | Ceilings; policy | Approvals, issuances, reservations, grants | Host-side coordination lock (grant decision key) + publishRecord writer lock (§15) | `RuntimeGrant` | WP-8 mechanical write-audit (D-6) | Prior grant for same reservation | Reservation reused → occurrence-conflict | grant-not-authorized / reservation-invalid / ceiling-denied | Activation authority |
+| `issueRuntimeGrant` (Slice 3) | Trusted operator (grant authority) | Subject: exact ExecutionBundle revision; the reserved occurrence ID is INTERNALLY ALLOCATED by issueRuntimeGrant under §26 — it is part of the produced grant binding, NOT a caller request operand | Fresh reservation; active bundle+member approvals/issuances; ceilings | EXE-eligible state via graph | Ceilings; policy | Approvals, issuances, reservations, grants | Host-side coordination lock (grant decision key, §26.1) + publishRecord writer lock (§15) | `RuntimeGrant` | WP-8 mechanical write-audit (D-6) | Prior grant for same reservation | Reservation reused → occurrence-conflict | grant-not-authorized / ceiling-denied / occurrence-conflict / request-invalid / store-failure / lock-conflict (§26.18: `reservation-invalid` removed — stale matrix wording, not in the §13 taxonomy) | Activation authority |
 | `verifyCurrentLifecycleState` (Slice 2+) | Any host consumer | Canonical subject + scope | — (read-only) | Eligibility evaluation | Ceilings; config | All relevant records + revocation/expiry/supersession | None (read) | None | None | — | Deterministic for the observed record set of the completed evaluation | lifecycle-state-missing (fail closed) | All downstream consumers |
 | `decideActivation` (Slice 3) | Trusted operator (activation authority) | Bundle revision + reserved occurrence ID + grant | All 8 protocol checks | EXE-001…009 via graph | Ceilings; policy | Bundle/member validations, approvals, issuances, grant, reservations, registry context | Host-side coordination lock (activation decision key) + publishRecord writer lock (§15); two records on accepted (SCR-W12-005) | `ActivationRecord` (accepted/denied); `ExecutionOccurrenceRecord` on accepted | WP-8 mechanical write-audit (D-6) | Reservation and grant permanently closed (denied); grant consumed (accepted) | Reservation reuse → occurrence-conflict; replay → fresh reservation required | activation-denied / occurrence-conflict / replay-denied / registry-context-mismatch | WP-5B (evidence), WP-13 (occurrence) |
 | `orchestrationDecision` / `recordExecutionAttempt` (Slice 4) | Trusted operator / WP-13 execution recorder | Accepted activation + occurrence (+ attempt) | Accepted activation; occurrence exists | Correlation checks | Registry context | Activation, occurrence, grant | Host-side coordination lock (occurrence/attempt decision key) + publishRecord writer lock (§15) | Bounded orchestration-decision evidence; `ExecutionAttemptRecord` | WP-8 mechanical write-audit (D-6) | — | Duplicate attempt ordinal → attempt-conflict | occurrence-conflict / attempt-ordinal-conflict / store-failure | WP-13 (execution), WP-15 (receipt facts) |
@@ -407,7 +415,7 @@ follows the taxonomy's producer role and the ADR-011 responsibility table.
   the `RevocationRecord` publication (D-6); WP-12 publishes no separate
   `AuthoritativeAuditEvent` record (SCR-W12-001).
 
-## 11. RuntimeGrant + activation contract (settled now, implemented Slice 3)
+## 11. RuntimeGrant + activation contract (settled for implementation in Slice 3)
 
 - Subject: one exact `ExecutionBundle` revision (Decision 3 identity) +
   workspace + fresh reserved occurrence ID (`pgw:o:` + 32 lowercase hex)
@@ -1601,3 +1609,750 @@ build 2A `revoke` and 2B `verifyCurrentLifecycleState` without inventing
 any semantic decision. No ADR is created (ADR assessment unchanged from
 §25.25). This record is committed as the WP-12 Slice 2 contract
 baseline; it does NOT start implementation.
+
+## 26. Slice-3 clarification record (S3-D1…D8)
+
+### 26.0 Scope and status
+
+This record resolves the six operation-level Slice-3 decisions identified by
+the focused contract-clarification analysis (S3-D1…D6) plus two bounded
+derived clarifications (S3-D7 activation-limit consumption; S3-D8
+incomplete-activation recovery currentness). Scope: **documentation only**.
+NOT authorized by this record: Slice-3 implementation, any schema change,
+any new ADR, any public taxonomy expansion, any transport expansion, any
+execution authority expansion. No source/test/schema/fixture/package change
+was made. This record is appended to the accepted WP-12 pre-implementation
+contract. **Current Slice-3
+clarification baseline:** HEAD `598901832ed10eac399f8c17eee5c738b618fd88`
+(`feat: close WP-12 revocation and lifecycle verification slice 2`). The
+focused
+contract-clarification analysis returned `WP-12 SLICE 3 CONTRACT
+CLARIFICATION ANALYSIS COMPLETE — READY FOR DOCUMENTATION-ONLY CONTRACT
+CLARIFICATION`; Slice 3 is prerequisite-ELIGIBLE (Slice 1, Slice 2, WP-4,
+WP-6, WP-8 closed; WP-11 persistence explicitly NOT required for
+ExecutionBundle; WP-5B/WP-13 are consumers, not prerequisites). A focused
+senior contract review of §26 returned `WP-12 SLICE 3 CONTRACT
+CORRECTIONS REQUIRED` (SCR-W12-S3-001…009); the corrections are folded
+into this record (§26.26), and the focused senior contract rereview
+returned `WP-12 SLICE 3 CONTRACT FOCUSED REREVIEW ACCEPTED — READY FOR
+CONTRACT BASELINE CLOSURE` with 0 CRITICAL / 0 MAJOR / 0 MODERATE /
+0 MINOR new findings. This documentation commit closes the Slice-3
+CONTRACT baseline. Slice-3 IMPLEMENTATION remains NOT STARTED and NOT
+AUTHORIZED: a subsequent explicit human implementation authorization is
+still required.
+
+Preserved fixed boundaries (not reopened): RuntimeGrant ≠ issuance ≠
+activation ≠ execution; WP-12 never executes Pi and never activates
+pi-guard; no MCP lifecycle mutation surface; no CLI/HTTP/network transport;
+no generic filesystem authority; no repository-driven lifecycle authority;
+ExecutionBundle identity is digest/revision-based (path is never authority);
+WP-13 later owns exact bundle-content acquisition (SCR-W12-002); WP-5B owns
+pi-guard enforcement; one reserved occurrence ID → exactly one activation
+decision; denied activation is terminal; accepted activation publishes
+`ActivationRecord(accepted)` first, then `ExecutionOccurrenceRecord`;
+incomplete accepted transition fails closed; WP-12 coordination remains
+host-side/process-level (no new WP-8 filesystem lock protocol; no
+cross-process locking; accepted deployment model = one control-plane
+instance per store within the supported composition); Slice-2 verification
+evidence is non-authorizing; Slice-3 mutations re-read authoritative state.
+
+### 26.1 S3-D1 — coordination key composition
+
+Every Slice-3 mutation uses exactly ONE deterministic coordination key:
+the canonical ExecutionBundle subject/workspace key family already used by
+Slice 1/2 — `kindId|instanceId|revisionId|canonicalDigest|workspaceId`
+(§25.9 C5 family). **No reservation dimension is added.** The family
+applies to: `issueRuntimeGrant`; `decideActivation`; the normal accepted
+occurrence publication inside `decideActivation`; `createOccurrence`
+recovery; and `revoke(RuntimeGrant)`.
+
+For RuntimeGrant revocation, the target-derived coordination-key derivation
+(§25.9 C5 pre-lock locator read) gains a RuntimeGrant-shaped branch that
+derives the SAME key family from the target grant's `bundle` exact artifact
+reference (target_instance_id, target_revision_id, target_digest) plus
+`workspace_id`. RuntimeGrant revocation is never keyed by the grant record
+ID alone or by the occurrence ID alone. Multi-key locking is not added;
+WP-12 coordination locks are never nested; the fixed §15 order (coordination
+lock → re-read/revalidate → publishRecord → verify durability → release)
+is preserved; `publishRecord` retains its internal WP-8 filesystem writer
+lock unchanged.
+
+Rationale: (1) activation serializes DIRECTLY under the same bundle key
+with: bundle `ApprovalRecord` revocation, bundle `IssuanceRecord`
+revocation, `RuntimeGrant` revocation, and same-bundle
+activation/recovery/grant mutations — those keys are fixed to the
+subject/workspace family (§25.9) and carry no reservation dimension
+(a concurrently committing revocation could otherwise land between the
+activation's re-read and publication). MEMBER `ApprovalRecord` /
+MEMBER `IssuanceRecord` revocations use their MEMBER subject keys and
+therefore do NOT share the bundle coordination key; their concurrent race
+with activation is an accepted valid serial-order / point-of-use
+revalidation race: if the member revocation becomes durable before
+activation's authoritative revalidation observes it, activation denies;
+if activation completes first, the accepted historical activation remains
+historical; later authority-dependent point-of-use evaluation fails closed
+on the member revocation. Direct lock serialization is NOT claimed for
+member-record revokes. (2) activation must serialize with RuntimeGrant
+revocation — the grant-shaped revoke branch yields the same family;
+(3) same-bundle activations must serialize for `activation_limit`
+accounting (S3-D7) — concurrent same-bundle activations would otherwise
+both read the same use count; (4) recovery and activation must serialize;
+(5) unrelated bundles/workspaces remain independent. The single-key
+composition cannot create a coordination-lock cycle (exactly one key per
+mutation, never nested).
+
+Race outcomes under this rule: two `issueRuntimeGrant` calls for one
+reserved occurrence — impossible via internal allocation (§26.9); an
+allocated-ID collision with existing reservation state → `occurrence-conflict`;
+`issueRuntimeGrant` vs grant revocation — serialized; two `decideActivation`
+calls for one occurrence — serialized, second → `replay-denied`;
+`decideActivation` vs RuntimeGrant revocation — serialized (same family),
+revoke-first → denied decision, activation-first → historical fact;
+`decideActivation` vs BUNDLE approval/issuance revocation — serialized
+(same family); `decideActivation` vs MEMBER approval/issuance revocation
+— accepted serial-order race (member subject keys differ from the bundle
+key): member-revoke-first → activation's revalidation observes it →
+`activation-denied`; activation-first → accepted historical activation
+remains historical; later point-of-use evaluation fails closed on the
+member revocation; recovery vs activation — serialized;
+same bundle with two different occurrence IDs — serialized (required for
+S3-D7 counting; cost is process-local and negligible).
+
+### 26.2 S3-D2 — createOccurrence surface
+
+Normal occurrence creation is NOT a free-standing caller authority. For an
+accepted activation, `decideActivation` performs BOTH publications —
+(1) `ActivationRecord(accepted)`, (2) `ExecutionOccurrenceRecord` —
+internally and mandatorily under the SAME Slice-3 coordination lock
+(§15 SCR-W12-005 order).
+
+The named operation `createOccurrence` exists ONLY as an explicit recovery
+command for the accepted-but-incomplete transition:
+`ActivationRecord(accepted)` exists AND `ExecutionOccurrenceRecord` is
+missing. Exact-key recovery request: `operation = createOccurrence`;
+`workspaceId`; `registryEcho`; `reservedOccurrenceId`. NOT accepted from
+the caller: bundle subject, grant ID, issuance IDs, occurrence record ID,
+occurrence payload, registry authority, lifecycle state. Recovery
+authority: the host-asserted activation-authority role. No separate
+"control-plane role" is invented — `ExecutionOccurrenceRecord.responsible_role
+= 'trusted-control-plane'` is a schema record-field constant, not a host
+operator role token.
+
+Recovery preconditions (all must hold; §15): exactly one accepted
+`ActivationRecord` for `reservedOccurrenceId`; no competing
+`ActivationRecord`; no existing `ExecutionOccurrenceRecord` for that ID;
+exact historical grant correlation; exact bundle correlation; exact
+workspace correlation; valid record-shape/integrity; permitted registry
+publication context. Recovery NEVER: creates a new activation, allocates
+another occurrence ID, changes accepted→denied, changes grant authority,
+re-runs activation eligibility, retries execution, or executes Pi.
+
+### 26.3 S3-D3 — activation decision vs command rejection
+
+An activation request becomes an ACTUAL ACTIVATION DECISION only after all
+pre-decision correlation requirements succeed:
+
+- **A. Command boundary valid:** exact-key request; host context genuine;
+  activation role present; workspace resolves; registry echo valid and
+  matches; store state readable; coordination lock acquired.
+- **B. Genuine RuntimeGrant correlation:** grant exists; grant ID valid;
+  grant workspace matches; grant bundle matches the exact requested bundle;
+  grant `reserved_occurrence_id` matches the requested `reservedOccurrenceId`.
+- **C. Reservation undecided:** no prior accepted `ActivationRecord`; no
+  prior denied `ActivationRecord`.
+- **D. Complete issuance correlation (PHASE 1 — trustworthy five-ID
+  correlation):** for each of the exactly five required subjects — (1)
+  bundle, (2) TaskSpec member, (3) AuthorityPolicy member, (4)
+  ContextManifest member, (5) CompletionContract member — derive exactly
+  ONE trusted IssuanceRecord by: exact canonical subject identity; exact
+  workspace; exact required activation use-class/scope; correct record
+  shape/integrity; no ambiguity among candidate records; and exact current
+  registry-recordability requirements needed for producing the
+  `ActivationRecord`. The derivation stage answers "can the
+  `ActivationRecord` truthfully and unambiguously bind five exact issuance
+  facts?" — it does NOT yet answer "are all five issuances currently
+  usable?". Issuance records are derived by EXACT HISTORICAL CORRELATION,
+  not by current-usability filtering.
+- **E. Lifecycle chain recordable in the accepted current registry
+  context** (REG rules; §25.15 chain-registry semantics).
+
+If ANY prerequisite A–E fails: **COMMAND REJECTION** → no `ActivationRecord`,
+no lifecycle write, no mechanical write-audit. Once A–E hold, evaluate all
+eight protocol activation checks (contract §11 "Activation prerequisites";
+`docs/design/trusted-lifecycle-protocol.md` — "Runtime Grant, Activation,
+Occurrence, Attempt, and Retry Protocol", Activation section). Current
+usability of the five correlated issuances (expired, effectively revoked,
+otherwise currently unusable) is a PHASE-2 eight-check eligibility matter,
+NOT a correlation failure. If ALL checks pass: **ACTIVATION DECISION =
+ACCEPTED** — publish (1)
+`ActivationRecord(accepted)`, (2) `ExecutionOccurrenceRecord`. If ANY of
+the eight eligibility checks fails after A–E hold: **ACTIVATION DECISION =
+DENIED** — publish exactly one `ActivationRecord(denied)` (no occurrence);
+public outcome `activation-denied`. The specific internal eight-check
+failure is never exposed as a new public token.
+
+### 26.4 S3-D3 — rejection mapping (no record)
+
+| Condition | Public result |
+|---|---|
+| Malformed request / unknown key | `request-invalid` |
+| Caller role assertion | `approver-not-independent` |
+| Missing activation authority | `lifecycle-state-missing` |
+| Malformed bundle subject request | `request-invalid` (Slice-1 mutation pattern; `subject-invalid` remains verify-scoped §23-B) |
+| Trusted subject evidence / digest correlation mismatch | `subject-invalid` |
+| Unknown workspace | `lifecycle-state-missing` |
+| Missing/malformed registry echo | `request-invalid` |
+| Registry echo mismatch | `registry-context-mismatch` |
+| Store/integrity failure | `store-failure` |
+| Coordination contention | `lock-conflict` |
+| Malformed grant ID | `request-invalid` |
+| Grant missing | `lifecycle-state-missing` |
+| Grant wrong workspace/bundle | `lifecycle-state-missing` (no existence disclosure) |
+| Reserved occurrence does not match grant | `lifecycle-state-missing` |
+| Prior terminal activation decision exists | `replay-denied` |
+| Chain registry incompatible (PHASE 1 recordability) | `registry-context-mismatch` |
+| Fewer than five required issuance records correlatable by exact historical correlation (PHASE 1; a required subject has zero correlatable issuance records) | `lifecycle-state-missing` (existing lifecycle mapping; no `ActivationRecord`) |
+| More than one ambiguously correlatable issuance for one required subject (PHASE 1; no deterministic unique correlation) | `lifecycle-conflict` (no `ActivationRecord`) |
+| Correlated issuance/approval currently expired, revoked, or otherwise unusable (PHASE 2 — post-correlation eligibility) | NOT a rejection: durable `ActivationRecord(denied)` → `activation-denied` |
+
+A denied `ActivationRecord` is NEVER built with fewer than the
+schema-required five issuance IDs, and an issuance ID is NEVER manufactured
+or selected by created_at ordering, record-ID ordering, first enumeration
+result, or newest record.
+
+### 26.5 S3-D3 — denied decision conditions
+
+**PHASE 1 vs PHASE 2 boundary (normative).** EXISTENCE/CORRELATION
+failure (a required issuance subject has zero correlatable records, an
+ambiguously conflicting set, wrong subject/workspace, malformed/untrusted
+record, or a registry-incompatible record that cannot validly participate
+in the current recorded decision) → COMMAND REJECTION, no `ActivationRecord`.
+CURRENTNESS/ELIGIBILITY failure after exact correlation (the five
+correlated issuance records exist but one or more is expired, effectively
+revoked, or otherwise currently unusable) → a real activation eligibility
+decision → durable `ActivationRecord(denied)` → `activation-denied`. The
+same principle applies to the exact supporting approval dependencies:
+approval existence/correlation failure → rejection; correlated approval
+currently revoked/unusable → denied decision.
+
+**Multiple-issuance ambiguity rule.** For one required exact subject: if
+multiple issuance records are historical but exactly ONE is the unique
+operation-correlated issuance according to the accepted scope/current
+lifecycle rules, use that one only if the existing lifecycle protocol
+deterministically identifies it — the accepted Slice-1/2
+current-record-selection primitive is reused, never a restated algorithm;
+created_at ordering, record-ID ordering, first enumeration result, and
+newest-record selection are prohibited. If more than one issuance remains
+simultaneously eligible/correlatable for the same required activation
+role: → `lifecycle-conflict` → command rejection → no `ActivationRecord`.
+
+After full correlation A–E succeeds, the following failures become
+`activation-denied` + `ActivationRecord(denied)` (recording the exact
+correlated grant ID, reserved occurrence ID, and five issuance IDs):
+RuntimeGrant revoked; RuntimeGrant expired; RuntimeGrant not yet valid;
+observed required approval revoked; observed required issuance expired or
+revoked; current policy/ceiling/grant intersection denies; requested
+authority would expand permitted authority; consumer/enforcement support
+unavailable; `activation_limit` exhausted; any other eight-check
+eligibility failure representable with the exact correlated five-issuance
+chain. Denied
+activation: creates no `ExecutionOccurrenceRecord`; closes the reservation
+terminally; closes the grant for activation/execution use (accepted
+protocol; ADR-011); can never later become accepted; a later activation
+decision requires a fresh grant and fresh reservation. `grant-expired` /
+`grant-revoked` remain available as the committed read-form categories
+(Decision 5: read forms refined in Slices 3–4); activation decisions
+return `activation-denied` for post-correlation denials.
+
+### 26.6 S3-D4 — issueRuntimeGrant narrowing
+
+Issue-time narrowing algorithm (no grant persisted with authority already
+known to exceed a current concrete ceiling):
+
+- `narrowed_constraints` must be schema-valid, NON-EMPTY (graph LFC-008),
+  duplicate-free, and composed only of accepted forms (`max-actions`,
+  `max-resources`, `read-only`, `require-exact-resource`). Unknown or
+  malformed constraint form → `request-invalid`.
+- **`max-actions` is the ONLY RuntimeGrant numeric constraint with an
+  accepted current WP-6 numeric ceiling comparison.** Requested
+  `max-actions N` must satisfy the accepted current WP-6 ceiling
+  comparison used by the existing point-of-use machinery
+  (LFC-008/AUT-001): N ≤ applicable current `globalActionCeiling` and
+  workspace `actionCeiling`. N exceeding an applicable concrete current
+  ceiling → `ceiling-denied`, no `RuntimeGrant`. Activation/point-of-use
+  re-evaluates the accepted current ceiling again.
+- **`max-resources` has NO authorized numeric ceiling comparison.**
+  `max-resources` is schema-admitted as a `RuntimeGrant` constraint form,
+  but: WP-6 currently defines NO numeric resource ceiling; AUT-001 does
+  NOT authorize comparison against `actionCeiling`; the accepted current
+  point-of-use implementation does NOT support `max-resources` as an
+  enforceable grant constraint and fails it closed as an
+  unsupported/unknown grant constraint under the accepted
+  LFC-008/SEC-003 machinery. Therefore, for Slice 3 under the CURRENT
+  accepted architecture: a requested `RuntimeGrant` containing
+  `max-resources` → `eligibility-denied` (the existing closed category
+  for unsupported grant-constraint semantics). The form is schema-valid,
+  so this is NOT `request-invalid` — the malformed-vs-unsupported
+  distinction is preserved. Supporting `max-resources` as an enforceable
+  numeric RuntimeGrant constraint in the future would require a
+  separately authorized resource-ceiling/enforcement contract; it is NOT
+  part of Slice 3. No resource ceiling is invented; no new token is
+  added.
+- Boolean forms `read-only` and `require-exact-resource` are narrowing
+  forms; they cannot expand authority by construction and remain enforced
+  at activation/point-of-use.
+- Policy prerequisite: the ExecutionBundle's `AuthorityPolicy` member
+  identity is DERIVED from the validated bundle model (never caller-
+  supplied); its lifecycle chain must be current (current approval, current
+  issuance, non-revoked, valid, correct workspace, current accepted
+  registry). Caller does not supply AuthorityPolicy identity or
+  approval/issuance IDs.
+- The full per-rule AuthorityPolicy intersection is NOT invented at grant
+  issue time (no accepted grant-level requested-use envelope exists).
+  Separation is explicit: `issueRuntimeGrant` establishes current
+  policy-chain eligibility, enforces current concrete WP-6 ceilings, and
+  persists only structurally narrowing grant constraints;
+  `decideActivation` performs the full current policy × grant × ceiling ×
+  consumer/enforcement intersection under activation check 7 using the
+  accepted WP-4 point-of-use machinery.
+
+### 26.7 S3-D5 — occurrence-conflict vs replay-denied
+
+Normative distinction: `occurrence-conflict` = the occurrence/reservation
+identity is structurally occupied, ambiguous, or conflicting with lifecycle
+facts (EXE-001/002 family, §13). `replay-denied` = a prior terminal
+activation decision already exists and the caller attempts to repeat or
+transition that same decision again (operational category).
+
+| State | Result |
+|---|---|
+| issueRuntimeGrant allocated ID collides with existing reservation/grant | `occurrence-conflict` |
+| Second grant for same reserved occurrence | `occurrence-conflict` |
+| decideActivation when accepted ActivationRecord already exists | `replay-denied` |
+| decideActivation when denied ActivationRecord already exists | `replay-denied` |
+| Retry accepted activation command unchanged | `replay-denied` |
+| Retry denied activation command unchanged | `replay-denied` |
+| decideActivation when occurrence already exists from the prior accepted transition | `replay-denied` |
+| createOccurrence recovery when occurrence already exists | `occurrence-conflict` |
+| Recovery with no accepted activation | `lifecycle-state-missing` |
+| Recovery with multiple competing activation records | `occurrence-conflict` |
+| Reserved occurrence correlated to another workspace | `lifecycle-state-missing` (non-disclosing) |
+| Grant expired/revoked while reservation remains undecided | activation decision proceeds to denied → `activation-denied` (NOT `replay-denied`) |
+
+No new replay/occurrence token is added.
+
+### 26.8 S3-D6 — request models
+
+`issueRuntimeGrant` exact-key untrusted request: `operation`; `subject`
+(canonical ExecutionBundle subject); `workspaceId`; `registryEcho`;
+`attemptLimit`; `validity`; `narrowedConstraints`. NOT accepted from the
+caller: occurrence ID, grant ID, ApprovalRecord IDs, IssuanceRecord IDs,
+AuthorityPolicy identity, bundle member identities, consumer support as
+lifecycle authority, configuration, ceilings, store, coordinator, trusted
+roles, record-ID source, clock, provenance. The caller proposes
+narrowing/correlation only; authority comes from host context + validated
+bundle model + authoritative lifecycle store + current WP-6 state.
+
+`decideActivation` exact-key untrusted request: `operation`; `subject`;
+`workspaceId`; `registryEcho`; `grantId`; `reservedOccurrenceId`.
+Caller-supplied `grantId` and `reservedOccurrenceId` are correlation
+operands only — they confer no authority and must correlate exactly to the
+authoritative RuntimeGrant record. Approval/issuance IDs remain
+store-derived (gate D).
+
+`createOccurrence` exact-key recovery request: `operation`; `workspaceId`;
+`registryEcho`; `reservedOccurrenceId`. No bundle subject, no grant ID, no
+issuance IDs are supplied; the exact accepted `ActivationRecord` is the
+authoritative recovery anchor; all record-construction fields are derived
+from trusted stored facts.
+
+### 26.9 Occurrence-ID allocation
+
+`issueRuntimeGrant` allocates `reservedOccurrenceId` INTERNALLY from the
+host-injected trusted identity source, format `pgw:o:` + 32 lowercase hex,
+under the Slice-3 coordination lock BEFORE `RuntimeGrant` publication.
+Immediately re-check under the lock that the allocated ID is not already
+bound by existing RuntimeGrant/ActivationRecord/occurrence state; collision
+→ `occurrence-conflict`, no `RuntimeGrant`. The caller can never supply an
+occurrence ID to `issueRuntimeGrant`; no caller/model can manufacture
+reservation authority by choosing a `pgw:o:` string. For deterministic
+tests, inject deterministic occurrence-ID generation through the trusted
+identity dependency (analogous to current deterministic record-ID
+generation); runtime authority is never weakened for testability.
+
+### 26.10 Grant validity
+
+`RuntimeGrant.validity` (`not_before`, `not_after`) are untrusted requested
+narrowing operands. Rules: both accepted trusted timestamp syntax;
+`not_before <= not_after`; malformed/reversed → `request-invalid`; future
+`not_before` allowed (grant unusable before `not_before`; derived
+currentness); equality at `not_before` and at `not_after` is valid; NO
+maximum duration is invented (no accepted source defines one). The grant
+validity window is NOT capped to approval/issuance validity by rewriting
+the requested value: if prerequisite lifecycle authority expires before
+`grant.not_after`, the grant record remains historical/validly shaped and
+point-of-use/activation current-state evaluation later fails closed (the
+accepted derived-currentness model; no automatic validity-truncation
+operation exists).
+
+### 26.11 Attempt limit
+
+`attemptLimit` is an untrusted requested narrowing operand, schema-bounded
+1–64 inclusive; malformed/out-of-range → `request-invalid`. The attempt
+allowance is per reserved occurrence. Activation itself does NOT consume an
+attempt; denied activation consumes zero attempts; actual
+`ExecutionAttemptRecord`s consume attempt allowance later in Slice 4
+(point-of-use EXE-005 counting). Slice 3 does NOT implement attempt
+consumption.
+
+### 26.12 S3-D7 — activation_limit consumption
+
+Bounded derived clarification (no committed rule existed). IssuanceRecord
+`activation_limit` for activation use is consumed by an ACCEPTED
+`ActivationRecord` whose `required_issuance_record_ids` contains the exact
+BUNDLE IssuanceRecord ID. Count scope: exact bundle IssuanceRecord ID;
+member issuance `activation_limit` values are NOT counted for bundle
+activation-use consumption. A denied `ActivationRecord` does NOT consume;
+an accepted `ActivationRecord` consumes one activation use from the moment
+that accepted record is durable (therefore an incomplete accepted
+transition — accepted record durable, occurrence missing — still consumes
+one use; recovery publication of the missing occurrence does NOT consume
+another). Historical accepted activations remain counted even after later
+grant/approval/issuance revocation or expiry (immutable historical facts).
+When the accepted-activation count for the exact bundle IssuanceRecord
+reaches `activation_limit`, the next fully correlated activation decision
+→ `ActivationRecord(denied)` → `activation-denied`. No mutable usage
+counter is invented; the count is always derived from immutable
+`ActivationRecord`s.
+
+### 26.13 S3-D8 — recovery currentness
+
+Bounded derived clarification. When `ActivationRecord(accepted)` is durable
+AND `ExecutionOccurrenceRecord` is missing, legal recovery does NOT
+re-decide activation authority: recovery verifies historical correlation
+only (§15 preconditions). Later RuntimeGrant expiry, RuntimeGrant
+revocation, approval revocation, issuance revocation, or current ceiling
+change does NOT prevent repair of the already-accepted historical
+transition; the repair appends the missing `ExecutionOccurrenceRecord` if
+the §15 recovery preconditions hold. Recovery MUST NOT reconsider
+accepted→denied, require the grant to still be currently usable, require
+approvals/issuances to still be current, widen authority, or begin
+execution. Reason: recovery completes an already-final historical
+lifecycle transition; it does not authorize a new activation (ADR-011:
+revocation after accepted activation does not erase the historical
+activation/occurrence).
+
+**Recovery-time graph-entry scoping (normative).** In the registry-rotation
+scenario — `ActivationRecord(accepted)` and `RuntimeGrant` created under
+registry A, crash before the occurrence, current host registry B, recovery
+command echo = B — the NEW `ExecutionOccurrenceRecord` is the lifecycle
+graph ENTRY candidate. The historical `ActivationRecord`, `RuntimeGrant`,
+and issuance records are supporting/correlation records; they are NOT
+independently reclassified as current REG entry authority under B for
+purposes of re-deciding activation. Recovery graph evaluation must NOT
+fail merely because the historical `ActivationRecord`/`RuntimeGrant`
+records bind registry A. Recovery verifies their historical integrity,
+exact correlation, the accepted decision, occurrence absence, and
+workspace/bundle/grant/reservation relationships. The new
+`ExecutionOccurrenceRecord` is produced under the current accepted
+publication registry context B. This does NOT make the historical
+grant/activation current under B — it only completes the immutable
+historical transition.
+
+### 26.14 Recovery registry precision
+
+Recovery verifies that the historical accepted `ActivationRecord`,
+`RuntimeGrant`, bundle, workspace, and stored registry correlations are
+internally consistent. The NEW `ExecutionOccurrenceRecord` is published
+under the current trusted host/store registry publication context per the
+accepted record-publication mechanism (new records bind current context —
+§25.10 C6 distinction). A later registry change never erases the accepted
+historical transition. `registryEcho` on the recovery command remains a
+REQUIRED correlation operand against the current host context; mismatch →
+`registry-context-mismatch`. Registry change is never used to re-decide
+activation authority.
+
+### 26.15 RuntimeGrant revocation extension
+
+Slice 3 extends the operational revoke target set to include `RuntimeGrant`
+(already present in the accepted RevocationRecord schema target enum),
+with operational scopes `all-uses` and `execution-use`. Slice-2 append-only
+semantics are reused unchanged: target immutable; exact-scope duplicate
+existence-based; effective `all-uses` subsumes `execution-use`; future
+`all-uses` does not subsume until effective; `effectiveAt <= trustedNow`
+(equality effective); historical old-registry targetability remains
+distinct from current usability. The RuntimeGrant-specific
+coordination-key derivation branch (D1) applies. `ResultPublicationRecord`
+revocation is NOT pulled forward into Slice 3.
+
+### 26.16 WP-5B activation evidence
+
+Complete accepted activation evidence is available ONLY after both
+`ActivationRecord(accepted)` and `ExecutionOccurrenceRecord` are durable
+and correlated. If the accepted activation is durable but the occurrence is
+missing, NO complete WP-5B activation evidence may be returned. Bounded
+accepted evidence may contain: `outcome = accepted`; `ActivationRecord` ID;
+`ExecutionOccurrenceRecord` ID; `RuntimeGrant` ID; `reservedOccurrenceId`;
+`workspaceId`; exact ExecutionBundle revision identity; registry id +
+digest. The five issuance IDs are NOT included unless a later accepted
+consumer contract requires them; raw lifecycle records are never included.
+Denied activation evidence is not PiEnforcementEvidence authority; it may
+contain bounded historical decision facts only.
+
+### 26.17 Deployment limitation
+
+Slice 3 does NOT add cross-process locking. Semantic uniqueness (one
+activation decision per reservation; grant-per-reservation) depends on the
+accepted supported deployment composition (one control-plane instance per
+store within the supported composition) PLUS the process-local decision
+coordinator. WP-8 record-ID uniqueness alone does NOT prove semantic
+activation uniqueness across multiple independent OS processes; this is
+NOT claimed and no cross-process locking is invented during Slice 3.
+
+### 26.18 Stale-wording resolution
+
+The §8 `issueRuntimeGrant` matrix failure-mode cell contained
+`reservation-invalid`, a token absent from the closed §13 taxonomy (same
+stale-matrix-wording pattern as §25.2 C1 `target-unknown`). Resolution
+(removed, not added): reservation-collision conditions map to
+`occurrence-conflict` (D5); malformed grant operands map to
+`request-invalid`. The §8 cell is corrected accordingly. No new token.
+
+### 26.19 Final Slice-3 operation/record matrix
+
+| Operation | Request operands | Trusted role | Coordination key | Records read | Records produced | Audit | Result category | Reservation effect | Grant effect | Retry/replay |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `issueRuntimeGrant` | operation, subject, workspaceId, registryEcho, attemptLimit, validity, narrowedConstraints | Grant authority (host) | Bundle subject/workspace family | Approvals, issuances, grants, activation/occurrence state (freshness), policy chain, WP-6 ceilings | Exactly one `RuntimeGrant` on success; zero on any failure | One WP-8 mechanical write-audit on success | `request-invalid` / `approver-not-independent` / `lifecycle-state-missing` / `approval-revoked` / `issuance-not-authorized` / `eligibility-denied` / `ceiling-denied` / `occurrence-conflict` / `registry-context-mismatch` / `store-failure` / `lock-conflict` / `internal-failure` | Fresh ID allocated; on success reservation becomes reserved/bound to the grant; collision → `occurrence-conflict` (unchanged) | On success grant active subject to validity/currentness; same reservation cannot receive another grant | Same reservation → `occurrence-conflict`; retry requires fresh reservation |
+| `decideActivation` | operation, subject, workspaceId, registryEcho, grantId, reservedOccurrenceId | Activation authority (host) | Bundle subject/workspace family | Validations, approvals, issuances, grant, revocations, activation/occurrence state, registry | Accepted: `ActivationRecord(accepted)` then `ExecutionOccurrenceRecord` (in that order); denied: exactly one `ActivationRecord(denied)`; rejection: none | Two write-audits on accepted; one on denied; zero on rejection | Per D3/D5 (rejections; `activation-denied`; `replay-denied`; `occurrence-conflict`; `registry-context-mismatch`; `store-failure`; `lock-conflict`) | Accepted → consumed; denied → terminally closed; rejection → unchanged | Accepted → consumed for activation transition; denied → terminally closed; rejection → unchanged | Re-decision → `replay-denied`; fresh reservation+grant required for another decision |
+| `createOccurrence` (recovery) | operation, workspaceId, registryEcho, reservedOccurrenceId | Activation authority (host) | Bundle subject/workspace family (derived from the accepted activation's bundle) | Accepted activation, grants, occurrence state, revocations, registry | Exactly one `ExecutionOccurrenceRecord` on valid repair; zero otherwise | One WP-8 mechanical write-audit on repair | `lifecycle-state-missing` / `occurrence-conflict` / `registry-context-mismatch` / `store-failure` / `lock-conflict` / `request-invalid` / `approver-not-independent` / `internal-failure` | Unchanged (already consumed by the accepted decision) | Unchanged | Repair once; further repair → `occurrence-conflict`; no new activation, no new occurrence ID, no `activation_limit` increment |
+
+### 26.20 Public taxonomy
+
+No public result token is added. Slice 3 uses only the existing closed WP-12
+taxonomy (§13), relevant tokens: `request-invalid`, `subject-invalid`,
+`approver-not-independent`, `eligibility-denied`, `ceiling-denied`,
+`lifecycle-state-missing`, `lifecycle-conflict`, `approval-revoked`,
+`issuance-not-authorized`, `grant-not-authorized`, `grant-expired`,
+`grant-revoked`, `activation-denied`, `occurrence-conflict`,
+`replay-denied`, `registry-context-mismatch`, `store-failure`,
+`lock-conflict`, `internal-failure`. NOT added: `reservation-reused`,
+`already-activated`, `already-denied`, `recovery-required`,
+`occurrence-already-created`, `activation-precondition-failed`,
+`reservation-invalid`.
+
+### 26.21 Minimum Slice-3 implementation test contract
+
+GRANT: genuine grant role; grant-role transport rejection
+(`approver-not-independent`); exact bundle + four-member lifecycle
+dependency; five issuance IDs store-derived by exact historical
+correlation (caller-supplied IDs rejected);
+missing/revoked/expired dependencies; narrowed-constraints success;
+concrete `max-actions` ceiling expansion denial (`ceiling-denied`);
+requested `max-resources` → `eligibility-denied` (schema-valid but
+unsupported — NOT `request-invalid`); malformed/empty/
+duplicate constraint rejection; validity bounds (future `not_before`,
+equality, reversed → `request-invalid`); attemptLimit 1 and 64 and
+out-of-range; internal occurrence-ID allocation; deterministic test
+identity source; occurrence collision; current registry; real RuntimeGrant
+publication; mechanical audit; RuntimeGrant revocation (grant-shaped revoke
+key equivalence with the grant's bundle subject/workspace key).
+
+ACTIVATION: each of the eight activation checks; accepted decision; denied
+decision; rejection-vs-denial boundary (D3 table); five-ID schema
+requirement (no denied record with fewer); PHASE 1 vs PHASE 2 boundary:
+expired-but-correlatable issuance → durable `ActivationRecord(denied)`
+(NOT rejection); revoked-but-correlatable issuance → durable denied
+decision (NOT rejection); missing/not-correlatable issuance → rejection
+(`lifecycle-state-missing`); ambiguous multiple correlatable issuances for
+one required subject → `lifecycle-conflict` rejection; no created_at /
+record-ID / first-enumeration / newest issuance selection; terminal denial
+(no occurrence,
+grant closed, replay-denied); accepted replay; denied replay; grant
+revoked/expired/not-yet-valid; approval revocation; issuance revocation;
+policy/ceiling/consumer mismatch; `activation_limit` counting; exhaustion;
+incomplete accepted transition counts as use; same-bundle concurrency; no
+Pi / no pi-guard.
+
+OCCURRENCE: accepted → exactly one occurrence; denied → zero; injected
+crash after accepted `ActivationRecord`; incomplete-state detection; no
+complete WP-5B evidence; `createOccurrence` legal repair; occurrence
+already exists; multiple activation records; no accepted activation;
+recovery after later grant expiry; recovery after grant revocation;
+recovery after approval/issuance revocation; no authority re-decision; no
+second activation; no new occurrence ID; `activation_limit` not
+double-counted; byte-identical historical records.
+
+REAL STORE: genuine WP-8 store coverage is mandatory (SCR-W12-S2-004
+precedent): primary publication; per-record mechanical audit;
+crash/recovery; exact stored correlations; real read/enumeration;
+lock-layout non-expansion; redaction; zero project-file mutation.
+Registry-rotation recovery (REQUIRED): (1) RuntimeGrant /
+`ActivationRecord(accepted)` created under registry A; (2) inject crash
+before `ExecutionOccurrenceRecord`; (3) host current accepted registry
+becomes B; (4) recovery request `registryEcho` = B; (5) recovery uses the
+historical activation/grant as supporting correlation; (6) the candidate
+occurrence is graph-entry scoped under B; (7) exactly one
+`ExecutionOccurrenceRecord` is appended; (8) the occurrence binds current
+publication registry B; (9) historical A records remain unchanged; (10) no
+activation re-decision occurs; (11) no complete evidence before repair;
+(12) complete bounded evidence only after repair; (13) later current
+point-of-use does NOT treat the historical grant (registry A) as current
+merely because recovery succeeded.
+
+STATIC: no direct fs; no network; no child_process; no Git; no MCP/CLI; no
+Pi; no pi-guard; no Slice-4 production; no package-root lifecycle authority
+export; no `./mcp` exposure. Primary publication allowlist after Slice-3
+implementation becomes exactly: `ValidationRecord`, `ApprovalRecord`,
+`IssuanceRecord`, `RevocationRecord`, `RuntimeGrant`, `ActivationRecord`,
+`ExecutionOccurrenceRecord`. No `ExecutionAttemptRecord` yet (Slice 4).
+
+### 26.22 Consistency assessment
+
+The complete contract was re-read after applying this record. Resolved
+stale prose: the §8 `issueRuntimeGrant` failure-mode cell
+(`reservation-invalid` removed, §26.18); §15's "as applicable" coordination
+key language is now fixed by §26.1 (subject/workspace family for all
+Slice-3 mutations). All other occurrences of `issueRuntimeGrant`,
+`decideActivation`, `createOccurrence`, occurrence/reservation semantics,
+`replay-denied`, `occurrence-conflict`, `activation_limit`,
+`attempt_limit`, `narrowed_constraints`, validity, recovery, WP-5B/WP-13
+handoffs, RuntimeGrant revocation, process-local coordination, and
+`publishRecord` behavior are consistent with §26. No contradictory
+operational model remains.
+
+Post-correction pass (SCR-W12-S3-001…009): the complete contract was
+re-read again after the focused corrections. One normative answer now
+exists for the expired-but-correlatable member issuance case: an exactly
+correlated historical issuance exists → the five-ID chain MAY be formed
+(PHASE 1) → its currentness failure is evaluated after correlation as a
+PHASE-2 eligibility check → durable `activation-denied` decision,
+provided all other A–E recordability prerequisites hold. No wording
+remains that classifies expired/revoked-but-correlatable issuances as
+rejection; `max-resources` is nowhere compared against an action ceiling;
+member-revoke races are nowhere described as lock-serialized; the
+recovery graph-entry scoping rule is stated once in §26.13 and applied in
+the test contract (§26.21). No contradictory operational model remains.
+
+### 26.23 ADR assessment
+
+No new ADR is created or required. S3-D1…D8 are operation-level
+clarifications within already accepted WP-12 scope, ADR-002, ADR-011,
+ADR-023, ADR-027, the trusted-lifecycle protocol, and the accepted WP-8
+persistence model. They create no new cross-work-package architectural
+boundary, no transport, no execution authority, and no taxonomy change.
+
+### 26.24 Implementation-readiness statement
+
+**YES** — an implementer can now build `issueRuntimeGrant` →
+`decideActivation` → normal accepted occurrence publication +
+`createOccurrence` crash recovery without inventing semantics, provided
+S3-D1…D8 are internally consistent (assessed consistent in §26.22).
+Slice-3 implementation remains UNAUTHORIZED pending focused senior
+contract review of this record and subsequent explicit human
+implementation authorization.
+
+### 26.25 State
+
+This record is documentation only. No source/test/schema/fixture/package/
+generated/runtime change was made; nothing was staged or committed; no
+Slice-3 implementation was started; no Slice 4/WP-5B/WP-13/WP-14/WP-15
+work was started. The focused senior contract rereview ACCEPTED this
+record (`WP-12 SLICE 3 CONTRACT FOCUSED REREVIEW ACCEPTED — READY FOR
+CONTRACT BASELINE CLOSURE`; 0 CRITICAL / 0 MAJOR / 0 MODERATE / 0 MINOR
+new findings; SCR-W12-S3-001…009 all CLOSED, §26.26). This documentation
+commit establishes the Slice-3 contract baseline. Slice-3 implementation
+remains NOT STARTED and requires a separate explicit human implementation
+authorization.
+
+Recommended next gate: `WP-12 SLICE 3 IMPLEMENTATION AUTHORIZATION`
+(after contract baseline closure).
+
+### 26.26 Focused senior contract review corrections (SCR-W12-S3-001…009)
+
+The focused senior contract review of §26 returned `WP-12 SLICE 3
+CONTRACT CORRECTIONS REQUIRED` with 2 MODERATE (SCR-W12-S3-001,
+SCR-W12-S3-002) and 7 MINOR (SCR-W12-S3-003…009) findings. All are closed
+by the corrections folded into §26 above; the focused senior contract
+rereview returned `WP-12 SLICE 3 CONTRACT FOCUSED REREVIEW ACCEPTED —
+READY FOR CONTRACT BASELINE CLOSURE` with zero new findings. No
+implementation is authorized by this record.
+
+- **SCR-W12-S3-001 — CLOSED (MODERATE).** Five-issuance derivation split
+  into PHASE 1 (trustworthy five-ID correlation by exact historical
+  correlation: exact subject, workspace, required activation use-class/
+  scope, shape/integrity, no ambiguity, registry-recordability) vs PHASE 2
+  (current usability of the correlated issuances evaluated as part of the
+  eight activation checks). Existence/correlation failure → rejection
+  (`lifecycle-state-missing` / `lifecycle-conflict` /
+  `registry-context-mismatch` / `store-failure` per the §26.4 mapping);
+  currentness failure after exact correlation (expired/effectively
+  revoked/otherwise unusable) → durable `ActivationRecord(denied)` →
+  `activation-denied`. Superseded wording: §26.3 gate D "enumerable";
+  §26.4 "five required CURRENT issuance records correlatable"; all
+  wording implying current issuance must exist before a decision.
+  Multiple-issuance ambiguity: exactly one deterministically identified
+  correlation per the accepted Slice-1/2 current-record-selection
+  primitive; otherwise `lifecycle-conflict` rejection; no
+  created_at/record-ID/first-enumeration/newest selection. No ADR
+  required.
+- **SCR-W12-S3-002 — CLOSED (MODERATE).** The invented
+  `max-resources ≤ global/workspace action ceiling` comparison is
+  removed — no accepted source maps `max-resources` to action ceilings.
+  `max-actions` is the ONLY RuntimeGrant numeric constraint with the
+  accepted current WP-6 ceiling comparison (LFC-008/AUT-001; violation →
+  `ceiling-denied`). `max-resources` is schema-admitted but unsupported
+  under the current accepted architecture (no numeric resource ceiling;
+  point-of-use fails it closed under LFC-008/SEC-003); a requested grant
+  containing `max-resources` → `eligibility-denied` (unsupported, not
+  malformed — the malformed-vs-unsupported distinction is preserved).
+  Future numeric resource-ceiling enforcement requires a separately
+  authorized contract; NOT part of Slice 3. No resource ceiling invented;
+  no new token. No ADR required.
+- **SCR-W12-S3-003 — CLOSED (MINOR).** Stale citation corrected: the
+  eight activation checks are referenced to contract §11
+  ("Activation prerequisites") and
+  `docs/design/trusted-lifecycle-protocol.md` (Runtime Grant, Activation,
+  Occurrence, Attempt, and Retry Protocol — Activation section), not
+  §16. No ADR required.
+- **SCR-W12-S3-004 — CLOSED (MINOR).** §11 heading changed from
+  "(settled now, implemented Slice 3)" to "(settled for implementation in
+  Slice 3)" — no implementation implication remains. No ADR required.
+- **SCR-W12-S3-005 — CLOSED (MINOR).** The original contract baseline is
+  marked "Original pre-implementation contract baseline (historical):
+  HEAD 9695c5…"; the current Slice-3 clarification baseline
+  `598901832ed10eac399f8c17eee5c738b618fd88` is stated in §26.0.
+  Historical provenance is not rewritten. No ADR required.
+- **SCR-W12-S3-006 — CLOSED (MINOR).** §8 `issueRuntimeGrant` subject
+  cell clarified: subject = exact ExecutionBundle revision; the reserved
+  occurrence ID is internally allocated by issueRuntimeGrant (§26.9),
+  part of the produced grant binding, never a caller request operand. No
+  ADR required.
+- **SCR-W12-S3-007 — CLOSED (MINOR).** Recovery-time graph-entry scoping
+  recorded (§26.13): the NEW `ExecutionOccurrenceRecord` is the graph
+  ENTRY candidate; historical ActivationRecord/RuntimeGrant/issuance
+  records are supporting/correlation records, never reclassified as
+  current REG entry authority; recovery graph evaluation does not fail
+  merely because historical records bind an earlier registry; the new
+  occurrence is produced under the current accepted publication registry
+  context; historical records are not made current. No ADR required.
+- **SCR-W12-S3-008 — CLOSED (MINOR).** D1 race wording corrected: direct
+  same-key serialization is claimed only for bundle ApprovalRecord
+  revocation, bundle IssuanceRecord revocation, RuntimeGrant revocation,
+  and same-bundle activation/recovery/grant mutations. MEMBER
+  approval/issuance revocations use member subject keys and do NOT share
+  the bundle key; their race with activation is an accepted valid
+  serial-order / point-of-use revalidation race (member-revoke-first →
+  `activation-denied`; activation-first → historical; later point-of-use
+  fails closed). No ADR required.
+- **SCR-W12-S3-009 — CLOSED (MINOR).** Explicit real WP-8
+  registry-rotation recovery test (A → B) added to the test contract
+  (§26.21): graph-entry-scoped candidate under B; historical A records
+  supporting-only; exactly one occurrence appended binding B; no
+  re-decision; no complete evidence before repair; complete evidence
+  only after repair; later point-of-use does not treat the historical
+  A grant as current. No ADR required.
+
+No ADR is required for this correction path. Specifically,
+SCR-W12-S3-002 is resolved by REMOVING the invented
+max-resources/action-ceiling comparison, not by introducing a numeric
+resource-ceiling feature.

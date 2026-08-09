@@ -26,6 +26,46 @@ export type { PiPackageInspection } from './host-harness.js';
 export { TRUSTED_ADAPTER_PREAMBLE, renderPrompt, renderTaskSection, renderContextInventory, renderContextBlock, renderCompletionCriteria, renderCorrelationFooter } from './render.js';
 export { manifestEntries, correlateContextItems } from './context.js';
 export { piFinding, sortFindings as sortPiFindings } from './findings.js';
+// WP-5B — pi-guard enforcement / activation-evidence integration.
+export {
+  runTrustedEnforcement,
+  buildTrustedProjection,
+  surfaceStable,
+  computeInventoryFingerprint as guardInventoryFingerprint,
+  GOLDEN_VECTOR_DIGEST,
+  GOLDEN_VECTOR_ENTRIES,
+  observeEffectiveSurface,
+  verifyTrustedProjectionApi,
+  guardCompatibilityFingerprint,
+  inspectGuardPackage,
+  projectAllowedAndDenied,
+  capabilityToProfileKind,
+  computePlanFingerprint,
+  computePlanIdentity,
+  computeEffectiveAuthorityIdentity,
+  computeConsumerDeclarationIdentity,
+  computeEnforcementConfigurationIdentity,
+  computeProjectionIdentity,
+  buildEvidence,
+  computeEvidenceFingerprint,
+  PI_GUARD_VERSION,
+  PI_GUARD_RELEASE_COMMIT,
+  PI_GUARD_RELEASE_TAG,
+  PI_GUARD_VERIFIED_LANE,
+} from './enforcement/index.js';
+export type {
+  PiEnforcementEvidence,
+  GuardEnforcementInput,
+  GuardEnforcementRunResult,
+  GuardActivationDecision,
+  GuardCompatibilityResult,
+  GuardPackageInspection,
+  EffectiveToolSurface,
+  EffectiveToolEntry,
+  TrustedProjectionApi,
+  GuardFinding,
+  GuardProjectionResult as GuardEnforcementProjectionResult,
+} from './enforcement/types.js';
 export type {
   PiAdapterLimits,
   PiCapabilityCompatibility,

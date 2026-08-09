@@ -247,6 +247,50 @@ export function buildExecutionOccurrenceRecordPayload(input: ExecutionOccurrence
   });
 }
 
+export interface ExecutionAttemptRecordPayloadInput {
+  readonly recordId: string;
+  readonly createdAt: string;
+  /** The exact accepted ActivationRecord identity (store-derived from the occurrence). */
+  readonly activationRecordId: string;
+  /** The exact reserved occurrence identity (the occurrence anchor; NEVER re-allocated). */
+  readonly occurrenceId: string;
+  /** The internally allocated attempt identity (`pgw:a:` + 32 lowercase hex; §27.2). */
+  readonly attemptId: string;
+  /** The validated ordinal (caller-proposed; must equal durable count + 1; §27.3). */
+  readonly ordinal: number;
+  /** The exact ExecutionBundle reference (byte-identical reuse from the occurrence). */
+  readonly bundle: Readonly<Record<string, unknown>>;
+  readonly workspaceId: string;
+  /** The exact correlated RuntimeGrant record identity (store-derived from the occurrence). */
+  readonly runtimeGrantId: string;
+  readonly registry: AcceptedRegistryContext;
+}
+
+/**
+ * ExecutionAttemptRecord payload (immutable historical attempt-start fact; the
+ * durable orchestration decision, §27.1). Constructed strictly from the
+ * accepted execution-attempt-record schema: no receipt, result, summary,
+ * path, authority token, or mutable allowance state is added. The
+ * `responsible_role` constant 'trusted-execution-recorder' is a schema
+ * record field, never a host operator role token (§27.2).
+ */
+export function buildExecutionAttemptRecordPayload(input: ExecutionAttemptRecordPayloadInput): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    record_type: 'ExecutionAttemptRecord',
+    record_id: input.recordId,
+    created_at: input.createdAt,
+    responsible_role: 'trusted-execution-recorder',
+    registry_snapshot_reference: registryReferenceFor(input.registry),
+    activation_record_id: input.activationRecordId,
+    occurrence_id: input.occurrenceId,
+    attempt_id: input.attemptId,
+    ordinal: input.ordinal,
+    bundle: Object.freeze({ ...input.bundle }),
+    workspace_id: input.workspaceId,
+    runtime_grant_id: input.runtimeGrantId,
+  });
+}
+
 /** Keys excluded from decision-content identity (record identity/creation time). */
 const DECISION_CONTENT_IGNORED_KEYS: ReadonlySet<string> = new Set(['record_id', 'created_at']);
 

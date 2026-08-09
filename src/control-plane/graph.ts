@@ -133,6 +133,36 @@ export function mapActivationGraphFindings(findings: readonly Finding[]): Slice1
   return 'eligibility-denied';
 }
 
+/**
+ * Map accepted graph findings to the closed Slice-4 attempt taxonomy
+ * (§27.6). REG findings → registry-context-mismatch; EXE-003/EXE-004
+ * (occurrence/attempt correlation failures) → occurrence-conflict;
+ * EXE-005/EXE-006 (ordinal sequence/allowance/retry-substitution) →
+ * attempt-ordinal-conflict; LFC chain-breakage findings →
+ * lifecycle-state-missing (folded: the attempt surface never exposes
+ * issuance-not-authorized); any other finding → eligibility-denied.
+ * Point-of-use currentness (LFC-007/EXE-007) is decided by the accepted
+ * machinery at the operation layer and never reaches this mapping.
+ *
+ * EXE-008 (attempt receipt facts) is deliberately NOT an attempt-START gate
+ * rule: receipt production is WP-15-owned (§9) and absent by design
+ * at Slice-4 attempt recording (§27.4 names EXE-004/005/006 as the
+ * attempt-start graph rules; the receipt-facts rule is a post-execution /
+ * WP-15 evaluation concern). Pure EXE-008 findings are therefore filtered
+ * here so the accepted graph remains the single evaluation authority
+ * without importing a WP-15 prerequisite into attempt start; findings that
+ * carry EXE-008 alongside a gate rule are decided by the gate rule.
+ */
+export function mapAttemptGraphFindings(findings: readonly Finding[]): Slice1FailureCategory | undefined {
+  const gateFindings = findings.filter((f) => !(f.ruleIds.length === 1 && f.ruleIds.includes('EXE-008')));
+  if (gateFindings.length === 0) return undefined;
+  if (gateFindings.some(isRegistryFinding)) return 'registry-context-mismatch';
+  if (gateFindings.some((f) => f.ruleIds.includes('EXE-003') || f.ruleIds.includes('EXE-004'))) return 'occurrence-conflict';
+  if (gateFindings.some((f) => f.ruleIds.includes('EXE-005') || f.ruleIds.includes('EXE-006'))) return 'attempt-ordinal-conflict';
+  if (gateFindings.some((f) => isLfcFinding(f, 'LFC-001') || isLfcFinding(f, 'LFC-002') || isLfcFinding(f, 'LFC-003') || isLfcFinding(f, 'LFC-004'))) return 'lifecycle-state-missing';
+  return 'eligibility-denied';
+}
+
 /** Deterministic key ordering for a stable map projection (no collision in practice). */
 export function artifactModelMaps(
   subject: Readonly<{ instanceId: string; revisionId: string }>,

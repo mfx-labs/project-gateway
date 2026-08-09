@@ -37,7 +37,7 @@ export const SLICE_1_KIND_IDS = ['TaskSpec', 'AuthorityPolicy', 'ContextManifest
 export type Slice1KindId = (typeof SLICE_1_KIND_IDS)[number];
 
 /** Slice-1 family operations + Slice 2A revoke + Slice 2B verify + Slice-3A issueRuntimeGrant. */
-export const SLICE_1_OPERATIONS = ['recordValidation', 'approve', 'issue', 'revoke', 'verifyCurrentLifecycleState', 'issueRuntimeGrant', 'decideActivation', 'createOccurrence'] as const;
+export const SLICE_1_OPERATIONS = ['recordValidation', 'approve', 'issue', 'revoke', 'verifyCurrentLifecycleState', 'issueRuntimeGrant', 'decideActivation', 'createOccurrence', 'orchestrationDecision', 'recordExecutionAttempt'] as const;
 export type Slice1Operation = (typeof SLICE_1_OPERATIONS)[number];
 
 /**
@@ -123,8 +123,12 @@ export const RUNTIME_GRANT_CLASS = 'runtime-grant' as const;
 export const ACTIVATION_RECORD_CLASS = 'activation-record' as const;
 /** The Slice-3B primary publication class for execution occurrences. */
 export const EXECUTION_OCCURRENCE_RECORD_CLASS = 'execution-occurrence-record' as const;
+/** The Slice-4 primary publication class for execution attempts. */
+export const EXECUTION_ATTEMPT_RECORD_CLASS = 'execution-attempt-record' as const;
 /** Closed occurrence identity syntax (accepted schema: `pgw:o:` + 32 lowercase hex). */
 export const OCCURRENCE_ID_RE = /^pgw:o:[0-9a-f]{32}$/;
+/** Closed attempt identity syntax (accepted schema: `pgw:a:` + 32 lowercase hex; §27.2). */
+export const ATTEMPT_ID_RE = /^pgw:a:[0-9a-f]{32}$/;
 /** RuntimeGrant attempt allowance bounds (schema bounds; contract §26.11). */
 export const ATTEMPT_LIMIT_MIN = 1;
 export const ATTEMPT_LIMIT_MAX = 64;
@@ -204,6 +208,8 @@ export interface Slice1Request {
   readonly grantId?: string;
   /** decideActivation / createOccurrence only: untrusted reserved-occurrence correlation operand. */
   readonly reservedOccurrenceId?: string;
+  /** recordExecutionAttempt only: untrusted caller-proposed attempt ordinal (positive integer; §27.3). */
+  readonly ordinal?: number;
 }
 
 // ─── accepted WP-4 validation evidence (host-injected) ─────────────────────
@@ -284,6 +290,8 @@ export interface ControlPlaneOperatorContext {
   readonly grantRole?: boolean;
   /** Activation authority exists only when the host asserts this role (Slice 3B; never request-supplied). */
   readonly activationRole?: boolean;
+  /** Execution-recorder authority exists only when the host asserts this role (Slice 4; §27.2; never request-supplied). */
+  readonly executionRecorderRole?: boolean;
   /** Host-owned operational attribution; never itself authority. */
   readonly operatorIdentity: string;
 }
@@ -300,6 +308,12 @@ export interface ControlPlaneIdentitySource {
    * (contract §26.9); never a caller operand.
    */
   readonly newOccurrenceId: () => string;
+  /**
+   * Fresh opaque attempt identity (`pgw:a:<32 lowercase hex>`); allocated
+   * INTERNALLY by recordExecutionAttempt under the coordination lock
+   * (contract §27.2); never a caller operand.
+   */
+  readonly newAttemptId: () => string;
 }
 
 /** Host-owned approval decision defaults (trusted issuance-side operands). */
@@ -361,13 +375,14 @@ export type Slice1FailureCategory =
   | 'issuance-not-authorized'
   | 'already-issued'
   | 'occurrence-conflict'
+  | 'attempt-ordinal-conflict'
   | 'replay-denied'
   | 'registry-context-mismatch'
   | 'store-failure'
   | 'lock-conflict'
   | 'internal-failure';
 
-export type Slice1Outcome = 'recorded' | 'approved' | 'issued' | 'revoked' | 'verified' | 'granted' | 'activated' | 'recovered';
+export type Slice1Outcome = 'recorded' | 'approved' | 'issued' | 'revoked' | 'verified' | 'granted' | 'activated' | 'recovered' | 'orchestrated' | 'attempt-recorded';
 
 /** Bounded deterministic success evidence (identity/digest facts only). */
 export interface Slice1Success {
@@ -435,6 +450,25 @@ export interface Slice1Success {
     readonly occurrenceAuditEventId?: string;
     /** createOccurrence recovery: the exact accepted ActivationRecord anchor. */
     readonly activationRecordId?: string;
+    // ── Slice-4 orchestration/attempt evidence (outcomes 'orchestrated' / 'attempt-recorded') ──
+    // Bounded deterministic correlation facts only (§27.7): the stored
+    // ExecutionOccurrenceRecord / ExecutionAttemptRecord are authoritative;
+    // this evidence is correlation data for WP-13's execution start and is
+    // NEVER transferable authority. No raw record payload, role, store
+    // path, config, or coordinator is returned.
+    /** The internally allocated attempt identity (pgw:a:). */
+    readonly attemptId?: string;
+    /** The proposed/recorded attempt ordinal. */
+    readonly ordinal?: number;
+    /** recordExecutionAttempt only: the durable ExecutionAttemptRecord identity. */
+    readonly attemptRecordId?: string;
+    readonly attemptRecordClass?: string;
+    readonly attemptRecordDigest?: string;
+    readonly attemptAuditEventId?: string;
+    /** orchestrationDecision only: derived grant currentness fact (non-revoked, within validity). */
+    readonly grantCurrent?: boolean;
+    /** orchestrationDecision only: derived remaining allowance (attempt_limit minus durable attempt count). */
+    readonly remainingAllowance?: number;
   };
 }
 

@@ -53,7 +53,7 @@ import {
 import type { RuntimeGrantConstraint } from './types.js';
 
 /** Exact key set of the whole request (union; per-operation subsets enforced). */
-const REQUEST_KEYS: ReadonlySet<string> = new Set(['operation', 'subject', 'workspaceId', 'purpose', 'useClass', 'validationRecordIds', 'reason', 'targetRecordType', 'targetRecordId', 'scope', 'effectiveAt', 'reasonCode', 'registryEcho', 'capabilityRequirements', 'consumerSupport', 'attemptLimit', 'validity', 'narrowedConstraints', 'grantId', 'reservedOccurrenceId']);
+const REQUEST_KEYS: ReadonlySet<string> = new Set(['operation', 'subject', 'workspaceId', 'purpose', 'useClass', 'validationRecordIds', 'reason', 'targetRecordType', 'targetRecordId', 'scope', 'effectiveAt', 'reasonCode', 'registryEcho', 'capabilityRequirements', 'consumerSupport', 'attemptLimit', 'validity', 'narrowedConstraints', 'grantId', 'reservedOccurrenceId', 'ordinal']);
 /** Exact key set of the canonical subject operand (Decision 3 identity + workspace). */
 const SUBJECT_KEYS: ReadonlySet<string> = new Set(['protocolId', 'protocolVersion', 'kindId', 'kindVersion', 'instanceId', 'revisionId', 'digest', 'workspaceId']);
 /** Exact key set of the untrusted registry-context correlation echo. */
@@ -69,6 +69,8 @@ const OPERATION_KEYS: Readonly<Record<Slice1Operation, ReadonlySet<string>>> = {
   issueRuntimeGrant: new Set(['operation', 'subject', 'workspaceId', 'registryEcho', 'attemptLimit', 'validity', 'narrowedConstraints']),
   decideActivation: new Set(['operation', 'subject', 'workspaceId', 'registryEcho', 'grantId', 'reservedOccurrenceId']),
   createOccurrence: new Set(['operation', 'workspaceId', 'registryEcho', 'reservedOccurrenceId']),
+  orchestrationDecision: new Set(['operation', 'workspaceId', 'registryEcho', 'reservedOccurrenceId']),
+  recordExecutionAttempt: new Set(['operation', 'workspaceId', 'registryEcho', 'reservedOccurrenceId', 'ordinal']),
 };
 
 /** Exact key set of the untrusted RuntimeGrant validity window operand. */
@@ -101,6 +103,8 @@ const ROLE_ASSERTION_KEYS: ReadonlySet<string> = new Set([
   'runtimeGrantAuthority',
   'activationRole',
   'activationAuthority',
+  'executionRecorderRole',
+  'executionRecorderAuthority',
 ]);
 
 export type RequestRejectReason =
@@ -129,7 +133,8 @@ export type RequestRejectReason =
   | 'validity'
   | 'narrowed-constraints'
   | 'grant-id'
-  | 'occurrence-id';
+  | 'occurrence-id'
+  | 'ordinal';
 
 export type RequestParseResult =
   | { readonly ok: true; readonly request: Slice1Request }
@@ -525,6 +530,43 @@ export function captureSlice1Request(input: unknown): RequestParseResult {
     if (typeof reservedOccurrenceId !== 'string' || !OCCURRENCE_ID_RE.test(reservedOccurrenceId)) return { ok: false, reason: 'occurrence-id' };
     const echoParsed = parseRegistryEcho(snapshot['registryEcho']);
     if (!echoParsed.ok || echoParsed.echo === undefined) return { ok: false, reason: 'registry-echo' };
+    return {
+      ok: true,
+      request: Object.freeze({
+        operation: op,
+        workspaceId,
+        registryEcho: echoParsed.echo,
+        reservedOccurrenceId,
+      }),
+    };
+  }
+
+  if (op === 'orchestrationDecision' || op === 'recordExecutionAttempt') {
+    // Slice-4 (S4-D2): the occurrence is the caller correlation anchor ONLY;
+    // activation/grant/bundle/lifecycle authority is store-derived from the
+    // exact ExecutionOccurrenceRecord. recordExecutionAttempt additionally
+    // accepts the untrusted caller-proposed ordinal (WP-13 owns attempt
+    // ordering; WP-12 validates it). The attempt ID is never a caller
+    // operand; roles/consumer support/policy/record IDs are never caller
+    // operands.
+    const reservedOccurrenceId = snapshot['reservedOccurrenceId'];
+    if (typeof reservedOccurrenceId !== 'string' || !OCCURRENCE_ID_RE.test(reservedOccurrenceId)) return { ok: false, reason: 'occurrence-id' };
+    const echoParsed = parseRegistryEcho(snapshot['registryEcho']);
+    if (!echoParsed.ok || echoParsed.echo === undefined) return { ok: false, reason: 'registry-echo' };
+    if (op === 'recordExecutionAttempt') {
+      const ordinal = snapshot['ordinal'];
+      if (typeof ordinal !== 'number' || !Number.isSafeInteger(ordinal) || ordinal < 1) return { ok: false, reason: 'ordinal' };
+      return {
+        ok: true,
+        request: Object.freeze({
+          operation: op,
+          workspaceId,
+          registryEcho: echoParsed.echo,
+          reservedOccurrenceId,
+          ordinal,
+        }),
+      };
+    }
     return {
       ok: true,
       request: Object.freeze({

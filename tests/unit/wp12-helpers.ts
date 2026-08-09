@@ -218,12 +218,14 @@ export interface DeterministicIdentity {
   readonly nowUtcIso: () => string;
   readonly newRecordId: () => string;
   readonly newOccurrenceId: () => string;
+  readonly newAttemptId: () => string;
   readonly sequence: () => number;
 }
 
 export function makeIdentitySource(now: string = FIXED_NOW): DeterministicIdentity {
   let n = 0;
   let o = 0;
+  let a = 0;
   return {
     nowUtcIso: () => now,
     newRecordId: () => {
@@ -233,6 +235,10 @@ export function makeIdentitySource(now: string = FIXED_NOW): DeterministicIdenti
     newOccurrenceId: () => {
       o += 1;
       return `pgw:o:${o.toString(16).padStart(32, '0')}`;
+    },
+    newAttemptId: () => {
+      a += 1;
+      return `pgw:a:${a.toString(16).padStart(32, '0')}`;
     },
     sequence: () => n,
   };
@@ -303,6 +309,7 @@ export interface ContextOverrides {
   readonly revokerRole?: boolean;
   readonly grantRole?: boolean;
   readonly activationRole?: boolean;
+  readonly executionRecorderRole?: boolean;
   readonly operatorIdentity?: string;
   readonly validationEvidence?: AcceptedValidationEvidence;
   readonly subjectArtifact?: ValidatedArtifact;
@@ -324,6 +331,7 @@ export function makeContext(env: StoreEnv, overrides: ContextOverrides = {}): Co
       revokerRole: overrides.revokerRole ?? false,
       ...(overrides.grantRole !== undefined ? { grantRole: overrides.grantRole } : {}),
       ...(overrides.activationRole !== undefined ? { activationRole: overrides.activationRole } : {}),
+      ...(overrides.executionRecorderRole !== undefined ? { executionRecorderRole: overrides.executionRecorderRole } : {}),
       operatorIdentity: overrides.operatorIdentity ?? 'test-operator',
     },
     store: overrides.store ?? makeStoreBoundary(env),
@@ -684,5 +692,169 @@ function subjectOperandOf(subject: CanonicalSubject): Record<string, unknown> {
     revisionId: subject.revisionId,
     digest: subject.digest,
     workspaceId: subject.workspaceId,
+  };
+}
+
+// ─── Slice-4 activated-occurrence seeding (genuine command flow) ────────────
+
+/** A genuine activated occurrence on a real store (full Slice-3 command flow). */
+export interface ActivatedOccurrenceSeed {
+  readonly grantId: string;
+  readonly reservedOccurrenceId: string;
+  readonly activationRecordId: string;
+  readonly occurrenceRecordId: string;
+}
+
+/** Default attempt-friendly consumer support (workspace-read supported). */
+export function makeAttemptConsumerSupport(): ConsumerSupportDeclaration {
+  return Object.freeze({
+    consumerId: 'test-consumer',
+    supportedProtocolFeatures: [],
+    supportedConsumerCapabilities: ['project-gateway.workspace-read'],
+    supportedExtensionNamespaces: [],
+  });
+}
+
+/**
+ * Seed the complete genuine activation transition (chain → RuntimeGrant →
+ * accepted ActivationRecord → ExecutionOccurrenceRecord) through the real
+ * Slice-1/3 command flow on a real WP-8 store. The caller MUST continue
+ * using the SAME identity source for later commands in the same test.
+ * When `kit` is provided (Slice-4 attempt tests), the bundle and policy
+ * evidence come from the attempt-authorizing custom kit.
+ */
+export function seedActivatedOccurrence(
+  env: StoreEnv,
+  identity: DeterministicIdentity,
+  workspaceId: string = WS_A,
+  kit?: ActivationKit,
+): ActivatedOccurrenceSeed {
+  const seed = kit !== undefined
+    ? seedFullGrantChain(env, identity, workspaceId, undefined, kit)
+    : seedFullGrantChain(env, identity, workspaceId);
+  const bundleSubject = seed.subjects[0]!.subject;
+  const bundleArtifact = kit !== undefined ? kit.bundle.artifact : makeEvidence('ExecutionBundle').artifact;
+  const grantContext = makeContext(env, { identity, grantRole: true, subjectArtifact: bundleArtifact });
+  const grant = executeSlice1Command(
+    {
+      operation: 'issueRuntimeGrant',
+      subject: subjectOperandOf(bundleSubject),
+      workspaceId,
+      registryEcho: registryEchoOperand(),
+      attemptLimit: 2,
+      validity: { not_before: FIXED_NOW, not_after: '2027-01-01T00:00:00.000Z' },
+      narrowedConstraints: [{ type: 'max-actions', value: 10 }],
+    },
+    grantContext,
+  );
+  if (!grant.ok) throw new Error(`attempt-seed grant failed: ${JSON.stringify(grant)}`);
+  const activationContext = makeContext(env, {
+    identity,
+    activationRole: true,
+    consumerSupport: makeAttemptConsumerSupport(),
+    subjectArtifact: bundleArtifact,
+    policyEvidence: kit !== undefined ? kit.policy.artifact : makeEvidence('AuthorityPolicy').artifact,
+  });
+  const activation = executeSlice1Command(
+    {
+      operation: 'decideActivation',
+      subject: subjectOperandOf(bundleSubject),
+      workspaceId,
+      registryEcho: registryEchoOperand(),
+      grantId: grant.evidence.recordId,
+      reservedOccurrenceId: grant.evidence.reservedOccurrenceId!,
+    },
+    activationContext,
+  );
+  if (!activation.ok || activation.evidence.decision !== 'accepted' || activation.evidence.occurrenceRecordId === undefined) {
+    throw new Error(`attempt-seed activation failed: ${JSON.stringify(activation)}`);
+  }
+  return {
+    grantId: grant.evidence.recordId,
+    reservedOccurrenceId: grant.evidence.reservedOccurrenceId!,
+    activationRecordId: activation.evidence.recordId,
+    occurrenceRecordId: activation.evidence.occurrenceRecordId,
+  };
+}
+
+/** The fixed registry echo operand matching the default host context registry. */
+export function registryEchoOperand(): { readonly registry_snapshot_id: string; readonly registry_snapshot_digest: string } {
+  const registry = makeRegistryContext();
+  return Object.freeze({
+    registry_snapshot_id: registry.registrySnapshotId,
+    registry_snapshot_digest: registry.registrySnapshotDigest,
+  });
+}
+
+// ─── Slice-4 attempt-policy kit (WP-4-validated custom policy) ──────────────
+
+/**
+ * Build a validated AuthorityPolicy that authorizes the accepted attempt
+ * requested use (workspace-read / read / configured-artifact-area /
+ * attempt:start). The committed fixture policy's `require-exact-resource`
+ * constraint only authorizes `exact:` scopes; the attempt stage scope is a
+ * distinct governance stage that a host policy must explicitly authorize
+ * (policy is authority — fail closed otherwise). The rules REPLACE the
+ * fixture base rule (which would otherwise deny the attempt scope), and the
+ * revision digest is recomputed (WP-4 self-semantic validation).
+ */
+export function makeAttemptPolicy(
+  workspaceId: string = WS_A,
+): { readonly model: Record<string, unknown>; readonly subject: CanonicalSubject; readonly artifact: ValidatedArtifact } {
+  const base = fixtureModel('AuthorityPolicy');
+  const model = structuredClone(base) as Record<string, unknown>;
+  const body = model['body'] as Record<string, unknown>;
+  body['rules'] = [
+    {
+      rule_id: 'allow-attempt-start',
+      effect: 'allow',
+      capability: { id: 'project-gateway.workspace-read', version: '1.0' },
+      scope: {
+        scope_type: 'project-gateway.resource-class-scope',
+        version: '1.0',
+        resource_classes: ['configured-artifact-area'],
+        operation_classes: ['read'],
+      },
+      constraints: [],
+      required_semantics: [],
+    },
+  ];
+  const digest = computeArtifactDigest(model);
+  const revision = model['revision'] as Record<string, unknown>;
+  revision['digest'] = digest.digest;
+  const validated = validateArtifactSelf(model, createSchemaRegistry());
+  if (!validated.ok || validated.value === undefined) {
+    throw new Error(`attempt policy failed WP-4 validation: ${JSON.stringify(validated.findings)}`);
+  }
+  const kind = model['kind'] as Record<string, unknown>;
+  const protocol = model['protocol'] as Record<string, unknown>;
+  const subject = Object.freeze({
+    protocolId: String(protocol['id']),
+    protocolVersion: String(protocol['version']),
+    kindId: 'AuthorityPolicy' as const,
+    kindVersion: String(kind['version']),
+    instanceId: String(model['instance_id']),
+    revisionId: String(revision['id']),
+    digest: String(revision['digest']),
+    workspaceId,
+  });
+  return { model, subject, artifact: validated.value };
+}
+
+/** Full Slice-4 kit (attempt-authorizing policy + matching bundle), WP-4 validated. */
+export function makeAttemptKit(workspaceId: string = WS_A): ActivationKit {
+  const policy = makeAttemptPolicy(workspaceId);
+  const bundle = makeCustomBundle(policy.subject, workspaceId);
+  return {
+    policy: {
+      subject: policy.subject,
+      artifact: policy.artifact,
+      evidence: { report: { ok: true, findings: [] } as never, artifact: policy.artifact },
+    },
+    bundle: {
+      subject: bundle.subject,
+      artifact: bundle.artifact,
+      evidence: { report: { ok: true, findings: [] } as never, artifact: bundle.artifact },
+    },
   };
 }

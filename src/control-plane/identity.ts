@@ -34,9 +34,22 @@ export function createCryptoOccurrenceIdSource(): () => string {
   return () => `pgw:o:${randomBytes(16).toString('hex')}`;
 }
 
+/**
+ * Crypto-random opaque attempt identity source (Slice 4). Each call returns
+ * a fresh `pgw:a:<32 lowercase hex>` identity (128 bits of randomness,
+ * matching the committed attempt-identifier rule; contract §27.2).
+ * recordExecutionAttempt allocates attempt identities INTERNALLY from this
+ * host-injected source under the coordination lock; the caller can never
+ * supply one.
+ */
+export function createCryptoAttemptIdSource(): () => string {
+  return () => `pgw:a:${randomBytes(16).toString('hex')}`;
+}
+
 /** Host identity source combining the crypto record-ID source and a host clock. */
 export function createHostIdentitySource(nowUtcIso: () => string): ControlPlaneIdentitySource {
   const newRecordId = createCryptoRecordIdSource();
   const newOccurrenceId = createCryptoOccurrenceIdSource();
-  return Object.freeze({ nowUtcIso, newRecordId, newOccurrenceId });
+  const newAttemptId = createCryptoAttemptIdSource();
+  return Object.freeze({ nowUtcIso, newRecordId, newOccurrenceId, newAttemptId });
 }

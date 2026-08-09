@@ -38,8 +38,8 @@ import { isKnownCapability } from '../trusted/capabilities.js';
 import type { PublishRecordResult, RecordClassId } from '../storage/types.js';
 import { captureSlice1Request, subjectMatchesCanonical, timestampAtOrBefore, isAcceptedTimestamp } from './subject.js';
 import { validateEvidenceForm, correlateValidationEvidence } from './evidence.js';
-import { buildValidationRecordPayload, buildApprovalRecordPayload, buildIssuanceRecordPayload, buildRevocationRecordPayload, buildRuntimeGrantPayload, buildActivationRecordPayload, buildExecutionOccurrenceRecordPayload, sameDecision } from './records.js';
-import { evaluateCandidateLifecycleRecord, mapGraphFindings, mapGrantGraphFindings, mapActivationGraphFindings, artifactModelMaps, mapVerificationFindings } from './graph.js';
+import { buildValidationRecordPayload, buildApprovalRecordPayload, buildIssuanceRecordPayload, buildRevocationRecordPayload, buildRuntimeGrantPayload, buildActivationRecordPayload, buildExecutionOccurrenceRecordPayload, buildExecutionAttemptRecordPayload, sameDecision } from './records.js';
+import { evaluateCandidateLifecycleRecord, mapGraphFindings, mapGrantGraphFindings, mapActivationGraphFindings, mapAttemptGraphFindings, artifactModelMaps, mapVerificationFindings } from './graph.js';
 import { LockContentionError } from './coordination.js';
 import type { ConsumerSupportDeclaration } from '../api/types.js';
 import type {
@@ -57,6 +57,7 @@ import {
   ACTIVATION_RECORD_CLASS,
   APPROVAL_OPERATE_CAPABILITY,
   ARTIFACT_PROTOCOL_ID,
+  EXECUTION_ATTEMPT_RECORD_CLASS,
   EXECUTION_OCCURRENCE_RECORD_CLASS,
   LIFECYCLE_ISSUE_CAPABILITY,
   REVOCATION_RECORD_CLASS,
@@ -79,6 +80,7 @@ const MESSAGES: Readonly<Record<Slice1FailureCategory, string>> = {
   'issuance-not-authorized': 'issuance requires a current matching approval',
   'already-issued': 'an identical issuance record already exists',
   'occurrence-conflict': 'the reserved occurrence identity conflicts with existing trusted state',
+  'attempt-ordinal-conflict': 'the attempt ordinal conflicts with the occurrence attempt sequence or allowance',
   'replay-denied': 'the lifecycle decision for this reservation was already made',
   'registry-context-mismatch': 'the record registry context does not match the accepted registry snapshot',
   'store-failure': 'the trusted store could not complete the operation',
@@ -124,7 +126,7 @@ function validateHostContext(context: unknown): context is ControlPlaneTrustedCo
   const coordinate = context['coordinate'];
   if (!isRecord(coordinate) || typeof coordinate['withLock'] !== 'function') return false;
   const identity = context['identity'];
-  if (!isRecord(identity) || typeof identity['nowUtcIso'] !== 'function' || typeof identity['newRecordId'] !== 'function' || typeof identity['newOccurrenceId'] !== 'function') return false;
+  if (!isRecord(identity) || typeof identity['nowUtcIso'] !== 'function' || typeof identity['newRecordId'] !== 'function' || typeof identity['newOccurrenceId'] !== 'function' || typeof identity['newAttemptId'] !== 'function') return false;
   return true;
 }
 
@@ -1356,9 +1358,19 @@ function buildRevocationView(revocations: readonly Readonly<Record<string, unkno
  * correlation is verified by the caller); the grant is the correlated
  * store record. Ineligible → PHASE-2 denial.
  */
-function activationIntersectionDenied(
+/**
+ * Check 7 — full current policy × grant × ceiling × consumer/enforcement
+ * intersection via the accepted WP-4 point-of-use machinery (§26.6/§27.4).
+ * The bundle and policy models are host-injected validated evidence (identity
+ * correlation is verified by the caller); the grant is the correlated
+ * store record. Ineligible → PHASE-2 denial (activation) / eligibility
+ * denial (attempt start). The requested use is supplied by the caller
+ * (activation envelope or the accepted attempt envelope).
+ */
+function pointOfUseIntersectionDenied(
   context: ControlPlaneTrustedContext,
   workspace: NonNullable<ReturnType<typeof lookupValidatedWorkspace>>,
+  requestedUse: Readonly<{ capability: string; operationClass: string; resourceClass: string; scope: string }>,
   bundleModel: Readonly<Record<string, unknown>>,
   policyModel: Readonly<Record<string, unknown>> | undefined,
   grant: Readonly<Record<string, unknown>>,
@@ -1370,7 +1382,7 @@ function activationIntersectionDenied(
   const report = evaluatePointOfUseEligibility({
     currentTime: now,
     workspaceId: workspace.workspaceId,
-    requestedUse: Object.freeze({ ...ACTIVATION_REQUESTED_USE, workspaceId: workspace.workspaceId }),
+    requestedUse: Object.freeze({ ...requestedUse, workspaceId: workspace.workspaceId }),
     ...(context.configuration.globalActionCeiling !== undefined ? { globalActionCeiling: context.configuration.globalActionCeiling } : {}),
     ...(workspace.actionCeiling !== undefined ? { workspaceActionCeiling: workspace.actionCeiling } : {}),
     consumerSupport,
@@ -1489,8 +1501,8 @@ function decideActivationUnderLock(
     activationResult.payloads, occurrenceResult.payloads,
   ]);
   const revocationsView = buildRevocationView(revocationResult.payloads);
-  const intersectionDenied = activationIntersectionDenied(
-    context, workspace, artifact.model, policyModel, grant, lifecycleView, revocationsView, now,
+  const intersectionDenied = pointOfUseIntersectionDenied(
+    context, workspace, ACTIVATION_REQUESTED_USE, artifact.model, policyModel, grant, lifecycleView, revocationsView, now,
   );
 
   const decision: 'accepted' | 'denied' = deniedChain || limitExhausted || intersectionDenied ? 'denied' : 'accepted';
@@ -1789,6 +1801,504 @@ function runCreateOccurrence(context: ControlPlaneTrustedContext, request: Slice
   }
 }
 
+// ─── Slice-4 orchestrationDecision + recordExecutionAttempt ─────────────────
+// orchestrationDecision is the DECISION-ONLY Slice-4 surface (§27.1): bounded
+// correlation/currentness/allowance evaluation over the exact occurrence
+// anchor — zero lifecycle records, zero mechanical write-audits. The durable
+// attempt-start / orchestration fact is the ExecutionAttemptRecord created
+// by recordExecutionAttempt (§27.1): exactly one record + the normal WP-8
+// mechanical audit. Both operations reuse the existing canonical bundle
+// subject/workspace coordination-key family derived from the occurrence's
+// grant bundle reference (§27.5), the accepted lifecycle graph (EXE-004/005/
+// 006) and the accepted point-of-use machinery (EXE-007/LFC-007) (§27.4).
+
+/**
+ * The attempt requested use (point-of-use EXE-007 attempt path, §27.4). The
+ * accepted policy rule set authorizes the workspace-read capability with
+ * operation class 'read'; the 'attempt:' scope form is the accepted
+ * machinery's attempt-use trigger (evaluatePointOfUseEligibility section 9).
+ */
+const ATTEMPT_REQUESTED_USE = {
+  capability: 'project-gateway.workspace-read',
+  operationClass: 'read',
+  resourceClass: 'configured-artifact-area',
+  scope: 'attempt:start',
+} as const;
+
+/** Store-derived attempt-decision facts (authoritative correlation anchor). */
+interface AttemptDecisionFacts {
+  readonly occurrence: Readonly<Record<string, unknown>>;
+  readonly activation: Readonly<Record<string, unknown>>;
+  readonly grant: Readonly<Record<string, unknown>>;
+  readonly subject: CanonicalSubject;
+  readonly existingAttempts: readonly Readonly<Record<string, unknown>>[];
+  readonly attemptLimit: number;
+  readonly grantCurrent: boolean;
+  readonly remainingAllowance: number;
+  /** Point-of-use EXE-007/LFC-007 intersection result (no early return; the graph gate decides REG recordability first). */
+  readonly intersectionDenied: boolean;
+  /** Store payloads re-read under the lock (graph-gate inputs). */
+  readonly payloads: {
+    readonly approvals: readonly Readonly<Record<string, unknown>>[];
+    readonly issuances: readonly Readonly<Record<string, unknown>>[];
+    readonly validations: readonly Readonly<Record<string, unknown>>[];
+    readonly revocations: readonly Readonly<Record<string, unknown>>[];
+    readonly supersessions: readonly Readonly<Record<string, unknown>>[];
+    readonly grants: readonly Readonly<Record<string, unknown>>[];
+    readonly activations: readonly Readonly<Record<string, unknown>>[];
+    readonly occurrences: readonly Readonly<Record<string, unknown>>[];
+    readonly attempts: readonly Readonly<Record<string, unknown>>[];
+  };
+}
+
+/** All stored attempts for one occurrence (derived from immutable records). */
+function attemptsForOccurrence(
+  attempts: readonly Readonly<Record<string, unknown>>[],
+  occurrenceId: string,
+): readonly Readonly<Record<string, unknown>>[] {
+  return Object.freeze(attempts.filter((a) => String(a['occurrence_id'] ?? '') === occurrenceId));
+}
+
+/**
+ * Shared under-lock attempt decision (gates B–D; §27.2/§27.3/§27.4/§27.6):
+ * the occurrence is the caller correlation anchor ONLY; activation/grant/
+ * bundle authority is derived from the exact stored records. Returns the
+ * authoritative facts for the caller (orchestrationDecision builds evidence;
+ * recordExecutionAttempt builds + publishes the attempt record). Ordinal
+ * validation (exact count + 1, unique/gapless, allowance, EXE-006 retry
+ * subject stability) and currentness/point-of-use evaluation are performed
+ * here for BOTH operations. No created_at / record-ID / first-enumeration /
+ * newest-record selection ever occurs.
+ */
+function attemptDecisionUnderLock(
+  context: ControlPlaneTrustedContext,
+  request: Slice1Request,
+): { readonly ok: true; readonly facts: AttemptDecisionFacts } | { readonly ok: false; readonly category: Slice1FailureCategory } {
+  const reservedOccurrenceId = request.reservedOccurrenceId;
+  if (reservedOccurrenceId === undefined) return { ok: false, category: 'internal-failure' };
+
+  const activationResult = readClassPayloads(context, ACTIVATION_RECORD_CLASS);
+  if (!activationResult.ok) return { ok: false, category: 'store-failure' };
+  const occurrenceResult = readClassPayloads(context, EXECUTION_OCCURRENCE_RECORD_CLASS);
+  if (!occurrenceResult.ok) return { ok: false, category: 'store-failure' };
+  const grantResult = readClassPayloads(context, RUNTIME_GRANT_CLASS);
+  if (!grantResult.ok) return { ok: false, category: 'store-failure' };
+  const revocationResult = readClassPayloads(context, REVOCATION_RECORD_CLASS);
+  if (!revocationResult.ok) return { ok: false, category: 'store-failure' };
+  const supersessionResult = readClassPayloads(context, 'supersession-record');
+  if (!supersessionResult.ok) return { ok: false, category: 'store-failure' };
+  const approvalResult = readClassPayloads(context, 'approval-record');
+  if (!approvalResult.ok) return { ok: false, category: 'store-failure' };
+  const issuanceResult = readClassPayloads(context, 'issuance-record');
+  if (!issuanceResult.ok) return { ok: false, category: 'store-failure' };
+  const validationResult = readClassPayloads(context, 'validation-record');
+  if (!validationResult.ok) return { ok: false, category: 'store-failure' };
+  const attemptResult = readClassPayloads(context, EXECUTION_ATTEMPT_RECORD_CLASS);
+  if (!attemptResult.ok) return { ok: false, category: 'store-failure' };
+
+  // Gate B — occurrence anchor + exact store-derived correlation (§27.2):
+  // occurrence → activation → grant → bundle bytes, all exact. Failures are
+  // non-disclosing lifecycle-state-missing; a structurally conflicting
+  // occurrence set is occurrence-conflict.
+  const occurrences = occurrenceResult.payloads.filter((o) => String(o['occurrence_id'] ?? '') === reservedOccurrenceId);
+  if (occurrences.length === 0) return { ok: false, category: 'lifecycle-state-missing' };
+  if (occurrences.length > 1) return { ok: false, category: 'occurrence-conflict' };
+  const occurrence = occurrences[0]!;
+  if (occurrence['workspace_id'] !== request.workspaceId) return { ok: false, category: 'lifecycle-state-missing' };
+  const activationRecordId = String(occurrence['activation_record_id'] ?? '');
+  const activation = activationResult.payloads.find((a) => String(a['record_id'] ?? '') === activationRecordId);
+  if (activation === undefined || String(activation['record_type'] ?? '') !== 'ActivationRecord') return { ok: false, category: 'occurrence-conflict' };
+  if (activation['decision'] !== 'accepted') return { ok: false, category: 'occurrence-conflict' };
+  if (activation['workspace_id'] !== occurrence['workspace_id']) return { ok: false, category: 'lifecycle-state-missing' };
+  const activationBundle = activation['bundle'];
+  if (!isRecord(activationBundle) || !isRecord(occurrence['bundle'])) return { ok: false, category: 'store-failure' };
+  if (JSON.stringify(activationBundle) !== JSON.stringify(occurrence['bundle'])) return { ok: false, category: 'lifecycle-state-missing' };
+  const runtimeGrantId = String(occurrence['runtime_grant_id'] ?? '');
+  const grant = grantResult.payloads.find((g) => String(g['record_id'] ?? '') === runtimeGrantId);
+  if (grant === undefined) return { ok: false, category: 'lifecycle-state-missing' };
+  if (String(grant['reserved_occurrence_id'] ?? '') !== reservedOccurrenceId) return { ok: false, category: 'lifecycle-state-missing' };
+  if (grant['workspace_id'] !== occurrence['workspace_id']) return { ok: false, category: 'lifecycle-state-missing' };
+  if (!isRecord(grant['bundle'])) return { ok: false, category: 'store-failure' };
+  if (JSON.stringify(grant['bundle']) !== JSON.stringify(occurrence['bundle'])) return { ok: false, category: 'lifecycle-state-missing' };
+  const subject = canonicalSubjectOfRecord(occurrence);
+  if (subject === undefined) return { ok: false, category: 'store-failure' };
+
+  // Host-injected validated bundle evidence correlated to the occurrence's
+  // exact bundle reference (authority stays store-derived; the model feeds
+  // the accepted point-of-use evaluation). Host-context inconsistency fails
+  // closed as internal-failure (no request subject exists to blame).
+  const bundleModel = (() => {
+    const artifact = context.subjectArtifact;
+    if (!isRecord(artifact) || !isBrandedArtifact(artifact)) return undefined;
+    const model = artifact['model'];
+    if (!isRecord(model)) return undefined;
+    const kind = occurrenceBundleKind(occurrence['bundle']);
+    if (kind === undefined || kind.id !== 'ExecutionBundle') return undefined;
+    if (artifact['instanceId'] !== occurrenceBundleInstance(occurrence['bundle'])) return undefined;
+    if (artifact['revisionId'] !== occurrenceBundleRevision(occurrence['bundle'])) return undefined;
+    if (artifact['digest'] !== occurrenceBundleDigest(occurrence['bundle'])) return undefined;
+    const modelKind = model['kind'];
+    const modelProtocol = model['protocol'];
+    if (!isRecord(modelKind) || modelKind['id'] !== kind.id || modelKind['version'] !== kind.version) return undefined;
+    if (!isRecord(modelProtocol) || modelProtocol['version'] !== occurrenceBundleProtocol(occurrence['bundle'])) return undefined;
+    return model;
+  })();
+  if (bundleModel === undefined) return { ok: false, category: 'internal-failure' };
+  const members = bundleMembersOf(bundleModel);
+  if (members === undefined) return { ok: false, category: 'internal-failure' };
+
+  // Gate C — ordinal semantics (§27.3): proposed ordinal must equal the
+  // durable attempt count + 1 (unique/gapless); allowance must remain
+  // (ordinal <= attempt_limit and count < attempt_limit). A malformed
+  // authoritative attempt_limit fails closed as store-failure. For
+  // orchestrationDecision (no proposed ordinal) the allowance check is the
+  // same EXE-005 family → attempt-ordinal-conflict.
+  const existingAttempts = attemptsForOccurrence(attemptResult.payloads, reservedOccurrenceId);
+  const count = existingAttempts.length;
+  const limitValue = grant['attempt_limit'];
+  if (typeof limitValue !== 'number' || !Number.isSafeInteger(limitValue) || limitValue < 1) return { ok: false, category: 'store-failure' };
+  const attemptLimit = limitValue;
+  const ordinal = request.ordinal;
+  if (ordinal !== undefined) {
+    if (ordinal !== count + 1 || ordinal > attemptLimit || count >= attemptLimit) return { ok: false, category: 'attempt-ordinal-conflict' };
+    if (count > 0) {
+      // EXE-006 retry subject stability: the retry must preserve the exact
+      // bundle/workspace/occurrence/grant correlation of the first attempt.
+      const first = [...existingAttempts].sort((a, b) => Number(a['ordinal']) - Number(b['ordinal']))[0]!;
+      const sameBundle = isRecord(first['bundle']) && JSON.stringify(first['bundle']) === JSON.stringify(occurrence['bundle']);
+      const sameWorkspace = String(first['workspace_id'] ?? '') === occurrence['workspace_id'];
+      const sameGrant = String(first['runtime_grant_id'] ?? '') === runtimeGrantId;
+      const sameOccurrence = String(first['occurrence_id'] ?? '') === reservedOccurrenceId;
+      if (!sameBundle || !sameWorkspace || !sameGrant || !sameOccurrence) return { ok: false, category: 'attempt-ordinal-conflict' };
+    }
+  } else if (count >= attemptLimit) {
+    return { ok: false, category: 'attempt-ordinal-conflict' };
+  }
+
+  // Gate D — currentness (§27.6): revoked/expired/not-yet-valid grant at
+  // attempt start → eligibility-denied (the closed point-of-use eligibility
+  // category; grant-revoked/grant-expired remain verify read-form tokens).
+  const now = context.identity.nowUtcIso();
+  const grantState = currentnessOf(grant, revocationResult.payloads, supersessionResult.payloads, now).state;
+  const validity = grant['validity'];
+  const notBefore = isRecord(validity) ? validity['not_before'] : undefined;
+  const notAfter = isRecord(validity) ? validity['not_after'] : undefined;
+  const withinValidity =
+    (typeof notBefore !== 'string' || notBefore <= now) &&
+    (typeof notAfter !== 'string' || now <= notAfter);
+  const grantCurrent = grantState === 'current' && withinValidity;
+  if (!grantCurrent) return { ok: false, category: 'eligibility-denied' };
+
+  // Point-of-use EXE-007/LFC-007 intersection (accepted machinery; §27.4):
+  // grant/validity/revocation, prerequisite-issuance currentness, consumer
+  // support, ceilings, policy, and bundle requirements. Ineligible →
+  // eligibility-denied. The allowance dimension is already decided above
+  // (attempt-ordinal-conflict), so the machinery's EXE-005 allowance finding
+  // never changes the token.
+  const policyModel = (() => {
+    if (context.policyEvidence === undefined) return undefined;
+    const model = context.policyEvidence.model as Readonly<Record<string, unknown>>;
+    const policyMember = members.find((member) => member.kindId === 'AuthorityPolicy');
+    if (policyMember === undefined) return undefined;
+    if (context.policyEvidence.instanceId !== policyMember.instanceId) return undefined;
+    if (context.policyEvidence.revisionId !== policyMember.revisionId) return undefined;
+    if (context.policyEvidence.digest !== policyMember.digest) return undefined;
+    return model;
+  })();
+  const lifecycleView = buildLifecycleView([
+    approvalResult.payloads, issuanceResult.payloads, validationResult.payloads,
+    revocationResult.payloads, supersessionResult.payloads, grantResult.payloads,
+    activationResult.payloads, occurrenceResult.payloads, attemptResult.payloads,
+  ]);
+  const revocationsView = buildRevocationView(revocationResult.payloads);
+  const workspace = lookupValidatedWorkspace(context.configuration, request.workspaceId);
+  if (workspace === undefined) return { ok: false, category: 'lifecycle-state-missing' };
+  // Point-of-use EXE-007/LFC-007 intersection (accepted machinery; §27.4):
+  // computed here but NOT early-returned — the graph gate (recordability /
+  // EXE findings) decides first, exactly like Slice-3B's PHASE-1/PHASE-2
+  // ordering, so a registry-incompatible correlation chain rejects with
+  // registry-context-mismatch rather than being collapsed into an
+  // eligibility denial. The allowance dimension is already decided above
+  // (attempt-ordinal-conflict), so the machinery's EXE-005 allowance finding
+  // never changes the token.
+  const intersectionDenied = pointOfUseIntersectionDenied(
+    context, workspace, ATTEMPT_REQUESTED_USE, bundleModel, policyModel, grant, lifecycleView, revocationsView, now,
+  );
+
+  return {
+    ok: true,
+    facts: Object.freeze({
+      occurrence,
+      activation,
+      grant,
+      subject,
+      existingAttempts,
+      attemptLimit,
+      grantCurrent,
+      remainingAllowance: attemptLimit - count,
+      intersectionDenied,
+      payloads: Object.freeze({
+        approvals: approvalResult.payloads,
+        issuances: issuanceResult.payloads,
+        validations: validationResult.payloads,
+        revocations: revocationResult.payloads,
+        supersessions: supersessionResult.payloads,
+        grants: grantResult.payloads,
+        activations: activationResult.payloads,
+        occurrences: occurrenceResult.payloads,
+        attempts: attemptResult.payloads,
+      }),
+    }),
+  };
+}
+
+/** Extract the exact bundle-reference fields of an occurrence payload (grant-shaped form). */
+function occurrenceBundleKind(bundle: unknown): { readonly id: string; readonly version: string } | undefined {
+  if (!isRecord(bundle)) return undefined;
+  const kind = bundle['target_kind'];
+  if (!isRecord(kind) || typeof kind['id'] !== 'string' || typeof kind['version'] !== 'string') return undefined;
+  return Object.freeze({ id: kind['id'], version: kind['version'] });
+}
+function occurrenceBundleInstance(bundle: unknown): string | undefined {
+  return isRecord(bundle) && typeof bundle['target_instance_id'] === 'string' ? bundle['target_instance_id'] : undefined;
+}
+function occurrenceBundleRevision(bundle: unknown): string | undefined {
+  return isRecord(bundle) && typeof bundle['target_revision_id'] === 'string' ? bundle['target_revision_id'] : undefined;
+}
+function occurrenceBundleDigest(bundle: unknown): string | undefined {
+  return isRecord(bundle) && typeof bundle['target_digest'] === 'string' ? bundle['target_digest'] : undefined;
+}
+function occurrenceBundleProtocol(bundle: unknown): string | undefined {
+  return isRecord(bundle) && typeof bundle['target_protocol_version'] === 'string' ? bundle['target_protocol_version'] : undefined;
+}
+
+/**
+ * orchestrationDecision — under-lock decision-only evaluation (§27.1): zero
+ * lifecycle records, zero mechanical write-audits; bounded non-record
+ * orchestration evidence (§27.7).
+ */
+function orchestrationDecisionUnderLock(context: ControlPlaneTrustedContext, request: Slice1Request): Slice1Result {
+  const decided = attemptDecisionUnderLock(context, request);
+  if (!decided.ok) return failure(decided.category);
+  const facts = decided.facts;
+  // REG-recordability/correlation gate (§27.6, SIR-W12-S4-001): the SAME
+  // accepted graph evaluation and mapping as recordExecutionAttempt, with
+  // the occurrence as the graph ENTRY candidate (existing minus the
+  // occurrence itself) and the correlated activation/grant as REG entries —
+  // so a registry-incompatible correlation chain yields
+  // registry-context-mismatch BEFORE the generic point-of-use eligibility
+  // fallback. No second registry evaluator is introduced; the occurrence/
+  // activation/grant correlation remains trusted-store-derived (gate B).
+  const occurrenceRecordId = String(facts.occurrence['record_id'] ?? '');
+  const graphReport = evaluateCandidateLifecycleRecord({
+    existing: [
+      ...facts.payloads.approvals,
+      ...facts.payloads.issuances,
+      ...facts.payloads.validations,
+      ...facts.payloads.revocations,
+      ...facts.payloads.supersessions,
+      ...facts.payloads.grants,
+      ...facts.payloads.activations,
+      ...facts.payloads.attempts,
+      ...facts.payloads.occurrences.filter((o) => String(o['record_id'] ?? '') !== occurrenceRecordId),
+    ],
+    candidate: facts.occurrence,
+    registry: context.registry,
+    artifactsByRevision: new Map(),
+    artifactsByInstance: new Map(),
+    extraRegistryEntries: new Set([String(facts.activation['record_id'] ?? ''), String(facts.grant['record_id'] ?? '')]),
+  });
+  const category = mapAttemptGraphFindings(graphReport.findings);
+  if (category !== undefined) return failure(category);
+  // Point-of-use ineligibility → eligibility-denied (§27.6).
+  if (facts.intersectionDenied) return failure('eligibility-denied');
+  return success('orchestrated', {
+    recordClass: EXECUTION_OCCURRENCE_RECORD_CLASS,
+    recordId: occurrenceRecordId,
+    occurrenceRecordClass: EXECUTION_OCCURRENCE_RECORD_CLASS,
+    occurrenceRecordId,
+    subject: facts.subject,
+    workspaceId: request.workspaceId,
+    reservedOccurrenceId: request.reservedOccurrenceId,
+    activationRecordId: String(facts.activation['record_id'] ?? ''),
+    runtimeGrantId: String(facts.grant['record_id'] ?? ''),
+    grantCurrent: facts.grantCurrent,
+    remainingAllowance: facts.remainingAllowance,
+    registrySnapshotId: context.registry.registrySnapshotId,
+    registrySnapshotDigest: context.registry.registrySnapshotDigest,
+  });
+}
+
+/**
+ * recordExecutionAttempt — under-lock attempt recording (§27.1): exactly one
+ * ExecutionAttemptRecord on success + the normal WP-8 mechanical
+ * authorized-write audit; zero records on any failure. The attempt ID is
+ * allocated INTERNALLY (pgw:a:) under the lock; the graph gate (EXE-004/005/
+ * 006 + REG recordability) is the single lifecycle rule authority backstop.
+ */
+function recordExecutionAttemptUnderLock(context: ControlPlaneTrustedContext, request: Slice1Request): Slice1Result {
+  const decided = attemptDecisionUnderLock(context, request);
+  if (!decided.ok) return failure(decided.category);
+  const facts = decided.facts;
+  const ordinal = request.ordinal;
+  if (ordinal === undefined) return failure('internal-failure');
+
+  const now = context.identity.nowUtcIso();
+  const attemptId = context.identity.newAttemptId();
+  const recordId = context.identity.newRecordId();
+  const reservedOccurrenceId = String(facts.occurrence['occurrence_id'] ?? '');
+  const occurrenceBundle = facts.occurrence['bundle'];
+  if (!isRecord(occurrenceBundle)) return failure('store-failure');
+  const candidate = buildExecutionAttemptRecordPayload({
+    recordId,
+    createdAt: now,
+    activationRecordId: String(facts.activation['record_id'] ?? ''),
+    occurrenceId: reservedOccurrenceId,
+    attemptId,
+    ordinal,
+    bundle: occurrenceBundle,
+    workspaceId: request.workspaceId,
+    runtimeGrantId: String(facts.grant['record_id'] ?? ''),
+    registry: context.registry,
+  });
+
+  // Graph gate (§27.4/§27.6): the candidate attempt is the graph entry; the
+  // correlated occurrence/activation/grant are REG entries (recordability
+  // under the CURRENT accepted registry context).
+  const graphReport = evaluateCandidateLifecycleRecord({
+    existing: [
+      ...facts.payloads.approvals,
+      ...facts.payloads.issuances,
+      ...facts.payloads.validations,
+      ...facts.payloads.revocations,
+      ...facts.payloads.supersessions,
+      ...facts.payloads.grants,
+      ...facts.payloads.activations,
+      ...facts.payloads.occurrences,
+      ...facts.payloads.attempts,
+    ],
+    candidate,
+    registry: context.registry,
+    artifactsByRevision: new Map(),
+    artifactsByInstance: new Map(),
+    extraRegistryEntries: new Set([String(facts.activation['record_id'] ?? ''), String(facts.grant['record_id'] ?? ''), String(facts.occurrence['record_id'] ?? '')]),
+  });
+  const category = mapAttemptGraphFindings(graphReport.findings);
+  if (category !== undefined) return failure(category);
+
+  // Point-of-use ineligibility (EXE-007/LFC-007) → eligibility-denied
+  // (§27.6); the graph gate above already decided REG recordability and
+  // ordinal/occurrence integrity.
+  if (facts.intersectionDenied) return failure('eligibility-denied');
+
+  if (!schemaGate(context, candidate)) return failure('internal-failure');
+
+  let published;
+  try {
+    published = context.store.publishLifecycleRecord(EXECUTION_ATTEMPT_RECORD_CLASS, candidate);
+  } catch {
+    return failure('store-failure');
+  }
+  const outcome = publishOutcome(published, 'attempt-ordinal-conflict');
+  if (!outcome.ok) return failure(outcome.category);
+  return success('attempt-recorded', {
+    recordClass: EXECUTION_ATTEMPT_RECORD_CLASS,
+    recordId,
+    recordDigest: outcome.recordDigest,
+    auditEventId: outcome.auditEventId,
+    subject: facts.subject,
+    workspaceId: request.workspaceId,
+    reservedOccurrenceId: request.reservedOccurrenceId,
+    activationRecordId: String(facts.activation['record_id'] ?? ''),
+    runtimeGrantId: String(facts.grant['record_id'] ?? ''),
+    attemptId,
+    ordinal,
+    attemptRecordClass: EXECUTION_ATTEMPT_RECORD_CLASS,
+    attemptRecordId: recordId,
+    attemptRecordDigest: outcome.recordDigest,
+    attemptAuditEventId: outcome.auditEventId,
+    registrySnapshotId: context.registry.registrySnapshotId,
+    registrySnapshotDigest: context.registry.registrySnapshotDigest,
+  });
+}
+
+/**
+ * orchestrationDecision command (host-asserted execution-recorder role;
+ * §27.2): echo → workspace → PRE-LOCK locator read of the occurrence anchor
+ * (existence/workspace eligibility + bundle-derived coordination key ONLY;
+ * never decision authority) → lock → under-lock decision-only evaluation.
+ */
+function runOrchestrationDecision(context: ControlPlaneTrustedContext, request: Slice1Request): Slice1Result {
+  const echo = request.registryEcho;
+  if (echo === undefined) return failure('request-invalid');
+  if (echo.registry_snapshot_id !== context.registry.registrySnapshotId || echo.registry_snapshot_digest !== context.registry.registrySnapshotDigest) {
+    return failure('registry-context-mismatch');
+  }
+  const workspace = lookupValidatedWorkspace(context.configuration, request.workspaceId);
+  if (workspace === undefined) return failure('lifecycle-state-missing');
+  const reservedOccurrenceId = request.reservedOccurrenceId;
+  if (reservedOccurrenceId === undefined) return failure('internal-failure');
+  const locator = locateOccurrence(context, reservedOccurrenceId, request.workspaceId);
+  if (locator === 'missing') return failure('lifecycle-state-missing');
+  if (locator === 'conflict') return failure('occurrence-conflict');
+  if (locator === 'store-failure') return failure('store-failure');
+  try {
+    return context.coordinate.withLock(locator.key, () => orchestrationDecisionUnderLock(context, request));
+  } catch (err) {
+    if (err instanceof LockContentionError) return failure('lock-conflict');
+    return failure('internal-failure');
+  }
+}
+
+/**
+ * recordExecutionAttempt command (host-asserted execution-recorder role;
+ * §27.2): same two-stage discipline as orchestrationDecision; the ordinal is
+ * the untrusted caller-proposed operand validated under the lock (§27.3).
+ */
+function runRecordExecutionAttempt(context: ControlPlaneTrustedContext, request: Slice1Request): Slice1Result {
+  const echo = request.registryEcho;
+  if (echo === undefined) return failure('request-invalid');
+  if (echo.registry_snapshot_id !== context.registry.registrySnapshotId || echo.registry_snapshot_digest !== context.registry.registrySnapshotDigest) {
+    return failure('registry-context-mismatch');
+  }
+  const workspace = lookupValidatedWorkspace(context.configuration, request.workspaceId);
+  if (workspace === undefined) return failure('lifecycle-state-missing');
+  const reservedOccurrenceId = request.reservedOccurrenceId;
+  if (reservedOccurrenceId === undefined || request.ordinal === undefined) return failure('internal-failure');
+  const locator = locateOccurrence(context, reservedOccurrenceId, request.workspaceId);
+  if (locator === 'missing') return failure('lifecycle-state-missing');
+  if (locator === 'conflict') return failure('occurrence-conflict');
+  if (locator === 'store-failure') return failure('store-failure');
+  try {
+    return context.coordinate.withLock(locator.key, () => recordExecutionAttemptUnderLock(context, request));
+  } catch (err) {
+    if (err instanceof LockContentionError) return failure('lock-conflict');
+    return failure('internal-failure');
+  }
+}
+
+/**
+ * Pre-lock occurrence locator read (C5 two-stage discipline): existence /
+ * workspace eligibility + the bundle-derived coordination key ONLY — never
+ * decision authority (the under-lock decision re-reads everything).
+ */
+function locateOccurrence(
+  context: ControlPlaneTrustedContext,
+  reservedOccurrenceId: string,
+  workspaceId: string,
+): { readonly key: string } | 'missing' | 'conflict' | 'store-failure' {
+  const occurrenceResult = readClassPayloads(context, EXECUTION_OCCURRENCE_RECORD_CLASS);
+  if (!occurrenceResult.ok) return 'store-failure';
+  const candidates = occurrenceResult.payloads.filter((o) => String(o['occurrence_id'] ?? '') === reservedOccurrenceId);
+  if (candidates.length === 0) return 'missing';
+  if (candidates.length > 1) return 'conflict';
+  const candidate = candidates[0]!;
+  if (candidate['workspace_id'] !== workspaceId) return 'missing';
+  const key = coordinationKeyOfPayload(candidate);
+  if (key === undefined) return 'store-failure';
+  return { key };
+}
+
 // ─── Slice-2B verify — read-only current-state evaluation ───────────────────
 // verifyCurrentLifecycleState is a NON-AUTHORIZING, transport-free,
 // mutation-free current-state evaluator over the records observed during
@@ -2057,6 +2567,14 @@ function runOperation(context: ControlPlaneTrustedContext, request: Slice1Reques
       // Dispatched directly by executeSlice1Command (activation-derived key);
       // unreachable through the subject-key path (defensive).
       return runCreateOccurrence(context, request);
+    case 'orchestrationDecision':
+      // Dispatched directly by executeSlice1Command (occurrence-derived bundle
+      // key; §27.5); unreachable through the subject-key path (defensive).
+      return runOrchestrationDecision(context, request);
+    case 'recordExecutionAttempt':
+      // Dispatched directly by executeSlice1Command (occurrence-derived bundle
+      // key; §27.5); unreachable through the subject-key path (defensive).
+      return runRecordExecutionAttempt(context, request);
     case 'recordValidation':
       return runRecordValidation(context, request);
     case 'approve':
@@ -2120,6 +2638,13 @@ export function executeSlice1Command(input: unknown, context: ControlPlaneTruste
     if (context.operator.activationRole !== true) return failure('lifecycle-state-missing');
     if (request.operation === 'decideActivation') return runDecideActivation(context, request);
     return runCreateOccurrence(context, request);
+  }
+  if (request.operation === 'orchestrationDecision' || request.operation === 'recordExecutionAttempt') {
+    // Slice-4 orchestration/attempt-recording authority is host-asserted only
+    // (§27.2). Missing host role fails closed as lifecycle-state-missing.
+    if (context.operator.executionRecorderRole !== true) return failure('lifecycle-state-missing');
+    if (request.operation === 'orchestrationDecision') return runOrchestrationDecision(context, request);
+    return runRecordExecutionAttempt(context, request);
   }
   if (request.operation === 'approve' && context.operator.approverRole !== true) {
     return failure('lifecycle-state-missing');

@@ -22,8 +22,13 @@ import type { StorageWriteActionProvenance } from './storage-write-action.js';
 import type { LockTimeSource, RecordClassId } from '../storage/types.js';
 import type { ControlPlaneStoreBoundary, LifecycleEnumerateResult, LifecycleReadResult } from './types.js';
 
-/** The four Slice-1/Slice-2A primary publishable lifecycle record classes. */
-const CONTROL_PLANE_PUBLISH_CLASSES: ReadonlySet<string> = new Set(['validation-record', 'approval-record', 'issuance-record', 'revocation-record']);
+/**
+ * The seven Slice-1/2/3 primary publishable lifecycle record classes (final
+ * Slice-3 allowlist; §33 + §26.21). The attempt class stays DISABLED for
+ * production until Slice 4 (the boundary rejects every class outside this
+ * allowlist).
+ */
+const CONTROL_PLANE_PUBLISH_CLASSES: ReadonlySet<string> = new Set(['validation-record', 'approval-record', 'issuance-record', 'revocation-record', 'runtime-grant', 'activation-record', 'execution-occurrence-record']);
 
 export interface ControlPlaneStoreBoundaryOptions {
   /** Genuine WP-6 validated trusted configuration (runtime-branded). */

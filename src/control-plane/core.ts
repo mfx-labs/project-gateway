@@ -29,7 +29,8 @@
  * This module is I/O-free: all persistence and serialization enter through
  * the injected host context.
  */
-import { createSchemaRegistry, validateLifecycleRecord } from '../api/validate.js';
+import { createSchemaRegistry, validateLifecycleRecord, evaluatePointOfUseEligibility } from '../api/validate.js';
+import { brandValidatedRecord } from '../api/types.js';
 import { isBrandedArtifact } from '../internal/snapshot.js';
 import { isGenuineValidatedTrustedWorkspaceConfiguration } from '../trusted/configuration-brand.js';
 import { lookupValidatedWorkspace } from '../trusted/index.js';
@@ -37,8 +38,8 @@ import { isKnownCapability } from '../trusted/capabilities.js';
 import type { PublishRecordResult, RecordClassId } from '../storage/types.js';
 import { captureSlice1Request, subjectMatchesCanonical, timestampAtOrBefore, isAcceptedTimestamp } from './subject.js';
 import { validateEvidenceForm, correlateValidationEvidence } from './evidence.js';
-import { buildValidationRecordPayload, buildApprovalRecordPayload, buildIssuanceRecordPayload, buildRevocationRecordPayload, sameDecision } from './records.js';
-import { evaluateCandidateLifecycleRecord, mapGraphFindings, artifactModelMaps, mapVerificationFindings } from './graph.js';
+import { buildValidationRecordPayload, buildApprovalRecordPayload, buildIssuanceRecordPayload, buildRevocationRecordPayload, buildRuntimeGrantPayload, buildActivationRecordPayload, buildExecutionOccurrenceRecordPayload, sameDecision } from './records.js';
+import { evaluateCandidateLifecycleRecord, mapGraphFindings, mapGrantGraphFindings, mapActivationGraphFindings, artifactModelMaps, mapVerificationFindings } from './graph.js';
 import { LockContentionError } from './coordination.js';
 import type { ConsumerSupportDeclaration } from '../api/types.js';
 import type {
@@ -53,10 +54,13 @@ import type {
 import {
   ACTIVATION_LIMIT_MAX,
   ACTIVATION_LIMIT_MIN,
+  ACTIVATION_RECORD_CLASS,
   APPROVAL_OPERATE_CAPABILITY,
   ARTIFACT_PROTOCOL_ID,
+  EXECUTION_OCCURRENCE_RECORD_CLASS,
   LIFECYCLE_ISSUE_CAPABILITY,
   REVOCATION_RECORD_CLASS,
+  RUNTIME_GRANT_CLASS,
   SLICE_1_PURPOSES,
   SLICE_1_USE_CLASSES,
 } from './types.js';
@@ -74,6 +78,8 @@ const MESSAGES: Readonly<Record<Slice1FailureCategory, string>> = {
   'approval-revoked': 'the matching approval is revoked',
   'issuance-not-authorized': 'issuance requires a current matching approval',
   'already-issued': 'an identical issuance record already exists',
+  'occurrence-conflict': 'the reserved occurrence identity conflicts with existing trusted state',
+  'replay-denied': 'the lifecycle decision for this reservation was already made',
   'registry-context-mismatch': 'the record registry context does not match the accepted registry snapshot',
   'store-failure': 'the trusted store could not complete the operation',
   'lock-conflict': 'another decision for the same lifecycle key is in progress',
@@ -118,7 +124,7 @@ function validateHostContext(context: unknown): context is ControlPlaneTrustedCo
   const coordinate = context['coordinate'];
   if (!isRecord(coordinate) || typeof coordinate['withLock'] !== 'function') return false;
   const identity = context['identity'];
-  if (!isRecord(identity) || typeof identity['nowUtcIso'] !== 'function' || typeof identity['newRecordId'] !== 'function') return false;
+  if (!isRecord(identity) || typeof identity['nowUtcIso'] !== 'function' || typeof identity['newRecordId'] !== 'function' || typeof identity['newOccurrenceId'] !== 'function') return false;
   return true;
 }
 
@@ -214,54 +220,111 @@ function coordinationKeyOf(subject: CanonicalSubject): string {
  * subject/workspace identity family as approve/issue, so revoke competes
  * with issue/re-approval for the same lifecycle subject. Never keyed by
  * target record ID alone.
+ *
+ * Slice-3A adds the RuntimeGrant-shaped branch (contract §26.1 D1): for a
+ * RuntimeGrant target the key is derived from the target's exact `bundle`
+ * reference (target_kind.id | target_instance_id | target_revision_id |
+ * target_digest) plus `workspace_id` — the SAME canonical bundle
+ * subject/workspace family used by issueRuntimeGrant, so grant revocation
+ * serializes with grant issuance for the same bundle. Never keyed by the
+ * grant record ID alone or the reserved occurrence ID alone.
  */
 function coordinationKeyOfPayload(payload: Readonly<Record<string, unknown>>): string | undefined {
   const subject = subjectOf(payload);
-  if (subject === undefined) return undefined;
-  const kind = subject['kind'];
-  const kindId = isRecord(kind) ? kind['id'] : undefined;
-  const instanceId = subject['instance_id'];
-  const revisionId = subject['revision_id'];
-  const digest = subject['digest'];
-  const workspaceId = subject['workspace_id'];
-  if (typeof kindId !== 'string' || typeof instanceId !== 'string' || typeof revisionId !== 'string' || typeof digest !== 'string' || typeof workspaceId !== 'string') {
-    return undefined;
+  if (subject !== undefined) {
+    const kind = subject['kind'];
+    const kindId = isRecord(kind) ? kind['id'] : undefined;
+    const instanceId = subject['instance_id'];
+    const revisionId = subject['revision_id'];
+    const digest = subject['digest'];
+    const workspaceId = subject['workspace_id'];
+    if (typeof kindId !== 'string' || typeof instanceId !== 'string' || typeof revisionId !== 'string' || typeof digest !== 'string' || typeof workspaceId !== 'string') {
+      return undefined;
+    }
+    return `${kindId}|${instanceId}|${revisionId}|${digest}|${workspaceId}`;
   }
-  return `${kindId}|${instanceId}|${revisionId}|${digest}|${workspaceId}`;
+  const bundle = payload['bundle'];
+  if (isRecord(bundle)) {
+    const kind = bundle['target_kind'];
+    const kindId = isRecord(kind) ? kind['id'] : undefined;
+    const instanceId = bundle['target_instance_id'];
+    const revisionId = bundle['target_revision_id'];
+    const digest = bundle['target_digest'];
+    const workspaceId = payload['workspace_id'];
+    if (typeof kindId !== 'string' || typeof instanceId !== 'string' || typeof revisionId !== 'string' || typeof digest !== 'string' || typeof workspaceId !== 'string') {
+      return undefined;
+    }
+    return `${kindId}|${instanceId}|${revisionId}|${digest}|${workspaceId}`;
+  }
+  return undefined;
 }
 
-/** Reconstruct the canonical subject identity of a stored revocable record payload. */
+/**
+ * Reconstruct the canonical subject identity of a stored revocable record
+ * payload. Slice-3A adds the RuntimeGrant-shaped branch: the subject is
+ * derived from the target grant's exact bundle reference + workspace_id
+ * (the grant's bundle binding is the exact ExecutionBundle revision
+ * identity).
+ */
 function canonicalSubjectOfRecord(payload: Readonly<Record<string, unknown>>): CanonicalSubject | undefined {
   const subject = subjectOf(payload);
-  if (subject === undefined) return undefined;
-  const kind = subject['kind'];
-  const kindId = isRecord(kind) ? kind['id'] : undefined;
-  const kindVersion = isRecord(kind) ? kind['version'] : undefined;
-  const protocolVersion = subject['protocol_version'];
-  const instanceId = subject['instance_id'];
-  const revisionId = subject['revision_id'];
-  const digest = subject['digest'];
-  const workspaceId = subject['workspace_id'];
-  if (typeof kindId !== 'string' || typeof kindVersion !== 'string' || typeof protocolVersion !== 'string' ||
-      typeof instanceId !== 'string' || typeof revisionId !== 'string' || typeof digest !== 'string' || typeof workspaceId !== 'string') {
-    return undefined;
+  if (subject !== undefined) {
+    const kind = subject['kind'];
+    const kindId = isRecord(kind) ? kind['id'] : undefined;
+    const kindVersion = isRecord(kind) ? kind['version'] : undefined;
+    const protocolVersion = subject['protocol_version'];
+    const instanceId = subject['instance_id'];
+    const revisionId = subject['revision_id'];
+    const digest = subject['digest'];
+    const workspaceId = subject['workspace_id'];
+    if (typeof kindId !== 'string' || typeof kindVersion !== 'string' || typeof protocolVersion !== 'string' ||
+        typeof instanceId !== 'string' || typeof revisionId !== 'string' || typeof digest !== 'string' || typeof workspaceId !== 'string') {
+      return undefined;
+    }
+    return Object.freeze({
+      protocolId: ARTIFACT_PROTOCOL_ID,
+      protocolVersion,
+      kindId: kindId as CanonicalSubject['kindId'],
+      kindVersion,
+      instanceId,
+      revisionId,
+      digest,
+      workspaceId,
+    });
   }
-  return Object.freeze({
-    protocolId: ARTIFACT_PROTOCOL_ID,
-    protocolVersion,
-    kindId: kindId as CanonicalSubject['kindId'],
-    kindVersion,
-    instanceId,
-    revisionId,
-    digest,
-    workspaceId,
-  });
+  const bundle = payload['bundle'];
+  if (isRecord(bundle)) {
+    const kind = bundle['target_kind'];
+    const kindId = isRecord(kind) ? kind['id'] : undefined;
+    const kindVersion = isRecord(kind) ? kind['version'] : undefined;
+    const protocolVersion = bundle['target_protocol_version'];
+    const instanceId = bundle['target_instance_id'];
+    const revisionId = bundle['target_revision_id'];
+    const digest = bundle['target_digest'];
+    const workspaceId = payload['workspace_id'];
+    if (typeof kindId !== 'string' || typeof kindVersion !== 'string' || typeof protocolVersion !== 'string' ||
+        typeof instanceId !== 'string' || typeof revisionId !== 'string' || typeof digest !== 'string' || typeof workspaceId !== 'string') {
+      return undefined;
+    }
+    return Object.freeze({
+      protocolId: ARTIFACT_PROTOCOL_ID,
+      protocolVersion,
+      kindId: kindId as CanonicalSubject['kindId'],
+      kindVersion,
+      instanceId,
+      revisionId,
+      digest,
+      workspaceId,
+    });
+  }
+  return undefined;
 }
 
-/** Slice-2A target class ID for an accepted operational target record type. */
+/** Slice-2A/3A target class ID for an accepted operational target record type. */
 function targetClassOf(targetRecordType: string): RecordClassId | undefined {
   if (targetRecordType === 'ApprovalRecord') return 'approval-record';
   if (targetRecordType === 'IssuanceRecord') return 'issuance-record';
+  if (targetRecordType === 'RuntimeGrant') return RUNTIME_GRANT_CLASS;
   return undefined;
 }
 
@@ -751,6 +814,981 @@ function runRevoke(context: ControlPlaneTrustedContext, request: Slice1Request):
   }
 }
 
+// ─── Slice-3A issueRuntimeGrant — trusted-local grant issuance ──────────────
+// issueRuntimeGrant is the transport-free trusted-local RuntimeGrant
+// issuance path: exact-key untrusted narrowing/correlation operands only;
+// authority derived from the trusted host context + the validated
+// ExecutionBundle evidence + authoritative store state, all revalidated
+// under the WP-12 coordination lock; one internally allocated occurrence
+// ID; EXACTLY ONE RuntimeGrant on success (with the WP-8 mechanical
+// write-audit); zero primary lifecycle records on any failure. The grant
+// never executes anything and never activates anything (ADR-011; §11).
+
+/** The exact four required ExecutionBundle member kinds (ADR-006). */
+const BUNDLE_MEMBER_KINDS = ['TaskSpec', 'AuthorityPolicy', 'ContextManifest', 'CompletionContract'] as const;
+/** Bundle body member keys (accepted ExecutionBundle composition; ADR-006). */
+const BUNDLE_MEMBER_BODY_KEYS: Readonly<Record<(typeof BUNDLE_MEMBER_KINDS)[number], string>> = {
+  TaskSpec: 'task',
+  AuthorityPolicy: 'authority_policy',
+  ContextManifest: 'context_manifest',
+  CompletionContract: 'completion_contract',
+};
+
+/**
+ * Derive the exact four member identities from the validated ExecutionBundle
+ * model (host-injected trusted evidence). Caller-supplied member identities
+ * never exist (the request key set rejects them). The bundle body is the
+ * accepted exact-artifact-reference form (ADR-006 composition).
+ */
+function bundleMembersOf(model: Readonly<Record<string, unknown>>): readonly CanonicalSubject[] | undefined {
+  const body = model['body'];
+  if (!isRecord(body)) return undefined;
+  const members: CanonicalSubject[] = [];
+  for (const key of BUNDLE_MEMBER_KINDS) {
+    const ref = body[BUNDLE_MEMBER_BODY_KEYS[key]];
+    if (!isRecord(ref)) return undefined;
+    const kind = ref['target_kind'];
+    const kindId = isRecord(kind) ? kind['id'] : undefined;
+    const kindVersion = isRecord(kind) ? kind['version'] : undefined;
+    const protocolVersion = ref['target_protocol_version'];
+    const instanceId = ref['target_instance_id'];
+    const revisionId = ref['target_revision_id'];
+    const digest = ref['target_digest'];
+    if (typeof kindId !== 'string' || kindId !== key || typeof kindVersion !== 'string' || typeof protocolVersion !== 'string' ||
+        typeof instanceId !== 'string' || typeof revisionId !== 'string' || typeof digest !== 'string') {
+      return undefined;
+    }
+    members.push(Object.freeze({
+      protocolId: ARTIFACT_PROTOCOL_ID,
+      protocolVersion,
+      kindId: kindId as CanonicalSubject['kindId'],
+      kindVersion,
+      instanceId,
+      revisionId,
+      digest,
+      workspaceId: '', // filled by the caller with the exact grant workspace
+    }));
+  }
+  return Object.freeze(members);
+}
+
+interface ChainCorrelation {
+  readonly approvalRecordIds: readonly string[];
+  readonly issuanceRecordIds: readonly string[];
+}
+
+/**
+ * Revalidate the authoritative lifecycle chain for the exact bundle and its
+ * four exact members (contract §9/§10; §26.6 policy prerequisite). All state
+ * is selected from the trusted store; caller-supplied record IDs cannot
+ * select authority. For each required subject, exactly one CURRENT matching
+ * approval and exactly one CURRENT matching issuance (exact subject +
+ * workspace + required use class) must correlate; the issuance's referenced
+ * approval must itself be current. Fail-closed mapping follows the accepted
+ * chain-currentness semantics (§25.4): missing → lifecycle-state-missing;
+ * explicitly revoked approval → approval-revoked; unusable issuance →
+ * issuance-not-authorized; ambiguity → lifecycle-conflict. No created_at /
+ * record-ID / first-enumeration / newest selection ever occurs.
+ */
+function correlateGrantChain(
+  context: ControlPlaneTrustedContext,
+  subject: CanonicalSubject,
+  members: readonly CanonicalSubject[],
+  approvals: readonly Readonly<Record<string, unknown>>[],
+  issuances: readonly Readonly<Record<string, unknown>>[],
+  revocations: readonly Readonly<Record<string, unknown>>[],
+  supersessions: readonly Readonly<Record<string, unknown>>[],
+  now: string,
+): { readonly ok: true; readonly correlation: ChainCorrelation } | { readonly ok: false; readonly category: Slice1FailureCategory } {
+  const approvalIds: string[] = [];
+  const issuanceIds: string[] = [];
+  const required = [
+    Object.freeze({ ...subject }),
+    ...members.map((member) => Object.freeze({ ...member, workspaceId: subject.workspaceId })),
+  ];
+  for (const requiredSubject of required) {
+    const matching = matchingApprovals(approvals, revocations, supersessions, requiredSubject, now);
+    if (matching.length === 0) return { ok: false, category: 'lifecycle-state-missing' };
+    const currentApprovals = matching.filter((entry) => entry.state === 'current');
+    if (currentApprovals.length > 1) return { ok: false, category: 'lifecycle-conflict' };
+    if (currentApprovals.length === 0) {
+      return matching.some((entry) => entry.state === 'revoked')
+        ? { ok: false, category: 'approval-revoked' }
+        : { ok: false, category: 'lifecycle-state-missing' };
+    }
+    const approvalId = String(currentApprovals[0]!.payload['record_id'] ?? '');
+
+    const matchingIssuances = issuances.filter((issuance) => sameIssuanceScope(issuance, requiredSubject, SLICE_1_USE_CLASSES[0]));
+    if (matchingIssuances.length === 0) return { ok: false, category: 'lifecycle-state-missing' };
+    const classified = matchingIssuances.map((issuance) => ({
+      payload: issuance,
+      state: currentnessOf(issuance, revocations, supersessions, now).state,
+    }));
+    const currentIssuances = classified.filter((entry) => entry.state === 'current');
+    if (currentIssuances.length > 1) return { ok: false, category: 'lifecycle-conflict' };
+    if (currentIssuances.length === 0) return { ok: false, category: 'issuance-not-authorized' };
+    const issuanceId = String(currentIssuances[0]!.payload['record_id'] ?? '');
+
+    // The correlated issuance's referenced approval must itself be current
+    // and usable (chain integrity; §9).
+    const referencedApprovalId = String(currentIssuances[0]!.payload['approval_record_id'] ?? '');
+    const referencedApproval = approvals.find((approval) => String(approval['record_id'] ?? '') === referencedApprovalId);
+    if (referencedApproval === undefined) return { ok: false, category: 'lifecycle-state-missing' };
+    const referencedState = currentnessOf(referencedApproval, revocations, supersessions, now).state;
+    if (referencedState === 'revoked') return { ok: false, category: 'approval-revoked' };
+    if (referencedState !== 'current') return { ok: false, category: 'lifecycle-state-missing' };
+
+    approvalIds.push(approvalId);
+    issuanceIds.push(issuanceId);
+  }
+  return { ok: true, correlation: Object.freeze({ approvalRecordIds: Object.freeze(approvalIds), issuanceRecordIds: Object.freeze(issuanceIds) }) };
+}
+
+/**
+ * True when an existing lifecycle record already binds the reserved
+ * occurrence identity (RuntimeGrant.reserved_occurrence_id, the
+ * activation/occurrence reservation classes' reserved/occurrence identity
+ * fields). Read-only freshness consumption of the relevant existing record
+ * classes (contract §26.9): a collision is a hard fail — no retry with
+ * another generated ID inside the same command (one-command/one-allocation
+ * semantics; §20). 3B record CONSTRUCTION/PUBLICATION is never performed
+ * here; these are class reads only.
+ */
+function reservedOccurrenceBound(records: readonly (readonly Readonly<Record<string, unknown>>[])[], occurrenceId: string): boolean {
+  for (const classRecords of records) {
+    for (const record of classRecords) {
+      if (String(record['reserved_occurrence_id'] ?? '') === occurrenceId) return true;
+      if (String(record['occurrence_id'] ?? '') === occurrenceId) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Concrete WP-6 numeric action-ceiling comparison for requested max-actions
+ * N (contract §26.6/S3-D4; the ONLY grant numeric constraint with an
+ * accepted current ceiling comparison). Missing ceilings are preserved as
+ * "no additional quantitative restriction" (accepted WP-6 semantics);
+ * violations fail closed as ceiling-denied.
+ */
+function maxActionsCeilingDenied(
+  configuration: ControlPlaneTrustedContext['configuration'],
+  workspace: NonNullable<ReturnType<typeof lookupValidatedWorkspace>>,
+  maxActions: number,
+): boolean {
+  if (configuration.globalActionCeiling !== undefined && maxActions > configuration.globalActionCeiling) return true;
+  if (workspace.actionCeiling !== undefined && maxActions > workspace.actionCeiling) return true;
+  return false;
+}
+
+/**
+ * Under-lock RuntimeGrant decision (fixed §15 order: re-read authoritative
+ * state → revalidate chain/currentness → allocate + check occurrence ID →
+ * evaluate narrowing → construct → schema gate → publish exactly one
+ * RuntimeGrant → verify durable outcome). Every decision input is re-read
+ * under the coordination lock; the grant itself is the durable reservation
+ * binding — no partial reservation state is ever published.
+ */
+function issueRuntimeGrantUnderLock(context: ControlPlaneTrustedContext, request: Slice1Request, workspace: NonNullable<ReturnType<typeof lookupValidatedWorkspace>>): Slice1Result {
+  const subject = request.subject;
+  const attemptLimit = request.attemptLimit;
+  const validity = request.validity;
+  const constraints = request.narrowedConstraints;
+  if (subject === undefined || attemptLimit === undefined || validity === undefined || constraints === undefined) {
+    return failure('internal-failure');
+  }
+  // Exact ExecutionBundle subject only (contract §8).
+  if (subject.kindId !== 'ExecutionBundle') return failure('request-invalid');
+
+  // Trusted validated bundle evidence (host-injected; branded; exact
+  // subject correlation). The four member identities are derived from the
+  // validated bundle model — never caller-supplied.
+  const artifact = validateSubjectArtifact(context, subject);
+  if (!artifact.ok) {
+    return failure(artifact.reason === 'absent' ? 'internal-failure' : 'subject-invalid');
+  }
+  const members = bundleMembersOf(artifact.model);
+  if (members === undefined) return failure('subject-invalid');
+
+  const now = context.identity.nowUtcIso();
+  const approvalResult = readClassPayloads(context, 'approval-record');
+  if (!approvalResult.ok) return failure('store-failure');
+  const issuanceResult = readClassPayloads(context, 'issuance-record');
+  if (!issuanceResult.ok) return failure('store-failure');
+  const validationResult = readClassPayloads(context, 'validation-record');
+  if (!validationResult.ok) return failure('store-failure');
+  const revocationResult = readClassPayloads(context, REVOCATION_RECORD_CLASS);
+  if (!revocationResult.ok) return failure('store-failure');
+  const supersessionResult = readClassPayloads(context, 'supersession-record');
+  if (!supersessionResult.ok) return failure('store-failure');
+  // Freshness-relevant existing reservation-binding classes (§26.9):
+  // read-only consumption; no 3B production vocabulary.
+  const grantResult = readClassPayloads(context, RUNTIME_GRANT_CLASS);
+  if (!grantResult.ok) return failure('store-failure');
+  const activationResult = readClassPayloads(context, 'activation-record');
+  if (!activationResult.ok) return failure('store-failure');
+  const occurrenceResult = readClassPayloads(context, 'execution-occurrence-record');
+  if (!occurrenceResult.ok) return failure('store-failure');
+
+  // Five-fold lifecycle chain revalidation (store-derived authority).
+  const chain = correlateGrantChain(
+    context, subject, members,
+    approvalResult.payloads, issuanceResult.payloads,
+    revocationResult.payloads, supersessionResult.payloads, now,
+  );
+  if (!chain.ok) return failure(chain.category);
+
+  // Internal occurrence-ID allocation + freshness check under the lock
+  // (contract §26.9): one allocation per command; collision →
+  // occurrence-conflict with zero RuntimeGrant; no automatic retry.
+  const reservedOccurrenceId = context.identity.newOccurrenceId();
+  if (reservedOccurrenceBound([grantResult.payloads, activationResult.payloads, occurrenceResult.payloads], reservedOccurrenceId)) {
+    return failure('occurrence-conflict');
+  }
+
+  // Narrowing evaluation (contract §13/§14/§26.6): max-resources is
+  // schema-admitted but unsupported by the accepted enforcement
+  // architecture → eligibility-denied (NOT request-invalid; NOT
+  // ceiling-denied); max-actions is the only numeric form with an accepted
+  // current WP-6 ceiling comparison → ceiling-denied on violation.
+  for (const constraint of constraints) {
+    if (constraint.type === 'max-resources') return failure('eligibility-denied');
+    if (constraint.type === 'max-actions' && maxActionsCeilingDenied(context.configuration, workspace, constraint.value as number)) {
+      return failure('ceiling-denied');
+    }
+  }
+
+  const recordId = context.identity.newRecordId();
+  const candidate = buildRuntimeGrantPayload({
+    recordId,
+    createdAt: now,
+    subject,
+    workspaceId: request.workspaceId,
+    reservedOccurrenceId,
+    attemptLimit,
+    validity,
+    narrowedConstraints: constraints,
+    registry: context.registry,
+  });
+
+  // Accepted WP-4 graph evaluation: LFC chain integrity over the store
+  // state + REG recordability of the correlated chain records and the
+  // candidate grant under the current accepted registry context (§10/
+  // §26.4 PHASE-1 recordability; single lifecycle rule authority).
+  const graphReport = evaluateCandidateLifecycleRecord({
+    existing: [
+      ...approvalResult.payloads,
+      ...issuanceResult.payloads,
+      ...validationResult.payloads,
+      ...revocationResult.payloads,
+      ...supersessionResult.payloads,
+      ...grantResult.payloads,
+    ],
+    candidate,
+    registry: context.registry,
+    artifactsByRevision: new Map(),
+    artifactsByInstance: new Map(),
+    extraRegistryEntries: new Set([...chain.ok ? chain.correlation.approvalRecordIds : [], ...chain.ok ? chain.correlation.issuanceRecordIds : []]),
+  });
+  const category = mapGrantGraphFindings(graphReport.findings);
+  if (category !== undefined) return failure(category);
+
+  if (!schemaGate(context, candidate)) return failure('internal-failure');
+
+  let published;
+  try {
+    published = context.store.publishLifecycleRecord(RUNTIME_GRANT_CLASS, candidate);
+  } catch {
+    return failure('store-failure');
+  }
+  const outcome = publishOutcome(published, 'lifecycle-conflict');
+  if (!outcome.ok) return failure(outcome.category);
+  return success('granted', {
+    recordClass: RUNTIME_GRANT_CLASS,
+    recordId,
+    recordDigest: outcome.recordDigest,
+    auditEventId: outcome.auditEventId,
+    subject,
+    workspaceId: request.workspaceId,
+    reservedOccurrenceId,
+    attemptLimit,
+    validity,
+    narrowedConstraints: constraints,
+    registrySnapshotId: context.registry.registrySnapshotId,
+    registrySnapshotDigest: context.registry.registrySnapshotDigest,
+  });
+}
+
+/**
+ * issueRuntimeGrant command (host-asserted grant-authority role; §26.19):
+ * registry echo correlation → trusted workspace resolution → the SAME
+ * canonical bundle subject/workspace coordination key as approve/issue/
+ * revoke → under-lock decision. The command payload never supplies the
+ * grant authority role (structural boundary; SCR-W12-003).
+ */
+function runIssueRuntimeGrant(context: ControlPlaneTrustedContext, request: Slice1Request): Slice1Result {
+  const echo = request.registryEcho;
+  if (echo === undefined) return failure('request-invalid');
+  if (echo.registry_snapshot_id !== context.registry.registrySnapshotId || echo.registry_snapshot_digest !== context.registry.registrySnapshotDigest) {
+    return failure('registry-context-mismatch');
+  }
+  const workspace = lookupValidatedWorkspace(context.configuration, request.workspaceId);
+  if (workspace === undefined) return failure('lifecycle-state-missing');
+  const subject = request.subject;
+  if (subject === undefined) return failure('internal-failure');
+  try {
+    return context.coordinate.withLock(coordinationKeyOf(subject), () => issueRuntimeGrantUnderLock(context, request, workspace));
+  } catch (err) {
+    if (err instanceof LockContentionError) return failure('lock-conflict');
+    return failure('internal-failure');
+  }
+}
+
+// ─── Slice-3B decideActivation + createOccurrence ───────────────────────────
+// decideActivation is the transport-free activation decision path (S3-D3):
+// exact-key request; host-asserted activation authority; under-lock
+// authoritative re-read/revalidation; PHASE-1 trustworthy five-issuance
+// correlation; PHASE-2 currentness/eight-check eligibility; rejection
+// (zero records) vs durable ActivationRecord(denied) (exactly one record,
+// no occurrence) vs accepted (ActivationRecord(accepted) FIRST, then the
+// mandatory internal ExecutionOccurrenceRecord, §15 SCR-W12-005); complete
+// evidence only after both publications are durable. createOccurrence is
+// ONLY the recovery surface for the accepted-but-incomplete transition.
+
+/**
+ * The activation requested use (check 7). Activation is the governance
+ * decision that authorizes the reserved execution occurrence under the
+ * grant; its requested authority envelope is the authorized workspace work
+ * capability (capability-vocabulary.md) narrowed to the activation scope.
+ * The accepted point-of-use machinery then intersects the approved policy,
+ * the grant's narrowed constraints, current ceilings, and consumer support
+ * without an attempted expansion (§26.5/§26.6).
+ */
+const ACTIVATION_REQUESTED_USE = {
+  capability: 'project-gateway.workspace-read',
+  operationClass: 'read',
+  resourceClass: 'configured-artifact-area',
+  scope: 'exact:activation',
+} as const;
+
+/** All ActivationRecord payloads for one reserved occurrence (store-derived). */
+function activationsForReservation(
+  activations: readonly Readonly<Record<string, unknown>>[],
+  reservation: string,
+): readonly Readonly<Record<string, unknown>>[] {
+  return Object.freeze(activations.filter((a) => String(a['reserved_occurrence_id'] ?? '') === reservation));
+}
+
+/**
+ * Gate B — genuine RuntimeGrant correlation (§26.3): the exact grant exists,
+ * its workspace matches, its bundle reference matches the exact requested
+ * bundle, and its reserved_occurrence_id matches the request. Failures are
+ * non-disclosing lifecycle-state-missing rejections (§26.4).
+ */
+function correlateActivationGrant(
+  grants: readonly Readonly<Record<string, unknown>>[],
+  request: Slice1Request,
+  subject: CanonicalSubject,
+): { readonly ok: true; readonly grant: Readonly<Record<string, unknown>> } | { readonly ok: false } {
+  const grant = grants.find((g) => String(g['record_id'] ?? '') === request.grantId);
+  if (grant === undefined) return { ok: false };
+  if (grant['workspace_id'] !== subject.workspaceId) return { ok: false };
+  if (String(grant['reserved_occurrence_id'] ?? '') !== request.reservedOccurrenceId) return { ok: false };
+  const bundle = grant['bundle'];
+  if (!isRecord(bundle)) return { ok: false };
+  const kind = bundle['target_kind'];
+  if (!isRecord(kind) || kind['id'] !== 'ExecutionBundle') return { ok: false };
+  if (bundle['target_instance_id'] !== subject.instanceId) return { ok: false };
+  if (bundle['target_revision_id'] !== subject.revisionId) return { ok: false };
+  if (bundle['target_digest'] !== subject.digest) return { ok: false };
+  return { ok: true, grant };
+}
+
+/**
+ * PHASE-1 — trustworthy five-issuance correlation (§26.3 D / §26.5): for each
+ * of the exactly five required subjects (bundle + four members) derive
+ * EXACTLY ONE issuance by exact subject + workspace + activation use-class,
+ * using the accepted Slice-1/2 current-record-selection primitive
+ * (currentness-filtered uniqueness). Zero correlatable issuances →
+ * lifecycle-state-missing; ambiguity → lifecycle-conflict. Each correlated
+ * issuance's referenced approval must exist and match the subject/workspace
+ * (malformed authoritative record → lifecycle-state-missing). Expired/
+ * revoked-but-correlated state is NOT a correlation failure — it is PHASE-2
+ * (durable denial). No created_at / record-ID / first-enumeration / newest
+ * selection ever occurs.
+ */
+function phase1CorrelateIssuances(
+  subject: CanonicalSubject,
+  members: readonly CanonicalSubject[],
+  issuances: readonly Readonly<Record<string, unknown>>[],
+  approvals: readonly Readonly<Record<string, unknown>>[],
+  revocations: readonly Readonly<Record<string, unknown>>[],
+  supersessions: readonly Readonly<Record<string, unknown>>[],
+  now: string,
+): { readonly ok: true; readonly issuanceIds: readonly string[]; readonly approvalIds: readonly string[] } | { readonly ok: false; readonly category: 'lifecycle-state-missing' | 'lifecycle-conflict' } {
+  const required = [
+    Object.freeze({ ...subject }),
+    ...members.map((member) => Object.freeze({ ...member, workspaceId: subject.workspaceId })),
+  ];
+  const issuanceIds: string[] = [];
+  const approvalIds: string[] = [];
+  for (const requiredSubject of required) {
+    const candidates = issuances.filter((issuance) => sameIssuanceScope(issuance, requiredSubject, SLICE_1_USE_CLASSES[0]));
+    if (candidates.length === 0) return { ok: false, category: 'lifecycle-state-missing' };
+    let correlated: Readonly<Record<string, unknown>>;
+    if (candidates.length === 1) {
+      correlated = candidates[0]!;
+    } else {
+      // Accepted current-record-selection primitive: the currentness-filtered
+      // uniqueness rule (Slice 2B issuance form). Exactly one current record
+      // is the deterministic correlation; zero or multiple current records
+      // among multiple candidates are ambiguous.
+      const current = candidates.filter((c) => currentnessOf(c, revocations, supersessions, now).state === 'current');
+      if (current.length !== 1) return { ok: false, category: 'lifecycle-conflict' };
+      correlated = current[0]!;
+    }
+    const referencedApprovalId = String(correlated['approval_record_id'] ?? '');
+    const referencedApproval = approvals.find((a) => String(a['record_id'] ?? '') === referencedApprovalId);
+    if (referencedApproval === undefined) return { ok: false, category: 'lifecycle-state-missing' };
+    if (referencedApproval['workspace_id'] !== requiredSubject.workspaceId) return { ok: false, category: 'lifecycle-state-missing' };
+    const approvalSubject = subjectOf(referencedApproval);
+    if (approvalSubject === undefined || !subjectMatchesCanonical(approvalSubject, requiredSubject)) return { ok: false, category: 'lifecycle-state-missing' };
+    issuanceIds.push(String(correlated['record_id'] ?? ''));
+    approvalIds.push(referencedApprovalId);
+  }
+  return { ok: true, issuanceIds: Object.freeze(issuanceIds), approvalIds: Object.freeze(approvalIds) };
+}
+
+/** PHASE-2 currentness denial reasons for one correlated chain record (issuance or approval). */
+function chainCurrentnessDenial(
+  record: Readonly<Record<string, unknown>>,
+  revocations: readonly Readonly<Record<string, unknown>>[],
+  supersessions: readonly Readonly<Record<string, unknown>>[],
+  now: string,
+): 'revoked' | 'expired' | 'current' {
+  const state = currentnessOf(record, revocations, supersessions, now).state;
+  if (state === 'revoked') return 'revoked';
+  if (state === 'expired' || state === 'superseded') return 'expired';
+  return 'current';
+}
+
+/**
+ * Check 8 — activation_limit (§26.12): the exact bundle IssuanceRecord's
+ * activation_limit is consumed by every ACCEPTED ActivationRecord whose
+ * required_issuance_record_ids contains that exact issuance ID. The count is
+ * always derived from immutable accepted ActivationRecords (no mutable
+ * counter); member issuance limits are never counted for bundle use.
+ */
+function activationLimitExhausted(
+  issuances: readonly Readonly<Record<string, unknown>>[],
+  activations: readonly Readonly<Record<string, unknown>>[],
+  bundleIssuanceId: string,
+): boolean | undefined {
+  const bundleIssuance = issuances.find((i) => String(i['record_id'] ?? '') === bundleIssuanceId);
+  if (bundleIssuance === undefined) return undefined;
+  const limit = bundleIssuance['activation_limit'];
+  if (typeof limit !== 'number' || !Number.isSafeInteger(limit) || limit < 1) return undefined;
+  const used = activations.filter((a) => {
+    if (String(a['record_type']) !== 'ActivationRecord') return false;
+    if (a['decision'] !== 'accepted') return false;
+    const required = a['required_issuance_record_ids'];
+    return Array.isArray(required) && (required as string[]).includes(bundleIssuanceId);
+  }).length;
+  return used >= limit;
+}
+
+/** Branded lifecycle view over store payloads (accepted point-of-use machinery). */
+interface LifecycleViewRecord {
+  readonly recordType: string;
+  readonly recordId: string;
+  readonly level: string;
+  readonly model: Readonly<Record<string, unknown>>;
+}
+
+function buildLifecycleView(
+  payloads: readonly (readonly Readonly<Record<string, unknown>>[])[],
+): { readonly records: readonly LifecycleViewRecord[]; readonly findRecord: (id: string) => LifecycleViewRecord | undefined } {
+  const wrappers = payloads.flat().map((model) =>
+    brandValidatedRecord({
+      recordType: String(model['record_type'] ?? '') as never,
+      recordId: String(model['record_id'] ?? ''),
+      level: 'structural-valid',
+      model: model as never,
+    }) as unknown as LifecycleViewRecord,
+  );
+  const byId = new Map<string, LifecycleViewRecord>();
+  for (const wrapper of wrappers) byId.set(wrapper.recordId, wrapper);
+  return Object.freeze({
+    records: Object.freeze(wrappers),
+    findRecord: (id: string) => byId.get(id),
+  });
+}
+
+/**
+ * Build the accepted point-of-use revocation view (effective revocations by
+ * target record ID; scope is not consulted by the accepted evaluation).
+ */
+function buildRevocationView(revocations: readonly Readonly<Record<string, unknown>>[]): { readonly revocationsByTarget: (recordId: string) => readonly { recordId: string; effectiveAt: string; scope: string }[] } {
+  const entries = revocations
+    .filter((r) => String(r['record_type']) === 'RevocationRecord')
+    .map((r) => {
+      const target = r['target'];
+      const targetId = isRecord(target) ? String(target['record_id'] ?? '') : '';
+      const effectiveAt = r['effective_at'];
+      const scope = r['scope'];
+      return {
+        targetId,
+        effectiveAt: typeof effectiveAt === 'string' ? effectiveAt : '',
+        scope: typeof scope === 'string' ? scope : '',
+      };
+    })
+    .filter((entry) => entry.targetId !== '');
+  return Object.freeze({
+    revocationsByTarget: (recordId: string) =>
+      Object.freeze(entries.filter((entry) => entry.targetId === recordId).map((entry) => Object.freeze({ recordId: entry.targetId, effectiveAt: entry.effectiveAt, scope: entry.scope }))),
+  });
+}
+
+/**
+ * Check 7 — full current policy × grant × ceiling × consumer/enforcement
+ * intersection via the accepted WP-4 point-of-use machinery (§26.6). The
+ * bundle and policy models are host-injected validated evidence (identity
+ * correlation is verified by the caller); the grant is the correlated
+ * store record. Ineligible → PHASE-2 denial.
+ */
+function activationIntersectionDenied(
+  context: ControlPlaneTrustedContext,
+  workspace: NonNullable<ReturnType<typeof lookupValidatedWorkspace>>,
+  bundleModel: Readonly<Record<string, unknown>>,
+  policyModel: Readonly<Record<string, unknown>> | undefined,
+  grant: Readonly<Record<string, unknown>>,
+  lifecycleView: { readonly records: readonly LifecycleViewRecord[]; readonly findRecord: (id: string) => LifecycleViewRecord | undefined },
+  revocationsView: { readonly revocationsByTarget: (recordId: string) => readonly { recordId: string; effectiveAt: string; scope: string }[] },
+  now: string,
+): boolean {
+  const consumerSupport = context.consumerSupport ?? { consumerId: '', supportedProtocolFeatures: [], supportedConsumerCapabilities: [], supportedExtensionNamespaces: [] };
+  const report = evaluatePointOfUseEligibility({
+    currentTime: now,
+    workspaceId: workspace.workspaceId,
+    requestedUse: Object.freeze({ ...ACTIVATION_REQUESTED_USE, workspaceId: workspace.workspaceId }),
+    ...(context.configuration.globalActionCeiling !== undefined ? { globalActionCeiling: context.configuration.globalActionCeiling } : {}),
+    ...(workspace.actionCeiling !== undefined ? { workspaceActionCeiling: workspace.actionCeiling } : {}),
+    consumerSupport,
+    identity: Object.freeze({ findInstance: () => undefined, findRevision: () => undefined, findPredecessor: () => undefined, verifyRegistration: () => false }),
+    resolver: Object.freeze({ resolve: () => undefined }),
+    registry: context.registry,
+    lifecycle: lifecycleView as never,
+    revocations: revocationsView as never,
+    bundle: bundleModel as never,
+    policy: policyModel as never,
+    grant: grant as never,
+  });
+  return !report.eligible;
+}
+
+/**
+ * decideActivation — under-lock decision (fixed §15 order; all inputs
+ * re-read under the lock). Returns either a rejection (ok:false, zero
+ * records) or a completed decision (ok:true, outcome 'activated') whose
+ * evidence carries decision 'accepted' (two publications) or 'denied'
+ * (exactly one publication, no occurrence).
+ */
+function decideActivationUnderLock(
+  context: ControlPlaneTrustedContext,
+  request: Slice1Request,
+  workspace: NonNullable<ReturnType<typeof lookupValidatedWorkspace>>,
+): Slice1Result {
+  const subject = request.subject;
+  const grantId = request.grantId;
+  const reservedOccurrenceId = request.reservedOccurrenceId;
+  if (subject === undefined || grantId === undefined || reservedOccurrenceId === undefined) return failure('internal-failure');
+  if (subject.kindId !== 'ExecutionBundle') return failure('request-invalid');
+
+  // Check 1/2 — exact bundle evidence (host-injected, branded, digest-bound)
+  // and exactly one of each member (ADR-006 composition).
+  const artifact = validateSubjectArtifact(context, subject);
+  if (!artifact.ok) {
+    return failure(artifact.reason === 'absent' ? 'internal-failure' : 'subject-invalid');
+  }
+  const members = bundleMembersOf(artifact.model);
+  if (members === undefined) return failure('subject-invalid');
+
+  const now = context.identity.nowUtcIso();
+  const approvalResult = readClassPayloads(context, 'approval-record');
+  if (!approvalResult.ok) return failure('store-failure');
+  const issuanceResult = readClassPayloads(context, 'issuance-record');
+  if (!issuanceResult.ok) return failure('store-failure');
+  const validationResult = readClassPayloads(context, 'validation-record');
+  if (!validationResult.ok) return failure('store-failure');
+  const revocationResult = readClassPayloads(context, REVOCATION_RECORD_CLASS);
+  if (!revocationResult.ok) return failure('store-failure');
+  const supersessionResult = readClassPayloads(context, 'supersession-record');
+  if (!supersessionResult.ok) return failure('store-failure');
+  const grantResult = readClassPayloads(context, RUNTIME_GRANT_CLASS);
+  if (!grantResult.ok) return failure('store-failure');
+  const activationResult = readClassPayloads(context, ACTIVATION_RECORD_CLASS);
+  if (!activationResult.ok) return failure('store-failure');
+  const occurrenceResult = readClassPayloads(context, EXECUTION_OCCURRENCE_RECORD_CLASS);
+  if (!occurrenceResult.ok) return failure('store-failure');
+
+  // Gate B — genuine RuntimeGrant correlation.
+  const grantCorrelation = correlateActivationGrant(grantResult.payloads, request, subject);
+  if (!grantCorrelation.ok) return failure('lifecycle-state-missing');
+  const grant = grantCorrelation.grant;
+
+  // Gate C — reservation undecided (§26.7): any prior terminal decision or
+  // an existing occurrence for the reservation is replay-denied.
+  const reservationActivations = activationsForReservation(activationResult.payloads, reservedOccurrenceId);
+  if (reservationActivations.length > 0) return failure('replay-denied');
+  if (occurrenceResult.payloads.some((o) => String(o['occurrence_id'] ?? '') === reservedOccurrenceId)) return failure('replay-denied');
+
+  // Gate D — PHASE-1 trustworthy five-issuance correlation.
+  const correlation = phase1CorrelateIssuances(
+    subject, members,
+    issuanceResult.payloads, approvalResult.payloads,
+    revocationResult.payloads, supersessionResult.payloads, now,
+  );
+  if (!correlation.ok) return failure(correlation.category);
+
+  // PHASE-2 — currentness of the five correlated issuances + five
+  // referenced approvals (check 3 + check 6): revoked/expired → durable
+  // denial (NOT rejection; §26.5).
+  const deniedChain = (() => {
+    const allRevoked = [...issuanceResult.payloads, ...approvalResult.payloads];
+    for (const id of [...correlation.issuanceIds, ...correlation.approvalIds]) {
+      const record = allRevoked.find((r) => String(r['record_id'] ?? '') === id);
+      if (record === undefined) return true;
+      const denial = chainCurrentnessDenial(record, revocationResult.payloads, supersessionResult.payloads, now);
+      if (denial !== 'current') return true;
+    }
+    return false;
+  })();
+
+  // Check 8 — activation_limit (accepted-record count for the exact bundle
+  // issuance; §26.12). Malformed authoritative state fails closed.
+  const limitExhausted = activationLimitExhausted(issuanceResult.payloads, activationResult.payloads, correlation.issuanceIds[0]!);
+  if (limitExhausted === undefined) return failure('store-failure');
+
+  // Check 7 — policy × grant × ceiling × consumer intersection (accepted
+  // point-of-use machinery; §26.6). The policy model is the host-injected
+  // validated AuthorityPolicy resolved from the bundle reference; identity
+  // correlation is verified against the bundle's authority_policy member.
+  const policyModel = (() => {
+    if (context.policyEvidence === undefined) return undefined;
+    const model = context.policyEvidence.model as Readonly<Record<string, unknown>>;
+    const policyMember = members.find((member) => member.kindId === 'AuthorityPolicy');
+    if (policyMember === undefined) return undefined;
+    if (context.policyEvidence.instanceId !== policyMember.instanceId) return undefined;
+    if (context.policyEvidence.revisionId !== policyMember.revisionId) return undefined;
+    if (context.policyEvidence.digest !== policyMember.digest) return undefined;
+    return model;
+  })();
+  const lifecycleView = buildLifecycleView([
+    approvalResult.payloads, issuanceResult.payloads, validationResult.payloads,
+    revocationResult.payloads, supersessionResult.payloads, grantResult.payloads,
+    activationResult.payloads, occurrenceResult.payloads,
+  ]);
+  const revocationsView = buildRevocationView(revocationResult.payloads);
+  const intersectionDenied = activationIntersectionDenied(
+    context, workspace, artifact.model, policyModel, grant, lifecycleView, revocationsView, now,
+  );
+
+  const decision: 'accepted' | 'denied' = deniedChain || limitExhausted || intersectionDenied ? 'denied' : 'accepted';
+  const recordId = context.identity.newRecordId();
+  const candidate = buildActivationRecordPayload({
+    recordId,
+    createdAt: now,
+    subject,
+    workspaceId: request.workspaceId,
+    requiredIssuanceRecordIds: correlation.issuanceIds,
+    runtimeGrantId: grantId,
+    reservedOccurrenceId,
+    decision,
+    registry: context.registry,
+  });
+
+  // PHASE-1 recordability + integrity (gate E): the correlated chain records
+  // (five issuances, five approvals, grant) are REG entries; LFC/EXE findings
+  // here are REJECTIONS (§26.4). The graph candidate carries decision
+  // 'accepted' because the graph evaluation is decision-independent at this
+  // point (EXE-002/LFC-008 denied-activation checks describe the POST-denial
+  // derived state and must not reject the just-made denial decision).
+  const graphCandidate = { ...candidate, decision: 'accepted' };
+  const graphReport = evaluateCandidateLifecycleRecord({
+    existing: [
+      ...approvalResult.payloads,
+      ...issuanceResult.payloads,
+      ...validationResult.payloads,
+      ...revocationResult.payloads,
+      ...supersessionResult.payloads,
+      ...grantResult.payloads,
+      ...activationResult.payloads,
+      ...occurrenceResult.payloads,
+    ],
+    candidate: graphCandidate,
+    registry: context.registry,
+    artifactsByRevision: new Map(),
+    artifactsByInstance: new Map(),
+    extraRegistryEntries: new Set([...correlation.issuanceIds, ...correlation.approvalIds, grantId]),
+  });
+  const category = mapActivationGraphFindings(graphReport.findings);
+  if (category !== undefined) return failure(category);
+
+  if (!schemaGate(context, candidate)) return failure('internal-failure');
+
+  let published;
+  try {
+    published = context.store.publishLifecycleRecord(ACTIVATION_RECORD_CLASS, candidate);
+  } catch {
+    return failure('store-failure');
+  }
+  const outcome = publishOutcome(published, 'replay-denied');
+  if (!outcome.ok) return failure(outcome.category);
+
+  // Accepted: the mandatory internal ExecutionOccurrenceRecord (SECOND
+  // publication, same lock, §15 SCR-W12-005). A failure here leaves the
+  // accepted-but-incomplete transition; createOccurrence is the only repair.
+  let occurrenceEvidence: { readonly occurrenceRecordId: string; readonly occurrenceRecordDigest?: string; readonly occurrenceAuditEventId?: string } | undefined;
+  if (decision === 'accepted') {
+    const occurrenceId = context.identity.newRecordId();
+    const occurrenceCandidate = buildExecutionOccurrenceRecordPayload({
+      recordId: occurrenceId,
+      createdAt: now,
+      activationRecordId: recordId,
+      bundle: Object.freeze({ ...(candidate['bundle'] as Readonly<Record<string, unknown>>) }),
+      workspaceId: request.workspaceId,
+      occurrenceId: reservedOccurrenceId,
+      runtimeGrantId: grantId,
+      registry: context.registry,
+    });
+    if (!schemaGate(context, occurrenceCandidate)) return failure('internal-failure');
+    let occurrencePublished;
+    try {
+      occurrencePublished = context.store.publishLifecycleRecord(EXECUTION_OCCURRENCE_RECORD_CLASS, occurrenceCandidate);
+    } catch {
+      return failure('store-failure');
+    }
+    const occurrenceOutcome = publishOutcome(occurrencePublished, 'replay-denied');
+    if (!occurrenceOutcome.ok) return failure(occurrenceOutcome.category);
+    occurrenceEvidence = {
+      occurrenceRecordId: occurrenceId,
+      occurrenceRecordDigest: occurrenceOutcome.recordDigest,
+      occurrenceAuditEventId: occurrenceOutcome.auditEventId,
+    };
+  }
+
+  return success('activated', {
+    recordClass: ACTIVATION_RECORD_CLASS,
+    recordId,
+    recordDigest: outcome.recordDigest,
+    auditEventId: outcome.auditEventId,
+    subject,
+    workspaceId: request.workspaceId,
+    decision,
+    runtimeGrantId: grantId,
+    reservedOccurrenceId,
+    ...(occurrenceEvidence !== undefined ? { occurrenceRecordClass: EXECUTION_OCCURRENCE_RECORD_CLASS, ...occurrenceEvidence } : {}),
+    registrySnapshotId: context.registry.registrySnapshotId,
+    registrySnapshotDigest: context.registry.registrySnapshotDigest,
+  });
+}
+
+/**
+ * decideActivation command (host-asserted activation authority): registry
+ * echo correlation → workspace resolution → the canonical bundle
+ * subject/workspace coordination key → under-lock decision. Rejections
+ * produce zero lifecycle records and zero mechanical write-audits.
+ */
+function runDecideActivation(context: ControlPlaneTrustedContext, request: Slice1Request): Slice1Result {
+  const echo = request.registryEcho;
+  if (echo === undefined) return failure('request-invalid');
+  if (echo.registry_snapshot_id !== context.registry.registrySnapshotId || echo.registry_snapshot_digest !== context.registry.registrySnapshotDigest) {
+    return failure('registry-context-mismatch');
+  }
+  const workspace = lookupValidatedWorkspace(context.configuration, request.workspaceId);
+  if (workspace === undefined) return failure('lifecycle-state-missing');
+  const subject = request.subject;
+  if (subject === undefined) return failure('internal-failure');
+  try {
+    return context.coordinate.withLock(coordinationKeyOf(subject), () => decideActivationUnderLock(context, request, workspace));
+  } catch (err) {
+    if (err instanceof LockContentionError) return failure('lock-conflict');
+    return failure('internal-failure');
+  }
+}
+
+/**
+ * createOccurrence — under-lock recovery decision (S3-D2/S3-D8): the exact
+ * accepted ActivationRecord is the authoritative anchor; every construction
+ * field derives from trusted stored facts. Recovery NEVER allocates another
+ * occurrence ID, never creates another activation, never re-runs activation
+ * authority/currentness, and never re-decides accepted→denied. Ambiguous or
+ * conflicting state fails closed.
+ */
+function createOccurrenceUnderLock(
+  context: ControlPlaneTrustedContext,
+  request: Slice1Request,
+): Slice1Result {
+  const reservedOccurrenceId = request.reservedOccurrenceId;
+  if (reservedOccurrenceId === undefined) return failure('internal-failure');
+
+  const activationResult = readClassPayloads(context, ACTIVATION_RECORD_CLASS);
+  if (!activationResult.ok) return failure('store-failure');
+  const occurrenceResult = readClassPayloads(context, EXECUTION_OCCURRENCE_RECORD_CLASS);
+  if (!occurrenceResult.ok) return failure('store-failure');
+  const grantResult = readClassPayloads(context, RUNTIME_GRANT_CLASS);
+  if (!grantResult.ok) return failure('store-failure');
+  const revocationResult = readClassPayloads(context, REVOCATION_RECORD_CLASS);
+  if (!revocationResult.ok) return failure('store-failure');
+  const supersessionResult = readClassPayloads(context, 'supersession-record');
+  if (!supersessionResult.ok) return failure('store-failure');
+  const approvalResult = readClassPayloads(context, 'approval-record');
+  if (!approvalResult.ok) return failure('store-failure');
+  const issuanceResult = readClassPayloads(context, 'issuance-record');
+  if (!issuanceResult.ok) return failure('store-failure');
+  const validationResult = readClassPayloads(context, 'validation-record');
+  if (!validationResult.ok) return failure('store-failure');
+
+  const reservationActivations = activationsForReservation(activationResult.payloads, reservedOccurrenceId);
+  if (reservationActivations.length === 0) return failure('lifecycle-state-missing');
+  if (reservationActivations.length > 1) return failure('occurrence-conflict');
+  const activation = reservationActivations[0]!;
+  if (activation['decision'] !== 'accepted') return failure('lifecycle-state-missing');
+  if (activation['workspace_id'] !== request.workspaceId) return failure('lifecycle-state-missing');
+
+  // Occurrence absence (§15 preconditions): an existing occurrence for the
+  // reservation makes the repair a conflict.
+  if (occurrenceResult.payloads.some((o) => String(o['occurrence_id'] ?? '') === reservedOccurrenceId)) {
+    return failure('occurrence-conflict');
+  }
+
+  // Exact historical grant correlation (S3-D8): the activation's grant must
+  // exist and carry the same reservation/workspace/bundle relationships.
+  const runtimeGrantId = String(activation['runtime_grant_id'] ?? '');
+  const grant = grantResult.payloads.find((g) => String(g['record_id'] ?? '') === runtimeGrantId);
+  if (grant === undefined) return failure('lifecycle-state-missing');
+  if (String(grant['reserved_occurrence_id'] ?? '') !== reservedOccurrenceId) return failure('lifecycle-state-missing');
+  if (grant['workspace_id'] !== activation['workspace_id']) return failure('lifecycle-state-missing');
+  const activationBundle = activation['bundle'];
+  if (!isRecord(activationBundle)) return failure('store-failure');
+  const grantBundle = grant['bundle'];
+  if (!isRecord(grantBundle)) return failure('store-failure');
+  if (JSON.stringify(activationBundle) !== JSON.stringify(grantBundle)) return failure('lifecycle-state-missing');
+
+  // The new ExecutionOccurrenceRecord is the lifecycle graph ENTRY candidate
+  // under the CURRENT registry context; the historical activation/grant/
+  // issuance records are supporting correlation records and are NOT
+  // reclassified as current REG entries (§26.13 registry A → B scoping).
+  const now = context.identity.nowUtcIso();
+  const recordId = context.identity.newRecordId();
+  const recoveredSubject = canonicalSubjectOfRecord(activation);
+  if (recoveredSubject === undefined) return failure('store-failure');
+  const candidate = buildExecutionOccurrenceRecordPayload({
+    recordId,
+    createdAt: now,
+    activationRecordId: String(activation['record_id'] ?? ''),
+    bundle: activationBundle,
+    workspaceId: String(activation['workspace_id'] ?? ''),
+    occurrenceId: reservedOccurrenceId,
+    runtimeGrantId,
+    registry: context.registry,
+  });
+  const graphReport = evaluateCandidateLifecycleRecord({
+    existing: [
+      ...approvalResult.payloads,
+      ...issuanceResult.payloads,
+      ...validationResult.payloads,
+      ...revocationResult.payloads,
+      ...supersessionResult.payloads,
+      ...grantResult.payloads,
+      ...activationResult.payloads,
+      ...occurrenceResult.payloads,
+    ],
+    candidate,
+    registry: context.registry,
+    artifactsByRevision: new Map(),
+    artifactsByInstance: new Map(),
+  });
+  if (graphReport.findings.length > 0) {
+    // Recovery taxonomy (§26.19 createOccurrence): REG findings (the new
+    // occurrence must be recordable under the CURRENT accepted registry
+    // context) → registry-context-mismatch; broken historical chain
+    // correlation (LFC) → lifecycle-state-missing; anything else stays
+    // store-failure (the trusted store view itself is inconsistent). The
+    // recovery token set never uses issuance-not-authorized or
+    // eligibility-denied, so those categories fold into the closed
+    // recovery tokens above.
+    const category = mapActivationGraphFindings(graphReport.findings);
+    if (category === 'registry-context-mismatch') return failure('registry-context-mismatch');
+    if (category === 'lifecycle-state-missing' || category === 'issuance-not-authorized') return failure('lifecycle-state-missing');
+    return failure('store-failure');
+  }
+  if (!schemaGate(context, candidate)) return failure('internal-failure');
+
+  let published;
+  try {
+    published = context.store.publishLifecycleRecord(EXECUTION_OCCURRENCE_RECORD_CLASS, candidate);
+  } catch {
+    return failure('store-failure');
+  }
+  const outcome = publishOutcome(published, 'occurrence-conflict');
+  if (!outcome.ok) return failure(outcome.category);
+
+  return success('recovered', {
+    recordClass: EXECUTION_OCCURRENCE_RECORD_CLASS,
+    recordId,
+    recordDigest: outcome.recordDigest,
+    auditEventId: outcome.auditEventId,
+    subject: recoveredSubject,
+    workspaceId: String(activation['workspace_id'] ?? ''),
+    activationRecordId: String(activation['record_id'] ?? ''),
+    runtimeGrantId,
+    reservedOccurrenceId,
+    registrySnapshotId: context.registry.registrySnapshotId,
+    registrySnapshotDigest: context.registry.registrySnapshotDigest,
+  });
+}
+
+/**
+ * createOccurrence command (host-asserted activation authority): registry
+ * echo → workspace → PRE-LOCK locator read of the accepted activation for
+ * the reservation (target/workspace eligibility + bundle-derived
+ * coordination key ONLY; never decision authority) → lock → under-lock
+ * recovery decision.
+ */
+function runCreateOccurrence(context: ControlPlaneTrustedContext, request: Slice1Request): Slice1Result {
+  const echo = request.registryEcho;
+  if (echo === undefined) return failure('request-invalid');
+  if (echo.registry_snapshot_id !== context.registry.registrySnapshotId || echo.registry_snapshot_digest !== context.registry.registrySnapshotDigest) {
+    return failure('registry-context-mismatch');
+  }
+  const workspace = lookupValidatedWorkspace(context.configuration, request.workspaceId);
+  if (workspace === undefined) return failure('lifecycle-state-missing');
+  const reservedOccurrenceId = request.reservedOccurrenceId;
+  if (reservedOccurrenceId === undefined) return failure('internal-failure');
+
+  // PRE-LOCK LOCATOR READ: existence/workspace eligibility + coordination
+  // key derivation only (C5 two-stage discipline; the under-lock decision
+  // re-reads everything).
+  const locatorActivations = readClassPayloads(context, ACTIVATION_RECORD_CLASS);
+  if (!locatorActivations.ok) return failure('store-failure');
+  const locatorCandidates = activationsForReservation(locatorActivations.payloads, reservedOccurrenceId);
+  if (locatorCandidates.length === 0) return failure('lifecycle-state-missing');
+  if (locatorCandidates.length > 1) return failure('occurrence-conflict');
+  const locatorActivation = locatorCandidates[0]!;
+  if (locatorActivation['decision'] !== 'accepted') return failure('lifecycle-state-missing');
+  if (locatorActivation['workspace_id'] !== request.workspaceId) return failure('lifecycle-state-missing');
+  const key = coordinationKeyOfPayload(locatorActivation);
+  if (key === undefined) return failure('store-failure');
+
+  try {
+    return context.coordinate.withLock(key, () => createOccurrenceUnderLock(context, request));
+  } catch (err) {
+    if (err instanceof LockContentionError) return failure('lock-conflict');
+    return failure('internal-failure');
+  }
+}
+
 // ─── Slice-2B verify — read-only current-state evaluation ───────────────────
 // verifyCurrentLifecycleState is a NON-AUTHORIZING, transport-free,
 // mutation-free current-state evaluator over the records observed during
@@ -1007,6 +2045,18 @@ function runOperation(context: ControlPlaneTrustedContext, request: Slice1Reques
       // Dispatched directly by executeSlice1Command (target-derived key);
       // unreachable through the subject-key path (defensive).
       return runRevoke(context, request);
+    case 'issueRuntimeGrant':
+      // Dispatched directly by executeSlice1Command (bundle-subject key);
+      // unreachable through the subject-key path (defensive).
+      return runIssueRuntimeGrant(context, request);
+    case 'decideActivation':
+      // Dispatched directly by executeSlice1Command (bundle-subject key);
+      // unreachable through the subject-key path (defensive).
+      return runDecideActivation(context, request);
+    case 'createOccurrence':
+      // Dispatched directly by executeSlice1Command (activation-derived key);
+      // unreachable through the subject-key path (defensive).
+      return runCreateOccurrence(context, request);
     case 'recordValidation':
       return runRecordValidation(context, request);
     case 'approve':
@@ -1057,6 +2107,19 @@ export function executeSlice1Command(input: unknown, context: ControlPlaneTruste
   if (request.operation === 'revoke') {
     if (context.operator.revokerRole !== true) return failure('lifecycle-state-missing');
     return runRevoke(context, request);
+  }
+  if (request.operation === 'issueRuntimeGrant') {
+    // Slice-3A grant authority is host-asserted only; the command payload
+    // never supplies it (§6; §26.19). Missing host role fails closed.
+    if (context.operator.grantRole !== true) return failure('lifecycle-state-missing');
+    return runIssueRuntimeGrant(context, request);
+  }
+  if (request.operation === 'decideActivation' || request.operation === 'createOccurrence') {
+    // Slice-3B activation/recovery authority is host-asserted only (§26.3 A;
+    // S3-D2). Missing host role fails closed as lifecycle-state-missing.
+    if (context.operator.activationRole !== true) return failure('lifecycle-state-missing');
+    if (request.operation === 'decideActivation') return runDecideActivation(context, request);
+    return runCreateOccurrence(context, request);
   }
   if (request.operation === 'approve' && context.operator.approverRole !== true) {
     return failure('lifecycle-state-missing');

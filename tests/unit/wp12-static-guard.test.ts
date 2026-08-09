@@ -198,7 +198,72 @@ test('control-plane static guard: Slice-2B verify vocabulary confined to its own
   }
 });
 
-test('control-plane static guard: no Slice-3+ production vocabulary (Slice-2A revocation confined to its modules)', () => {
+/**
+ * Slice-3 production vocabulary is legitimate ONLY in the modules that own
+ * the grant/activation/recovery paths (issueRuntimeGrant, RuntimeGrant,
+ * decideActivation, ActivationRecord, ExecutionOccurrenceRecord,
+ * createOccurrence, trusted occurrence-ID generation, RuntimeGrant revoke
+ * targeting); every other module stays clean. The activation/occurrence
+ * class-ID freshness reads in the decision core are read-only reservation-
+ * state consumption (contract §26.9). Slice-4 attempt production vocabulary
+ * stays banned family-wide.
+ */
+const SLICE3_ALLOWED: Readonly<Record<string, readonly string[]>> = {
+  'src/control-plane/core.ts': [
+    'RuntimeGrant', 'runtime-grant', 'issueRuntimeGrant', 'reserved_occurrence', 'reservedOccurrenceId', 'attemptLimit',
+    'narrowedConstraints', 'newOccurrenceId', 'activation-record', 'execution-occurrence-record', 'max-actions',
+    'max-resources', 'grantRole', 'decideActivation', 'createOccurrence', 'ActivationRecord', 'ExecutionOccurrenceRecord',
+    'activationRole', 'activation_limit', 'required_issuance_record_ids', 'runtime_grant_id', 'activation_record_id',
+    'occurrence_id', 'trusted-activation-authority', 'trusted-control-plane', 'exact:activation', 'project-gateway.workspace-read',
+    'grantId', 'grant-id', 'occurrence-id', 'reservedOccurrenceId',
+  ],
+  'src/control-plane/types.ts': [
+    'RuntimeGrant', 'runtime-grant', 'issueRuntimeGrant', 'reservedOccurrenceId', 'reserved_occurrence', 'pgw:o:',
+    'attemptLimit', 'narrowedConstraints', 'narrowed_constraints', 'max-actions', 'max-resources', 'read-only',
+    'require-exact-resource', 'grantRole', 'newOccurrenceId', 'decideActivation', 'createOccurrence', 'ActivationRecord',
+    'activation-record', 'ExecutionOccurrenceRecord', 'execution-occurrence-record', 'activationRole', 'grantId',
+    'reservedOccurrenceId',
+  ],
+  'src/control-plane/subject.ts': [
+    'RuntimeGrant', 'issueRuntimeGrant', 'attemptLimit', 'validity', 'narrowedConstraints', 'narrowed-constraints',
+    'max-actions', 'max-resources', 'read-only', 'require-exact-resource', 'grantRole', 'decideActivation',
+    'createOccurrence', 'grantId', 'reservedOccurrenceId', 'activationRole', 'activationAuthority', 'occurrence-id',
+    'ActivationRecord', 'grant-id', 'occurrence-id',
+  ],
+  'src/control-plane/records.ts': [
+    'RuntimeGrant', 'runtime-grant', 'reserved_occurrence', 'reservedOccurrenceId', 'attemptLimit', 'attempt_limit',
+    'narrowedConstraints', 'narrowed_constraints', 'pgw:o:', 'ActivationRecord', 'ExecutionOccurrenceRecord',
+    'required_issuance_record_ids', 'activation_record_id', 'occurrence_id', 'runtime_grant_id',
+    'trusted-activation-authority', 'trusted-control-plane', 'reserved_occurrence_id', 'activation-record',
+    'execution-occurrence-record', 'activation_limit',
+  ],
+  'src/control-plane/graph.ts': ['decideActivation', 'ActivationRecord'],
+  'src/control-plane/store-boundary.ts': ['runtime-grant', 'activation-record', 'execution-occurrence-record'],
+  'src/control-plane/identity.ts': ['pgw:o:', 'RuntimeGrant', 'issueRuntimeGrant', 'newOccurrenceId', 'occurrence-id'],
+};
+
+const SLICE3_VOCABULARY: readonly string[] = [
+  'RuntimeGrant', 'runtime-grant', 'issueRuntimeGrant', 'pgw:o:', 'reserved_occurrence', 'reservedOccurrenceId',
+  'attemptLimit', 'attempt_limit', 'narrowedConstraints', 'narrowed_constraints', 'max-actions', 'max-resources',
+  'require-exact-resource', 'grantRole', 'newOccurrenceId', 'decideActivation', 'createOccurrence', 'ActivationRecord',
+  'activation-record', 'ExecutionOccurrenceRecord', 'execution-occurrence-record', 'activationRole', 'grantId',
+  'activation_limit', 'required_issuance_record_ids', 'runtime_grant_id', 'activation_record_id', 'occurrence_id',
+  'trusted-activation-authority', 'trusted-control-plane', 'occurrence-id', 'grant-id', 'exact:activation',
+  'project-gateway.workspace-read',
+];
+
+/**
+ * Slice-4 / future-work vocabulary that must not appear ANYWHERE in the
+ * family (unchanged from Slice 2; ExecutionAttemptRecord production stays
+ * banned — Slice 4 owns it).
+ */
+const FUTURE_VOCABULARY: readonly string[] = [
+  'ExecutionAttemptRecord', 'TrustedReceipt', 'trusted-receipt', 'ResultPublicationRecord', 'result-publication',
+  'MigrationRecord', 'migration-record', 'ExecutionSummaryRecord', 'orchestration', 'recordExecutionAttempt',
+  'pi-guard', 'pi_guard',
+];
+
+test('control-plane static guard: no Slice-3+ production vocabulary (Slice-2A/3 vocabulary confined to its modules)', () => {
   for (const file of controlPlaneFiles) {
     const content = readFileSync(file, 'utf8');
     const path = rel(file);
@@ -213,25 +278,32 @@ test('control-plane static guard: no Slice-3+ production vocabulary (Slice-2A re
       if (allowed.includes(forbidden)) continue;
       assert.equal(content.includes(forbidden), false, `${path} must not reference ${forbidden}`);
     }
-    for (const forbidden of [
-      'RuntimeGrant', 'runtime-grant', 'ActivationRecord', 'activation-record', 'ExecutionOccurrenceRecord', 'ExecutionAttemptRecord',
-      'TrustedReceipt', 'trusted-receipt', 'ResultPublicationRecord', 'result-publication', 'MigrationRecord', 'migration-record',
-      'ExecutionSummaryRecord', 'orchestration', 'recordExecutionAttempt',
-      'pgw:o:', 'reserved_occurrence', 'decideActivation', 'issueRuntimeGrant', 'pi-guard', 'pi_guard',
-    ]) {
-      assert.equal(content.includes(forbidden), false, `${path} must not contain Slice-3+ vocabulary (${forbidden})`);
+    const grantAllowed = SLICE3_ALLOWED[path] ?? [];
+    for (const forbidden of SLICE3_VOCABULARY) {
+      if (grantAllowed.includes(forbidden)) continue;
+      assert.equal(content.includes(forbidden), false, `${path} must not contain Slice-3 vocabulary (${forbidden})`);
+    }
+    for (const forbidden of FUTURE_VOCABULARY) {
+      assert.equal(content.includes(forbidden), false, `${path} must not contain future-work vocabulary (${forbidden})`);
     }
   }
 });
 
-test('control-plane static guard: the only publishable record classes are the four Slice-1/Slice-2A classes', () => {
+test('control-plane static guard: the only publishable record classes are the seven Slice-1/2/3 classes', () => {
   const boundary = readFileSync(join(CONTROL_PLANE_SRC, 'store-boundary.ts'), 'utf8');
   assert.equal(boundary.includes("'validation-record'"), true);
   assert.equal(boundary.includes("'approval-record'"), true);
   assert.equal(boundary.includes("'issuance-record'"), true);
   assert.equal(boundary.includes("'revocation-record'"), true);
-  // The boundary rejects every other class at the adapter level.
+  assert.equal(boundary.includes("'runtime-grant'"), true);
+  assert.equal(boundary.includes("'activation-record'"), true);
+  assert.equal(boundary.includes("'execution-occurrence-record'"), true);
+  // The boundary rejects every other class at the adapter level; the
+  // Slice-4 attempt class must NOT be publishable yet.
   assert.equal(boundary.includes('CONTROL_PLANE_PUBLISH_CLASSES'), true);
+  const setLiteral = boundary.match(/new Set\(\[([^\]]*)\]\)/);
+  assert.ok(setLiteral !== null, 'publication allowlist literal exists');
+  assert.equal(setLiteral[1]!.includes("'execution-attempt-record'"), false, 'execution-attempt-record must not be publishable in Slice 3');
 });
 
 test('control-plane static guard: the package root and ./mcp do not expose the control plane', () => {

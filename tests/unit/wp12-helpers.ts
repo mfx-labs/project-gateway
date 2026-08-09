@@ -18,8 +18,8 @@ import {
   validateTrustedWorkspaceConfiguration,
 } from '../../src/trusted/index.js';
 import type { ValidatedTrustedWorkspaceConfiguration } from '../../src/trusted/types.js';
-import { createSchemaRegistry, validateRegistrySnapshot, validateArtifactSelf } from '../../src/api/validate.js';
-import type { AcceptedRegistryContext, ValidatedArtifact, ValidationReport } from '../../src/api/types.js';
+import { createSchemaRegistry, validateRegistrySnapshot, validateArtifactSelf, computeArtifactDigest } from '../../src/api/validate.js';
+import type { AcceptedRegistryContext, ConsumerSupportDeclaration, ValidatedArtifact, ValidationReport } from '../../src/api/types.js';
 import { createStorageBootstrapActionProvenance, createStorageWriteActionProvenance, createTrustedStorageBootstrapInput } from '../../src/storage/trusted-input/bootstrap-input.js';
 import { initializeTrustedStore } from '../../src/storage/initialization/initialize.js';
 import { publishRecord } from '../../src/storage/publication/index.js';
@@ -28,6 +28,7 @@ import { computePayloadDigest } from '../../src/storage/format/envelope.js';
 import { defaultLimitProfile } from '../../src/storage/limits/limits.js';
 import { createControlPlaneStoreBoundary } from '../../src/control-plane/store-boundary.js';
 import { createProcessLocalCoordinator } from '../../src/control-plane/coordination.js';
+import { executeSlice1Command } from '../../src/control-plane/core.js';
 import type { ControlPlaneStoreBoundary } from '../../src/control-plane/types.js';
 import type {
   AcceptedValidationEvidence,
@@ -56,6 +57,8 @@ export function loadJson(path: string): Record<string, unknown> {
 export interface ConfigOptions {
   readonly globalCapabilities?: readonly string[];
   readonly workspaceCapabilities?: readonly string[];
+  readonly globalActionCeiling?: number;
+  readonly workspaceActionCeiling?: number;
 }
 
 export interface ConfigEnv {
@@ -72,11 +75,13 @@ export function makeConfigEnv(options: ConfigOptions = {}): ConfigEnv {
       capabilityVocabularyVersion: 'v1',
       provenance: { sourceKind: 'trusted-local-control-plane' },
       ...(options.globalCapabilities !== undefined ? { globalCapabilityCeiling: { capabilities: [...options.globalCapabilities] } } : {}),
+      ...(options.globalActionCeiling !== undefined ? { globalActionCeiling: options.globalActionCeiling } : {}),
       workspaces: [
         {
           workspaceId: WS_A,
           root: workspaceRoot,
           ...(options.workspaceCapabilities !== undefined ? { capabilities: [...options.workspaceCapabilities] } : {}),
+          ...(options.workspaceActionCeiling !== undefined ? { actionCeiling: options.workspaceActionCeiling } : {}),
         },
       ],
     },
@@ -212,16 +217,22 @@ export function seedRawRecord(env: StoreEnv, recordClass: RecordClassId, payload
 export interface DeterministicIdentity {
   readonly nowUtcIso: () => string;
   readonly newRecordId: () => string;
+  readonly newOccurrenceId: () => string;
   readonly sequence: () => number;
 }
 
 export function makeIdentitySource(now: string = FIXED_NOW): DeterministicIdentity {
   let n = 0;
+  let o = 0;
   return {
     nowUtcIso: () => now,
     newRecordId: () => {
       n += 1;
       return `pgw:l:${n.toString(16).padStart(32, '0')}`;
+    },
+    newOccurrenceId: () => {
+      o += 1;
+      return `pgw:o:${o.toString(16).padStart(32, '0')}`;
     },
     sequence: () => n,
   };
@@ -290,9 +301,13 @@ export interface ContextOverrides {
   readonly approverRole?: boolean;
   readonly issuerRole?: boolean;
   readonly revokerRole?: boolean;
+  readonly grantRole?: boolean;
+  readonly activationRole?: boolean;
   readonly operatorIdentity?: string;
   readonly validationEvidence?: AcceptedValidationEvidence;
   readonly subjectArtifact?: ValidatedArtifact;
+  readonly policyEvidence?: ValidatedArtifact;
+  readonly consumerSupport?: ConsumerSupportDeclaration;
   readonly approval?: ControlPlaneTrustedContext['approval'];
   readonly issuance?: ControlPlaneTrustedContext['issuance'];
   readonly schemaRegistry?: ControlPlaneTrustedContext['schemaRegistry'];
@@ -307,6 +322,8 @@ export function makeContext(env: StoreEnv, overrides: ContextOverrides = {}): Co
       approverRole: overrides.approverRole ?? true,
       issuerRole: overrides.issuerRole ?? true,
       revokerRole: overrides.revokerRole ?? false,
+      ...(overrides.grantRole !== undefined ? { grantRole: overrides.grantRole } : {}),
+      ...(overrides.activationRole !== undefined ? { activationRole: overrides.activationRole } : {}),
       operatorIdentity: overrides.operatorIdentity ?? 'test-operator',
     },
     store: overrides.store ?? makeStoreBoundary(env),
@@ -317,6 +334,8 @@ export function makeContext(env: StoreEnv, overrides: ContextOverrides = {}): Co
     ...(overrides.schemaRegistry !== undefined ? { schemaRegistry: overrides.schemaRegistry } : {}),
     ...(overrides.validationEvidence !== undefined ? { validationEvidence: overrides.validationEvidence } : {}),
     ...(overrides.subjectArtifact !== undefined ? { subjectArtifact: overrides.subjectArtifact } : {}),
+    ...(overrides.policyEvidence !== undefined ? { policyEvidence: overrides.policyEvidence } : {}),
+    ...(overrides.consumerSupport !== undefined ? { consumerSupport: overrides.consumerSupport } : {}),
   };
 }
 
@@ -418,4 +437,252 @@ function registerRemover(fn: () => void): void {
 /** Remove every registered temporary test environment (call from `after`). */
 export function cleanupTestEnvs(): void {
   for (const fn of removers.splice(0)) fn();
+}
+
+// ─── Slice-3A grant chain seeding (real command flow) ───────────────────────
+
+/** The exact four required ExecutionBundle member kinds (ADR-006). */
+export const BUNDLE_MEMBER_KINDS = ['TaskSpec', 'AuthorityPolicy', 'ContextManifest', 'CompletionContract'] as const;
+
+/** Canonical subject of one bundle member derived from the bundle body reference. */
+export function memberSubjectOf(kind: (typeof BUNDLE_MEMBER_KINDS)[number], workspaceId: string = WS_A): SubjectInfo {
+  const bundleModel = fixtureModel('ExecutionBundle');
+  const body = bundleModel['body'] as Record<string, unknown>;
+  const bodyKey: Record<string, string> = {
+    TaskSpec: 'task',
+    AuthorityPolicy: 'authority_policy',
+    ContextManifest: 'context_manifest',
+    CompletionContract: 'completion_contract',
+  };
+  const ref = body[bodyKey[kind]!] as Record<string, unknown>;
+  const kindDescriptor = ref['target_kind'] as Record<string, unknown>;
+  return {
+    subject: Object.freeze({
+      protocolId: 'project-gateway.artifact',
+      protocolVersion: String(ref['target_protocol_version']),
+      kindId: kind,
+      kindVersion: String(kindDescriptor['version']),
+      instanceId: String(ref['target_instance_id']),
+      revisionId: String(ref['target_revision_id']),
+      digest: String(ref['target_digest']),
+      workspaceId,
+    }),
+    model: fixtureModel(kind),
+  };
+}
+
+/** All five required grant-chain subjects: the bundle first, then the four members. */
+export function grantChainSubjects(workspaceId: string = WS_A): { readonly bundle: SubjectInfo; readonly members: readonly SubjectInfo[] } {
+  const bundle = makeSubject('ExecutionBundle', workspaceId);
+  const members = BUNDLE_MEMBER_KINDS.map((kind) => memberSubjectOf(kind, workspaceId));
+  return { bundle, members };
+}
+
+export interface GrantChainSeed {
+  readonly subjects: readonly SubjectInfo[];
+  readonly validationRecordIds: readonly string[];
+  readonly approvalRecordIds: readonly string[];
+  readonly issuanceRecordIds: readonly string[];
+}
+
+/**
+ * Slice-3B activation kit: a custom AuthorityPolicy (schema-valid rules) and
+ * an ExecutionBundle whose authority_policy reference points at it, with
+ * canonical digests recomputed and WP-4 self-semantic validation performed.
+ * Used to prove policy/consumer/ceiling intersection behavior (check 7)
+ * without touching committed fixtures.
+ */
+export interface ActivationKit {
+  readonly policy: { readonly subject: CanonicalSubject; readonly artifact: ValidatedArtifact; readonly evidence: AcceptedValidationEvidence };
+  readonly bundle: { readonly subject: CanonicalSubject; readonly artifact: ValidatedArtifact; readonly evidence: AcceptedValidationEvidence };
+}
+
+/**
+ * Build a validated custom AuthorityPolicy: the committed minimal policy
+ * plus an extra rule (default: a workspace-read deny rule for the
+ * activation requested use). Returns the recomputed revision identity.
+ */
+export function makeCustomPolicy(
+  extraRule: Readonly<Record<string, unknown>>,
+  workspaceId: string = WS_A,
+): { readonly model: Record<string, unknown>; readonly subject: CanonicalSubject; readonly artifact: ValidatedArtifact } {
+  const base = fixtureModel('AuthorityPolicy');
+  const model = structuredClone(base) as Record<string, unknown>;
+  const body = model['body'] as Record<string, unknown>;
+  const rules = body['rules'] as Record<string, unknown>[];
+  rules.push({ ...extraRule });
+  const digest = computeArtifactDigest(model);
+  const revision = model['revision'] as Record<string, unknown>;
+  revision['digest'] = digest.digest;
+  const validated = validateArtifactSelf(model, createSchemaRegistry());
+  if (!validated.ok || validated.value === undefined) {
+    throw new Error(`custom policy failed WP-4 validation: ${JSON.stringify(validated.findings)}`);
+  }
+  const kind = model['kind'] as Record<string, unknown>;
+  const protocol = model['protocol'] as Record<string, unknown>;
+  const subject = Object.freeze({
+    protocolId: String(protocol['id']),
+    protocolVersion: String(protocol['version']),
+    kindId: 'AuthorityPolicy' as const,
+    kindVersion: String(kind['version']),
+    instanceId: String(model['instance_id']),
+    revisionId: String(revision['id']),
+    digest: String(revision['digest']),
+    workspaceId,
+  });
+  return { model, subject, artifact: validated.value };
+}
+
+/**
+ * Build a validated ExecutionBundle whose authority_policy member points at
+ * the custom policy (fresh revision identity + recomputed digest).
+ */
+export function makeCustomBundle(
+  policySubject: CanonicalSubject,
+  workspaceId: string = WS_A,
+): { readonly model: Record<string, unknown>; readonly subject: CanonicalSubject; readonly artifact: ValidatedArtifact } {
+  const base = fixtureModel('ExecutionBundle');
+  const model = structuredClone(base) as Record<string, unknown>;
+  const body = model['body'] as Record<string, unknown>;
+  body['authority_policy'] = {
+    target_protocol_version: '1.0',
+    target_kind: { id: 'AuthorityPolicy', version: policySubject.kindVersion },
+    target_instance_id: policySubject.instanceId,
+    target_revision_id: policySubject.revisionId,
+    target_digest: policySubject.digest,
+    target_workspace_binding: { mode: 'bound', workspace_id: workspaceId },
+  };
+  const revision = model['revision'] as Record<string, unknown>;
+  revision['id'] = `pgw:r:${'c'.repeat(32)}`;
+  // The canonical projection covers revision.id but excludes revision.digest,
+  // so the digest must be computed AFTER the identity change.
+  revision['digest'] = computeArtifactDigest(model).digest;
+  const validated = validateArtifactSelf(model, createSchemaRegistry());
+  if (!validated.ok || validated.value === undefined) {
+    throw new Error(`custom bundle failed WP-4 validation: ${JSON.stringify(validated.findings)}`);
+  }
+  const kind = model['kind'] as Record<string, unknown>;
+  const protocol = model['protocol'] as Record<string, unknown>;
+  const subject = Object.freeze({
+    protocolId: String(protocol['id']),
+    protocolVersion: String(protocol['version']),
+    kindId: 'ExecutionBundle' as const,
+    kindVersion: String(kind['version']),
+    instanceId: String(model['instance_id']),
+    revisionId: String(revision['id']),
+    digest: String(revision['digest']),
+    workspaceId,
+  });
+  return { model, subject, artifact: validated.value };
+}
+
+/**
+ * The default check-7 deny rule: an effective deny for the activation
+ * requested use (workspace-read / read / configured-artifact-area).
+ */
+export function activationDenyRule(): Readonly<Record<string, unknown>> {
+  return {
+    rule_id: 'deny-activation-use',
+    effect: 'deny',
+    capability: { id: 'project-gateway.workspace-read', version: '1.0' },
+    scope: {
+      scope_type: 'project-gateway.resource-class-scope',
+      version: '1.0',
+      resource_classes: ['configured-artifact-area'],
+      operation_classes: ['read'],
+    },
+    constraints: [],
+    required_semantics: [],
+  };
+}
+
+/** Full activation kit (custom policy + matching bundle), WP-4 validated. */
+export function makeActivationKit(workspaceId: string = WS_A): ActivationKit {
+  const policy = makeCustomPolicy(activationDenyRule(), workspaceId);
+  const bundle = makeCustomBundle(policy.subject, workspaceId);
+  const report = validateArtifactSelf(bundle.model, createSchemaRegistry());
+  void report;
+  return {
+    policy: {
+      subject: policy.subject,
+      artifact: policy.artifact,
+      evidence: { report: { ok: true, findings: [] } as never, artifact: policy.artifact },
+    },
+    bundle: {
+      subject: bundle.subject,
+      artifact: bundle.artifact,
+      evidence: { report: { ok: true, findings: [] } as never, artifact: bundle.artifact },
+    },
+  };
+}
+
+/**
+ * Seed the complete genuine lifecycle chain (recordValidation → approve →
+ * issue for the exact bundle and its four exact members) through the real
+ * Slice-1 command flow on a real WP-8 store. Returns the five correlated
+ * record identities in subject order (bundle first, then members). The
+ * caller MUST continue using the same identity source for later commands in
+ * the same test so record identities stay unique. `excludeMember` removes
+ * one required member chain (missing-dependency tests). When `kit` is
+ * provided, the AuthorityPolicy member and the bundle subjects come from the
+ * custom kit (check-7 policy tests).
+ */
+export function seedFullGrantChain(
+  env: StoreEnv,
+  identity: DeterministicIdentity,
+  workspaceId: string = WS_A,
+  excludeMember?: (typeof BUNDLE_MEMBER_KINDS)[number],
+  kit?: ActivationKit,
+): GrantChainSeed {
+  const { bundle, members } = grantChainSubjects(workspaceId);
+  const bundleInfo = kit !== undefined ? { subject: kit.bundle.subject, model: kit.bundle.artifact.model as unknown as Record<string, unknown> } : bundle;
+  const memberInfos = members.map((member) => {
+    if (kit !== undefined && member.subject.kindId === 'AuthorityPolicy') {
+      return { subject: kit.policy.subject, model: kit.policy.artifact.model as unknown as Record<string, unknown> };
+    }
+    return member;
+  });
+  const subjects = [bundleInfo, ...memberInfos].filter((info) => info.subject.kindId !== excludeMember);
+  const validationRecordIds: string[] = [];
+  const approvalRecordIds: string[] = [];
+  const issuanceRecordIds: string[] = [];
+  for (const info of subjects) {
+    const evidence = kit !== undefined && info.subject.kindId === 'AuthorityPolicy'
+      ? kit.policy.evidence
+      : kit !== undefined && info.subject.kindId === 'ExecutionBundle'
+        ? kit.bundle.evidence
+        : makeEvidence(info.subject.kindId);
+    const validation = executeSlice1Command(
+      { operation: 'recordValidation', subject: subjectOperandOf(info.subject), workspaceId: info.subject.workspaceId },
+      makeContext(env, { validationEvidence: evidence, identity }),
+    );
+    if (!validation.ok) throw new Error(`chain seed recordValidation failed: ${JSON.stringify(validation)}`);
+    validationRecordIds.push(validation.evidence.recordId);
+    const approval = executeSlice1Command(
+      { operation: 'approve', subject: subjectOperandOf(info.subject), workspaceId: info.subject.workspaceId, purpose: 'execution-use', validationRecordIds: [validation.evidence.recordId] },
+      makeContext(env, { subjectArtifact: evidence.artifact, identity }),
+    );
+    if (!approval.ok) throw new Error(`chain seed approve failed: ${JSON.stringify(approval)}`);
+    approvalRecordIds.push(approval.evidence.recordId);
+    const issuance = executeSlice1Command(
+      { operation: 'issue', subject: subjectOperandOf(info.subject), workspaceId: info.subject.workspaceId, useClass: 'execution-use' },
+      makeContext(env, { subjectArtifact: evidence.artifact, identity }),
+    );
+    if (!issuance.ok) throw new Error(`chain seed issue failed: ${JSON.stringify(issuance)}`);
+    issuanceRecordIds.push(issuance.evidence.recordId);
+  }
+  return { subjects: Object.freeze(subjects), validationRecordIds: Object.freeze(validationRecordIds), approvalRecordIds: Object.freeze(approvalRecordIds), issuanceRecordIds: Object.freeze(issuanceRecordIds) };
+}
+
+function subjectOperandOf(subject: CanonicalSubject): Record<string, unknown> {
+  return {
+    protocolId: subject.protocolId,
+    protocolVersion: subject.protocolVersion,
+    kindId: subject.kindId,
+    kindVersion: subject.kindVersion,
+    instanceId: subject.instanceId,
+    revisionId: subject.revisionId,
+    digest: subject.digest,
+    workspaceId: subject.workspaceId,
+  };
 }

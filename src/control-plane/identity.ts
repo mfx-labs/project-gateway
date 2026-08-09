@@ -22,8 +22,21 @@ export function createCryptoRecordIdSource(): () => string {
   return () => `pgw:l:${randomBytes(16).toString('hex')}`;
 }
 
+/**
+ * Crypto-random opaque reserved-occurrence identity source (Slice 3A). Each
+ * call returns a fresh `pgw:o:<32 lowercase hex>` identity (128 bits of
+ * randomness, matching the accepted occurrence-identifier rule; contract
+ * §26.9). issueRuntimeGrant allocates occurrence identities INTERNALLY
+ * from this host-injected source under the coordination lock; the caller
+ * can never supply one.
+ */
+export function createCryptoOccurrenceIdSource(): () => string {
+  return () => `pgw:o:${randomBytes(16).toString('hex')}`;
+}
+
 /** Host identity source combining the crypto record-ID source and a host clock. */
 export function createHostIdentitySource(nowUtcIso: () => string): ControlPlaneIdentitySource {
   const newRecordId = createCryptoRecordIdSource();
-  return Object.freeze({ nowUtcIso, newRecordId });
+  const newOccurrenceId = createCryptoOccurrenceIdSource();
+  return Object.freeze({ nowUtcIso, newRecordId, newOccurrenceId });
 }

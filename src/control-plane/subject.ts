@@ -21,12 +21,17 @@ import type {
 import {
   ARTIFACT_PROTOCOL_ID,
   ARTIFACT_PROTOCOL_VERSION,
+  ATTEMPT_LIMIT_MAX,
+  ATTEMPT_LIMIT_MIN,
   CAPABILITY_IDENTIFIER_RE,
   CONSUMER_ID_MAX_LENGTH,
   CONSUMER_SUPPORT_MAX_ITEM_LENGTH,
   CONSUMER_SUPPORT_MAX_ITEMS,
   DIGEST_RE,
   INSTANCE_ID_RE,
+  NARROWED_CONSTRAINT_MAX_COUNT,
+  NARROWED_CONSTRAINT_TYPES,
+  OCCURRENCE_ID_RE,
   REASON_CODE_RE,
   RECORD_ID_RE,
   REGISTRY_SNAPSHOT_ID_RE,
@@ -45,9 +50,10 @@ import {
   VERSION_RE,
   WORKSPACE_ID_RE,
 } from './types.js';
+import type { RuntimeGrantConstraint } from './types.js';
 
 /** Exact key set of the whole request (union; per-operation subsets enforced). */
-const REQUEST_KEYS: ReadonlySet<string> = new Set(['operation', 'subject', 'workspaceId', 'purpose', 'useClass', 'validationRecordIds', 'reason', 'targetRecordType', 'targetRecordId', 'scope', 'effectiveAt', 'reasonCode', 'registryEcho', 'capabilityRequirements', 'consumerSupport']);
+const REQUEST_KEYS: ReadonlySet<string> = new Set(['operation', 'subject', 'workspaceId', 'purpose', 'useClass', 'validationRecordIds', 'reason', 'targetRecordType', 'targetRecordId', 'scope', 'effectiveAt', 'reasonCode', 'registryEcho', 'capabilityRequirements', 'consumerSupport', 'attemptLimit', 'validity', 'narrowedConstraints', 'grantId', 'reservedOccurrenceId']);
 /** Exact key set of the canonical subject operand (Decision 3 identity + workspace). */
 const SUBJECT_KEYS: ReadonlySet<string> = new Set(['protocolId', 'protocolVersion', 'kindId', 'kindVersion', 'instanceId', 'revisionId', 'digest', 'workspaceId']);
 /** Exact key set of the untrusted registry-context correlation echo. */
@@ -60,7 +66,15 @@ const OPERATION_KEYS: Readonly<Record<Slice1Operation, ReadonlySet<string>>> = {
   issue: new Set(['operation', 'subject', 'workspaceId', 'useClass', 'reason']),
   revoke: new Set(['operation', 'workspaceId', 'targetRecordType', 'targetRecordId', 'scope', 'effectiveAt', 'reasonCode', 'registryEcho']),
   verifyCurrentLifecycleState: new Set(['operation', 'subject', 'workspaceId', 'purpose', 'useClass', 'registryEcho', 'capabilityRequirements', 'consumerSupport']),
+  issueRuntimeGrant: new Set(['operation', 'subject', 'workspaceId', 'registryEcho', 'attemptLimit', 'validity', 'narrowedConstraints']),
+  decideActivation: new Set(['operation', 'subject', 'workspaceId', 'registryEcho', 'grantId', 'reservedOccurrenceId']),
+  createOccurrence: new Set(['operation', 'workspaceId', 'registryEcho', 'reservedOccurrenceId']),
 };
+
+/** Exact key set of the untrusted RuntimeGrant validity window operand. */
+const VALIDITY_KEYS: ReadonlySet<string> = new Set(['not_before', 'not_after']);
+/** Exact key set of one narrowed constraint operand. */
+const CONSTRAINT_KEYS: ReadonlySet<string> = new Set(['type', 'value']);
 
 /**
  * Keys that attempt to assert or transport the trusted operator role.
@@ -82,6 +96,11 @@ const ROLE_ASSERTION_KEYS: ReadonlySet<string> = new Set([
   'approverIdentity',
   'operatorIdentity',
   'approverAuthority',
+  'grantRole',
+  'grantAuthority',
+  'runtimeGrantAuthority',
+  'activationRole',
+  'activationAuthority',
 ]);
 
 export type RequestRejectReason =
@@ -105,7 +124,12 @@ export type RequestRejectReason =
   | 'registry-echo'
   | 'capability-requirements'
   | 'consumer-support'
-  | 'scope-form';
+  | 'scope-form'
+  | 'attempt-limit'
+  | 'validity'
+  | 'narrowed-constraints'
+  | 'grant-id'
+  | 'occurrence-id';
 
 export type RequestParseResult =
   | { readonly ok: true; readonly request: Slice1Request }
@@ -253,6 +277,64 @@ function parseRegistryEcho(value: unknown): { readonly ok: true; readonly echo: 
 }
 
 /**
+ * Parse the REQUIRED untrusted RuntimeGrant attempt allowance (contract
+ * §26.11): an integer in 1..64 inclusive. Malformed/out-of-range → reject.
+ */
+function parseAttemptLimit(value: unknown): { readonly ok: true; readonly attemptLimit: number } | { readonly ok: false } {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) return { ok: false };
+  if (value < ATTEMPT_LIMIT_MIN || value > ATTEMPT_LIMIT_MAX) return { ok: false };
+  return { ok: true, attemptLimit: value };
+}
+
+/**
+ * Parse the REQUIRED untrusted RuntimeGrant validity window (contract
+ * §26.10): exact keys {not_before, not_after}, both accepted trusted
+ * timestamps, `not_before <= not_after` (equality valid; reversed → reject).
+ * Future `not_before` is allowed here; no maximum duration is invented.
+ */
+function parseValidity(value: unknown): { readonly ok: true; readonly validity: { readonly not_before: string; readonly not_after: string } } | { readonly ok: false } {
+  if (!isRecord(value)) return { ok: false };
+  if (!hasExactKeys(value, VALIDITY_KEYS)) return { ok: false };
+  const notBefore = value['not_before'];
+  const notAfter = value['not_after'];
+  if (!isAcceptedTimestamp(notBefore) || !isAcceptedTimestamp(notAfter)) return { ok: false };
+  if (notBefore > notAfter) return { ok: false };
+  return { ok: true, validity: Object.freeze({ not_before: notBefore, not_after: notAfter }) };
+}
+
+/**
+ * Parse the REQUIRED untrusted narrowed constraints (contract §26.6):
+ * schema-valid shape, non-empty, duplicate-free, only the four accepted
+ * forms. Malformed/duplicate/unknown → reject (request-invalid at the
+ * command layer). NOTE: `max-resources` is schema-valid and therefore
+ * ACCEPTED at capture; its unsupported semantic treatment is decided at
+ * evaluation (`eligibility-denied`), never here (malformed-vs-unsupported
+ * distinction, SCR-W12-S3-002).
+ */
+function parseNarrowedConstraints(value: unknown): { readonly ok: true; readonly constraints: readonly RuntimeGrantConstraint[] } | { readonly ok: false } {
+  if (!Array.isArray(value)) return { ok: false };
+  if (value.length < 1 || value.length > NARROWED_CONSTRAINT_MAX_COUNT) return { ok: false };
+  const seen = new Set<string>();
+  const out: RuntimeGrantConstraint[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) return { ok: false };
+    if (!hasExactKeys(entry, CONSTRAINT_KEYS)) return { ok: false };
+    const type = entry['type'];
+    const entryValue = entry['value'];
+    if (typeof type !== 'string' || !(NARROWED_CONSTRAINT_TYPES as readonly string[]).includes(type)) return { ok: false };
+    if (seen.has(type)) return { ok: false };
+    seen.add(type);
+    if (type === 'max-actions' || type === 'max-resources') {
+      if (typeof entryValue !== 'number' || !Number.isSafeInteger(entryValue) || entryValue < 0) return { ok: false };
+    } else {
+      if (entryValue !== true) return { ok: false };
+    }
+    out.push(Object.freeze({ type: type as RuntimeGrantConstraint['type'], value: entryValue as number | boolean }));
+  }
+  return { ok: true, constraints: Object.freeze(out) };
+}
+
+/**
  * Capture and parse the untrusted Slice-1/Slice-2A command. Descriptor-derived
  * snapshot capture fails closed on hostile structures; exact-key validation
  * rejects every authority-bearing operand; role-assertion keys are rejected
@@ -362,6 +444,94 @@ export function captureSlice1Request(input: unknown): RequestParseResult {
         effectiveAt,
         reasonCode,
         registryEcho: echoParsed.echo,
+      }),
+    };
+  }
+
+  if (op === 'issueRuntimeGrant') {
+    // Slice-3A grant issue: exact bundle subject + workspace + REQUIRED
+    // registry echo + narrowing/correlation operands ONLY (S3-D6). The
+    // caller can never supply the reserved occurrence ID, grant ID,
+    // approval/issuance IDs, policy/member identities, roles, config,
+    // store, coordinator, clock, or any trusted context — those keys are
+    // not in the operation key set (unknown-key → request-invalid; role
+    // keys → approver-not-independent).
+    const subjectParsed = parseCanonicalSubject(snapshot['subject']);
+    if (!subjectParsed.ok) {
+      return { ok: false, reason: subjectParsed.reason === 'shape' ? 'subject-shape' : 'subject-syntax' };
+    }
+    const subject = subjectParsed.subject;
+    if (workspaceId !== subject.workspaceId) return { ok: false, reason: 'workspace-mismatch' };
+    const attemptParsed = parseAttemptLimit(snapshot['attemptLimit']);
+    if (!attemptParsed.ok) return { ok: false, reason: 'attempt-limit' };
+    const validityParsed = parseValidity(snapshot['validity']);
+    if (!validityParsed.ok) return { ok: false, reason: 'validity' };
+    const constraintsParsed = parseNarrowedConstraints(snapshot['narrowedConstraints']);
+    if (!constraintsParsed.ok) return { ok: false, reason: 'narrowed-constraints' };
+    const echoParsed = parseRegistryEcho(snapshot['registryEcho']);
+    if (!echoParsed.ok || echoParsed.echo === undefined) return { ok: false, reason: 'registry-echo' };
+    return {
+      ok: true,
+      request: Object.freeze({
+        operation: op,
+        subject,
+        workspaceId,
+        registryEcho: echoParsed.echo,
+        attemptLimit: attemptParsed.attemptLimit,
+        validity: validityParsed.validity,
+        narrowedConstraints: constraintsParsed.constraints,
+      }),
+    };
+  }
+
+  if (op === 'decideActivation') {
+    // Slice-3B activation: exact bundle subject + workspace + REQUIRED
+    // registry echo + grant/reservation correlation operands ONLY (S3-D6).
+    // Caller-supplied grantId and reservedOccurrenceId are correlation
+    // operands only — they confer no authority and must correlate exactly
+    // to the authoritative RuntimeGrant record. Approval/issuance IDs stay
+    // store-derived (gate D).
+    const subjectParsed = parseCanonicalSubject(snapshot['subject']);
+    if (!subjectParsed.ok) {
+      return { ok: false, reason: subjectParsed.reason === 'shape' ? 'subject-shape' : 'subject-syntax' };
+    }
+    const subject = subjectParsed.subject;
+    if (workspaceId !== subject.workspaceId) return { ok: false, reason: 'workspace-mismatch' };
+    const grantId = snapshot['grantId'];
+    if (typeof grantId !== 'string' || !RECORD_ID_RE.test(grantId)) return { ok: false, reason: 'grant-id' };
+    const reservedOccurrenceId = snapshot['reservedOccurrenceId'];
+    if (typeof reservedOccurrenceId !== 'string' || !OCCURRENCE_ID_RE.test(reservedOccurrenceId)) return { ok: false, reason: 'occurrence-id' };
+    const echoParsed = parseRegistryEcho(snapshot['registryEcho']);
+    if (!echoParsed.ok || echoParsed.echo === undefined) return { ok: false, reason: 'registry-echo' };
+    return {
+      ok: true,
+      request: Object.freeze({
+        operation: op,
+        subject,
+        workspaceId,
+        registryEcho: echoParsed.echo,
+        grantId,
+        reservedOccurrenceId,
+      }),
+    };
+  }
+
+  if (op === 'createOccurrence') {
+    // Slice-3B recovery: NO bundle subject, no grant ID, no issuance IDs;
+    // the exact accepted ActivationRecord is the authoritative recovery
+    // anchor (S3-D2). All record-construction fields derive from trusted
+    // stored facts.
+    const reservedOccurrenceId = snapshot['reservedOccurrenceId'];
+    if (typeof reservedOccurrenceId !== 'string' || !OCCURRENCE_ID_RE.test(reservedOccurrenceId)) return { ok: false, reason: 'occurrence-id' };
+    const echoParsed = parseRegistryEcho(snapshot['registryEcho']);
+    if (!echoParsed.ok || echoParsed.echo === undefined) return { ok: false, reason: 'registry-echo' };
+    return {
+      ok: true,
+      request: Object.freeze({
+        operation: op,
+        workspaceId,
+        registryEcho: echoParsed.echo,
+        reservedOccurrenceId,
       }),
     };
   }

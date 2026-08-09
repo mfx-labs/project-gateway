@@ -230,12 +230,19 @@ test('revoke: ApprovalRecord and IssuanceRecord targets are accepted; immutable 
   const issuanceTarget = executeSlice1Command(revokeOperand({ targetRecordType: 'IssuanceRecord', targetRecordId: 'pgw:l:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }), issueEnv.context);
   assert.equal(issuanceTarget.ok, true, JSON.stringify(issuanceTarget));
 
-  // Immutable / non-Slice-2 target classes are rejected at capture.
-  for (const immutableType of ['ValidationRecord', 'ActivationRecord', 'ExecutionOccurrenceRecord', 'TrustedReceipt', 'SupersessionRecord', 'RuntimeGrant', 'ResultPublicationRecord']) {
+  // Immutable / non-revocable target classes are rejected at capture.
+  // (RuntimeGrant is a legitimate revoke target since Slice 3A — contract
+  // §26.15; it is excluded from the immutable list.)
+  for (const immutableType of ['ValidationRecord', 'ActivationRecord', 'ExecutionOccurrenceRecord', 'TrustedReceipt', 'SupersessionRecord', 'ResultPublicationRecord']) {
     const result = executeSlice1Command(revokeOperand({ targetRecordType: immutableType }), context);
     assert.equal(result.ok, false, `immutable type ${immutableType} must be rejected`);
     if (!result.ok) assert.equal(result.category, 'request-invalid');
   }
+  // A syntactically valid RuntimeGrant target that does not exist is
+  // lifecycle-state-missing (C1-A), never request-invalid.
+  const grantMissing = executeSlice1Command(revokeOperand({ targetRecordType: 'RuntimeGrant', targetRecordId: 'pgw:l:cccccccccccccccccccccccccccccccc' }), context);
+  assert.equal(grantMissing.ok, false);
+  if (!grantMissing.ok) assert.equal(grantMissing.category, 'lifecycle-state-missing');
 });
 
 test('revoke: malformed target identity/type is request-invalid; nonexistent and out-of-workspace targets are indistinguishable lifecycle-state-missing', () => {

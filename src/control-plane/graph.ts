@@ -58,7 +58,7 @@ function isRegistryFinding(finding: Finding): boolean {
   return finding.ruleIds.some((ruleId) => ruleId === 'REG-001' || ruleId === 'REG-002' || ruleId === 'REG-008' || ruleId === 'LFC-010');
 }
 
-function isLfcFinding(finding: Finding, lfc: 'LFC-001' | 'LFC-002' | 'LFC-003'): boolean {
+function isLfcFinding(finding: Finding, lfc: 'LFC-001' | 'LFC-002' | 'LFC-003' | 'LFC-004'): boolean {
   return finding.ruleIds.includes(lfc);
 }
 
@@ -95,6 +95,41 @@ export function mapVerificationFindings(
   if (findings.some(isRegistryFinding)) return 'registry-context-mismatch';
   if (findings.some((f) => isLfcFinding(f, 'LFC-001') || isLfcFinding(f, 'LFC-002'))) return missingApprovalCategory;
   if (findings.some((f) => isLfcFinding(f, 'LFC-003'))) return 'issuance-not-authorized';
+  return 'eligibility-denied';
+}
+
+/**
+ * Map accepted graph findings to the closed grant-issue taxonomy (Slice
+ * 3A; §26.19). REG findings → registry-context-mismatch; LFC-001/002
+ * (broken approval validation-chain) → lifecycle-state-missing (broken
+ * lifecycle dependency); LFC-003 (issuance approval dependency) →
+ * issuance-not-authorized; any other finding (including LFC-008 grant
+ * invalidity) → eligibility-denied.
+ */
+export function mapGrantGraphFindings(findings: readonly Finding[]): Slice1FailureCategory | undefined {
+  if (findings.length === 0) return undefined;
+  if (findings.some(isRegistryFinding)) return 'registry-context-mismatch';
+  if (findings.some((f) => isLfcFinding(f, 'LFC-001') || isLfcFinding(f, 'LFC-002'))) return 'lifecycle-state-missing';
+  if (findings.some((f) => isLfcFinding(f, 'LFC-003'))) return 'issuance-not-authorized';
+  return 'eligibility-denied';
+}
+
+/**
+ * Map accepted graph findings to the closed decideActivation REJECTION
+ * taxonomy (§26.4). REG findings → registry-context-mismatch (PHASE-1
+ * recordability); LFC-001/002/004 (broken approval validation-chain or
+ * missing required issuance) → lifecycle-state-missing; LFC-003 →
+ * issuance-not-authorized; EXE-001 (competing activation for the
+ * reservation) → replay-denied; any other finding → eligibility-denied.
+ * Post-correlation currentness failures are NEVER mapped here: they are
+ * PHASE-2 eligibility → durable ActivationRecord(denied) (§26.5).
+ */
+export function mapActivationGraphFindings(findings: readonly Finding[]): Slice1FailureCategory | undefined {
+  if (findings.length === 0) return undefined;
+  if (findings.some(isRegistryFinding)) return 'registry-context-mismatch';
+  if (findings.some((f) => isLfcFinding(f, 'LFC-001') || isLfcFinding(f, 'LFC-002') || isLfcFinding(f, 'LFC-004'))) return 'lifecycle-state-missing';
+  if (findings.some((f) => isLfcFinding(f, 'LFC-003'))) return 'issuance-not-authorized';
+  if (findings.some((f) => f.ruleIds.includes('EXE-001'))) return 'replay-denied';
   return 'eligibility-denied';
 }
 

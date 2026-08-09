@@ -36,12 +36,18 @@ import type { ValidatedTrustedWorkspaceConfiguration, ValidatedWorkspaceRecord }
 export const SLICE_1_KIND_IDS = ['TaskSpec', 'AuthorityPolicy', 'ContextManifest', 'CompletionContract', 'ExecutionBundle'] as const;
 export type Slice1KindId = (typeof SLICE_1_KIND_IDS)[number];
 
-/** Slice-1 family operations + Slice 2A revoke + Slice 2B verify (exactly these five). */
-export const SLICE_1_OPERATIONS = ['recordValidation', 'approve', 'issue', 'revoke', 'verifyCurrentLifecycleState'] as const;
+/** Slice-1 family operations + Slice 2A revoke + Slice 2B verify + Slice-3A issueRuntimeGrant. */
+export const SLICE_1_OPERATIONS = ['recordValidation', 'approve', 'issue', 'revoke', 'verifyCurrentLifecycleState', 'issueRuntimeGrant', 'decideActivation', 'createOccurrence'] as const;
 export type Slice1Operation = (typeof SLICE_1_OPERATIONS)[number];
 
-/** Slice-2A operational revocation target record types (schema target enum subset). */
-export const SLICE_2A_TARGET_RECORD_TYPES = ['ApprovalRecord', 'IssuanceRecord'] as const;
+/**
+ * Operational revocation target record types (schema target enum subset).
+ * Slice 2A: ApprovalRecord, IssuanceRecord. Slice-3A extends the existing
+ * revoke operation with RuntimeGrant (contract §26.15); no separate
+ * revokeRuntimeGrant operation exists. The later publication target stays
+ * out of the operational set (a later result-publisher context).
+ */
+export const SLICE_2A_TARGET_RECORD_TYPES = ['ApprovalRecord', 'IssuanceRecord', 'RuntimeGrant'] as const;
 export type Slice2ATargetRecordType = (typeof SLICE_2A_TARGET_RECORD_TYPES)[number];
 
 /** Slice-2A operational revocation scopes for approval/issuance targets. */
@@ -54,6 +60,7 @@ export const REASON_CODE_RE = /^[a-z][a-z0-9-]{0,63}$/;
 export const REGISTRY_SNAPSHOT_ID_RE = /^pgw:g:[0-9a-f]{32}$/;
 /** The Slice-2A primary publication class for revocation records. */
 export const REVOCATION_RECORD_CLASS = 'revocation-record' as const;
+
 
 /**
  * Accepted capability identifier syntax (capability-vocabulary.md): the
@@ -108,6 +115,32 @@ export const VALIDATION_REF_MAX_COUNT = 16;
 export const ACTIVATION_LIMIT_MIN = 1;
 export const ACTIVATION_LIMIT_MAX = 64;
 
+// ─── Slice-3A grant vocabulary ───────────────────────────────────────────────
+
+/** The Slice-3A primary publication class for RuntimeGrant records. */
+export const RUNTIME_GRANT_CLASS = 'runtime-grant' as const;
+/** The Slice-3B primary publication class for activation decisions. */
+export const ACTIVATION_RECORD_CLASS = 'activation-record' as const;
+/** The Slice-3B primary publication class for execution occurrences. */
+export const EXECUTION_OCCURRENCE_RECORD_CLASS = 'execution-occurrence-record' as const;
+/** Closed occurrence identity syntax (accepted schema: `pgw:o:` + 32 lowercase hex). */
+export const OCCURRENCE_ID_RE = /^pgw:o:[0-9a-f]{32}$/;
+/** RuntimeGrant attempt allowance bounds (schema bounds; contract §26.11). */
+export const ATTEMPT_LIMIT_MIN = 1;
+export const ATTEMPT_LIMIT_MAX = 64;
+/** The four schema-admitted RuntimeGrant narrowing forms (contract §26.6). */
+export const NARROWED_CONSTRAINT_TYPES = ['max-actions', 'max-resources', 'read-only', 'require-exact-resource'] as const;
+export type NarrowedConstraintType = (typeof NARROWED_CONSTRAINT_TYPES)[number];
+/** Bound on narrowed_constraints per grant (schema maxItems 16; non-empty enforced at capture). */
+export const NARROWED_CONSTRAINT_MAX_COUNT = 16;
+
+/** One schema-admitted narrowed constraint operand (untrusted requested narrowing). */
+export interface RuntimeGrantConstraint {
+  readonly type: NarrowedConstraintType;
+  /** max-actions/max-resources: non-negative safe integer; read-only/require-exact-resource: true. */
+  readonly value: number | boolean;
+}
+
 // ─── canonical subject model (Decision 3; SCR-W12-008) ─────────────────────
 
 /**
@@ -161,6 +194,16 @@ export interface Slice1Request {
   readonly capabilityRequirements?: readonly string[];
   /** verify only: REQUIRED untrusted consumer-support declaration (accepted ConsumerSupportDeclaration fields). */
   readonly consumerSupport?: ConsumerSupportDeclaration;
+  /** issueRuntimeGrant only: untrusted requested attempt allowance (1..64 inclusive; per reserved occurrence). */
+  readonly attemptLimit?: number;
+  /** issueRuntimeGrant only: untrusted requested validity window (not_before <= not_after; accepted timestamps). */
+  readonly validity?: Readonly<{ not_before: string; not_after: string }>;
+  /** issueRuntimeGrant only: untrusted requested narrowing (schema forms; non-empty, duplicate-free). */
+  readonly narrowedConstraints?: readonly RuntimeGrantConstraint[];
+  /** decideActivation only: untrusted grant correlation operand (exact RuntimeGrant record identity). */
+  readonly grantId?: string;
+  /** decideActivation / createOccurrence only: untrusted reserved-occurrence correlation operand. */
+  readonly reservedOccurrenceId?: string;
 }
 
 // ─── accepted WP-4 validation evidence (host-injected) ─────────────────────
@@ -237,6 +280,10 @@ export interface ControlPlaneOperatorContext {
   readonly issuerRole: boolean;
   /** Revocation authority exists only when the host asserts this role (Slice 2A; optional for Slice-1 hosts). */
   readonly revokerRole?: boolean;
+  /** RuntimeGrant authority exists only when the host asserts this role (Slice 3A; never request-supplied). */
+  readonly grantRole?: boolean;
+  /** Activation authority exists only when the host asserts this role (Slice 3B; never request-supplied). */
+  readonly activationRole?: boolean;
   /** Host-owned operational attribution; never itself authority. */
   readonly operatorIdentity: string;
 }
@@ -247,6 +294,12 @@ export interface ControlPlaneIdentitySource {
   readonly nowUtcIso: () => string;
   /** Fresh opaque record identity (`pgw:l:<32 lowercase hex>`); non-reusable. */
   readonly newRecordId: () => string;
+  /**
+   * Fresh opaque reserved-occurrence identity (`pgw:o:<32 lowercase hex>`);
+   * allocated INTERNALLY by issueRuntimeGrant under the coordination lock
+   * (contract §26.9); never a caller operand.
+   */
+  readonly newOccurrenceId: () => string;
 }
 
 /** Host-owned approval decision defaults (trusted issuance-side operands). */
@@ -285,6 +338,10 @@ export interface ControlPlaneTrustedContext {
   readonly validationEvidence?: AcceptedValidationEvidence;
   /** approve/issue only: the exact validated artifact model (host-injected evidence). */
   readonly subjectArtifact?: ValidatedArtifact;
+  /** decideActivation only: host-asserted consumer/enforcement support (never request-supplied; §26.8). */
+  readonly consumerSupport?: ConsumerSupportDeclaration;
+  /** decideActivation only: the exact validated AuthorityPolicy artifact resolved from the bundle reference (host-injected). */
+  readonly policyEvidence?: ValidatedArtifact;
 }
 
 // ─── closed Slice-1 result taxonomy (committed contract §13) ───────────────
@@ -303,12 +360,14 @@ export type Slice1FailureCategory =
   | 'approval-revoked'
   | 'issuance-not-authorized'
   | 'already-issued'
+  | 'occurrence-conflict'
+  | 'replay-denied'
   | 'registry-context-mismatch'
   | 'store-failure'
   | 'lock-conflict'
   | 'internal-failure';
 
-export type Slice1Outcome = 'recorded' | 'approved' | 'issued' | 'revoked' | 'verified';
+export type Slice1Outcome = 'recorded' | 'approved' | 'issued' | 'revoked' | 'verified' | 'granted' | 'activated' | 'recovered';
 
 /** Bounded deterministic success evidence (identity/digest facts only). */
 export interface Slice1Success {
@@ -343,6 +402,39 @@ export interface Slice1Success {
     readonly currentState?: 'current';
     /** Derived fact: the requested capability/consumer/ceiling intersection held. */
     readonly intersection?: 'satisfied';
+    // ── Slice-3A issueRuntimeGrant evidence (outcome 'granted') ──
+    // Bounded deterministic correlation facts only (contract §25): the
+    // RuntimeGrant record in the trusted store is authoritative lifecycle
+    // state; this evidence is correlation data and never transferable
+    // authority. No raw record payload, role, store path, config, or
+    // coordinator is returned.
+    /** The internally allocated reserved occurrence identity (pgw:o:). */
+    readonly reservedOccurrenceId?: string;
+    /** The granted attempt allowance (per reserved occurrence). */
+    readonly attemptLimit?: number;
+    /** The granted validity window (untrusted requested narrowing). */
+    readonly validity?: { readonly not_before: string; readonly not_after: string };
+    /** The granted narrowing constraints (untrusted requested narrowing). */
+    readonly narrowedConstraints?: readonly Readonly<RuntimeGrantConstraint>[];
+    // ── Slice-3B activation/recovery evidence (outcomes 'activated' / 'recovered') ──
+    // Bounded deterministic evidence per §26.16: activation outcome, record
+    // identities, grant identity, reserved occurrence identity, workspace,
+    // exact bundle revision identity, registry correlation. Complete
+    // accepted activation evidence exists ONLY after BOTH records are
+    // durable; the five issuance IDs are NOT included (§26.16). Denied
+    // activation evidence is historical decision facts only — never
+    // PiEnforcementEvidence authority.
+    /** Activation decision ('accepted' | 'denied'); absent for recovery. */
+    readonly decision?: 'accepted' | 'denied';
+    /** The exact correlated RuntimeGrant record identity. */
+    readonly runtimeGrantId?: string;
+    /** Accepted activation only: the mandatory internal ExecutionOccurrenceRecord identity. */
+    readonly occurrenceRecordId?: string;
+    readonly occurrenceRecordClass?: string;
+    readonly occurrenceRecordDigest?: string;
+    readonly occurrenceAuditEventId?: string;
+    /** createOccurrence recovery: the exact accepted ActivationRecord anchor. */
+    readonly activationRecordId?: string;
   };
 }
 

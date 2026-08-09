@@ -20,7 +20,12 @@ apply/inspect/restore; PROJECTED state) is normative in
 `pi-guard-compatibility-and-authority-projection.md` Parts B/D as updated
 by ADR-037. All other content of this ADR remains in force, including the
 v0.1.1 lane pin until the v0.1.2 implementation exists and is separately
-verified.
+verified. **That condition is now satisfied:** pi-guard v0.1.2 (release
+commit `7a7580cc4cbd7926797564c72269394fc29a860a`, annotated tag `v0.1.2`
+resolving to that commit) implements the trusted projection interface and
+its compatibility lane has been verified and recorded
+(`pi-guard-compatibility-and-authority-projection.md` Parts B/D). pi-guard
+0.1.1 remains a historically verified lane.
 
 ## Context
 

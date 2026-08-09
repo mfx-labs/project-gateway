@@ -7,6 +7,19 @@ interface contract and its intended compatible implementation lane; it does
 not implement the interface, does not modify the pi-guard repository, and
 does not begin WP-5B implementation.
 
+**Lane recording — pi-guard v0.1.2 (post-decision):** the trusted
+projection interface authorized by this ADR has since been implemented and
+released in pi-guard **v0.1.2** (release commit
+`7a7580cc4cbd7926797564c72269394fc29a860a`; annotated tag `v0.1.2`
+resolves exactly to that commit) and the **v0.1.2 compatibility lane has
+been verified** against
+`pi-guard-compatibility-and-authority-projection.md` Parts B/D (predicate
+items 12–17 plus the retained v0.1.1-compatible predicate), with the
+normative `inventoryFingerprint` golden vector converged. Sections 4 and 5
+record the decision-time state and are retained as historical; the WP-5B
+gates they name (v0.1.2 implementation and lane verification) are now
+closed. WP-5B implementation remains not started.
+
 **Authority chain:** ADR-002 (trust and approval boundary), ADR-020
 (pi-adapter boundary and no authority), ADR-023 (sequencing: WP-5B after
 WP-6/WP-12), ADR-024 (trusted configuration ownership), ADR-025 (capability

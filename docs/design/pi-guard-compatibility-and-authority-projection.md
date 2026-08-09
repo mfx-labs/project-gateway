@@ -60,11 +60,15 @@ authority. **The evidence covers `pi-guard` 0.1.1 only.**
 
 ## Part B — Repository-Owned Compatibility Contract
 
-- **Supported identity and lane:** package identity `pi-guard`; the **only
-  verified initial lane is exactly `pi-guard 0.1.1`**. No evidence
-  establishes compatibility with any other `0.1.x` version; semantic-version
-  range membership alone is insufficient. Any other version is unverified
-  and fails closed; supporting another version requires a reviewed
+- **Supported identity and lane:** package identity `pi-guard`. The initial
+  verified lane was exactly `pi-guard 0.1.1` (historical; it predates the
+  trusted projection interface). **pi-guard 0.1.2 is now a verified lane
+  providing the trusted projection interface required by WP-5B**: released
+  at commit `7a7580cc4cbd7926797564c72269394fc29a860a` (annotated tag
+  `v0.1.2` resolves exactly to that commit) and verified against this
+  contract's compatibility predicate (items 1–17 together with the
+  retained v0.1.1-compatible predicate). Any other version is unverified
+  and fails closed; supporting any further version requires a reviewed
   compatibility record or ADR update.
 - **Compatibility predicate for `pi-guard 0.1.1` (all conjuncts must
   hold):**
@@ -107,11 +111,12 @@ authority. **The evidence covers `pi-guard` 0.1.1 only.**
   (`OFF|INSPECT|EDIT|WRITE`), tool-profile application, verified
   restoration, `git_inspect` read-only contract, trusted-project config
   semantics, and the trusted authority-projection input (Part D; interface
-  authorized by ADR-037, intended lane pi-guard v0.1.2 — the next release
-  version in the pi-guard project's version sequence; not yet implemented).
-- **Trusted projection interface (authorized — ADR-037; intended lane
-  pi-guard v0.1.2):** the process-local trusted interface consists
-  conceptually of exactly three operations — `applyTrustedProjection`,
+  authorized by ADR-037 and implemented in pi-guard v0.1.2 — released at
+  commit `7a7580cc4cbd7926797564c72269394fc29a860a`, annotated tag
+  `v0.1.2` resolving to that commit; lane verified).
+- **Trusted projection interface (authorized — ADR-037; implemented lane
+  pi-guard v0.1.2, released and verified):** the process-local trusted
+  interface consists conceptually of exactly three operations — `applyTrustedProjection`,
   `inspectActiveProjection`, `restoreTrustedProjection`. The projection
   object contains EXACTLY four fields: `projectionVersion` (interface
   contract version; currently `1`; unsupported versions fail closed),
@@ -133,7 +138,10 @@ authority. **The evidence covers `pi-guard` 0.1.1 only.**
   semantics are unchanged. pi-guard receives only derived enforcement
   data, never Gateway lifecycle records.
 - **Compatibility predicate additions for the trusted projection
-  interface (v0.1.2 lane, when implemented and verified):**
+  interface (v0.1.2 lane — implemented at commit
+  `7a7580cc4cbd7926797564c72269394fc29a860a` and verified against that
+  released implementation; items 12–17 are binding for the verified
+  lane):**
   12. extension factory returns the trusted API object exposing exactly
       `applyTrustedProjection`, `inspectActiveProjection`,
       `restoreTrustedProjection`;
@@ -272,8 +280,11 @@ authority. **The evidence covers `pi-guard` 0.1.1 only.**
   interface contract is defined below (Parts B/D). This document defines
   the contract Project Gateway needs; it does not design pi-guard
   internals beyond the public interface. The pi-guard v0.1.2
-  implementation itself remains outside this repository and requires its
-  own reviewed implementation and lane verification.
+  implementation exists outside this repository at commit
+  `7a7580cc4cbd7926797564c72269394fc29a860a` (release tag `v0.1.2`
+  resolving to that commit) and its compatibility lane is verified
+  against this contract (predicate items 12–17 plus the retained
+  v0.1.1-compatible predicate); this document records that verified lane.
 
 ## Part C — Effective Authority Rule and Ownership
 
@@ -403,8 +414,10 @@ would produce.
 
 ### Trusted Projection Interface (authorized — ADR-037)
 
-The process-local trusted interface (intended lane pi-guard v0.1.2; NOT
-yet implemented) consists of exactly three operations:
+The process-local trusted interface (implemented lane pi-guard v0.1.2;
+released at commit `7a7580cc4cbd7926797564c72269394fc29a860a`, annotated
+tag `v0.1.2`; lane verified against this contract) consists of exactly
+three operations:
 
 - **`applyTrustedProjection(projection)`** — validates the projection
   object (shape, `projectionVersion`, `inventoryFingerprint` against the

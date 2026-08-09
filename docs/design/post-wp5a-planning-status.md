@@ -617,17 +617,21 @@ DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
 
 ## Sequencing Dispositions
 
-- **WP-5B eligibility** — **RESOLVED as an authorization gate**: WP-6
-  (ceilings, workspace identity) and WP-12 (activation decisions) are
-  closed (ADR-023 satisfied); the pi-guard trusted projection interface
-  is now explicitly authorized by **ADR-037** (process-local
-  apply/inspect/restore; four-field projection;
-  `pi-guard-compatibility-and-authority-projection.md` Parts B/D). WP-5B
-  implementation remains gated on the interface ACTUALLY existing: the
-  authorized pi-guard v0.1.2 implementation (next release version in the
-  pi-guard project's version sequence) must be built and the new
-  compatibility lane separately verified before WP-5B implementation is
-  authorized. The v0.1.1 lane pin is unchanged until then.
+- **WP-5B eligibility** — **ELIGIBLE**: WP-6 (ceilings, workspace
+  identity), WP-7, and WP-12 (activation decisions) are closed (ADR-023
+  satisfied); ADR-037 authorization is closed; the pi-guard trusted
+  projection interface **exists** — implemented and released in
+  **pi-guard v0.1.2** (release commit
+  `7a7580cc4cbd7926797564c72269394fc29a860a`; annotated tag `v0.1.2`
+  resolves to that commit) — and the **v0.1.2 compatibility lane is
+  VERIFIED** against `pi-guard-compatibility-and-authority-projection.md`
+  Parts B/D (predicate 12–17 plus the retained v0.1.1-compatible
+  predicate), with the normative `inventoryFingerprint` golden vector
+  converged and preserved pi-guard evidence (unit 305/305, process
+  22/22, integration 27/27, total 354/354, typecheck clean). The
+  previous projection-interface blocker is fully resolved. **WP-5B is
+  ELIGIBLE — READY FOR HUMAN IMPLEMENTATION AUTHORIZATION**; WP-5B
+  implementation remains not started.
 - **WP-6 eligibility** — **NOT BLOCKED by any open decision**: WP-6
   depends on WP-0…WP-4 and the planning contracts; no unresolved decision
   blocks it once the planning package is approved.
@@ -819,7 +823,9 @@ DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
   required by ADR-026 is now granted by ADR-037
   (`ADR-037-pi-guard-trusted-projection-interface-authorization.md`);
   the pi-guard v0.1.2 implementation and its compatibility-lane
-  verification remain pending.
+  verification are now complete (pi-guard v0.1.2 released at commit
+  `7a7580cc4cbd7926797564c72269394fc29a860a`, tag `v0.1.2`; lane verified
+  and recorded).
 
 ## F-SEQ Dispositions
 
@@ -834,12 +840,13 @@ DEFERRED WITH NON-BLOCKING RATIONALE, or STILL BLOCKING.
 
 ## Known Non-Blocking Limitations
 
-- pi-guard 0.1.1 still has no external authority-projection input API; the
-  required interface is documented (ADR-026) and the interface
-  authorization is now granted by ADR-037. The pi-guard v0.1.2
-  implementation and the new compatibility-lane verification remain
-  outstanding — a deferred implementation item, not an unresolved
-  architecture decision of this package.
+- pi-guard 0.1.1 (historical) has no external authority-projection input
+  API; the trusted projection interface is provided by the released
+  **pi-guard v0.1.2** lane (release commit
+  `7a7580cc4cbd7926797564c72269394fc29a860a`; annotated tag `v0.1.2`;
+  lane verified against the Gateway contract) — the previous
+  implementation/lane-verification deferral is resolved. Not an
+  unresolved architecture decision of this package.
 - The v1 capability vocabulary is approved (ADR-025 Accepted); no
   implementation consumes it before a separate WP-6
   implementation-authorization decision.

@@ -145,6 +145,23 @@ implementation is **not closed**. WP-9 and later
 packages are **not authorized**. No push, release,
 publication, installation, or deployment has occurred.
 
+**Current state (WP-13 pre-implementation contract decision; recorded
+2026-08-10):** WP-11 is **CLOSED** (`9695c5d8a5f42404884f11c02c493ed56d6f9e72`,
+`feat: close WP-11 controlled artifact writing slice 1`); WP-12 is
+**CLOSED** (`164b8a04d05cb03c733fa1cef7f489e189e3c3be`, `feat: close
+WP-12 local approval and execution control plane`); WP-5B is **CLOSED**
+(`1067d5c6f9161b3d04443b0bdc73c5c80eda9253`, `feat: complete WP-5B Pi
+enforcement integration` — the current HEAD). The current phase is the
+**WP-13 pre-implementation contract decision**
+(`docs/reports/wp-13-pre-implementation-contract-decision.md`; ADR-038),
+which resolves the three WP-13-owned contract decisions (completion
+evaluator / ExecutionResult publication path; retry / attempt-ordering
+rule; WP-13 → WP-15 retrospective facts) and establishes the WP-13
+contract baseline. WP-13 implementation is **NOT AUTHORIZED**; WP-14 and
+WP-15 remain **blocked** behind WP-13. This current-state note supersedes
+earlier "current work package" statements in the historical chronology
+below; historical records are preserved.
+
 **WP-8-E (contract §29 phase 4 — audit, registry indexes, and recovery;
 read-only slice) is implemented**: WP-8-D is **closed** at commit
 `23a30b212dbe1f2ffa05e2b69314754730aeb222` (subject `docs: close WP-8-D
@@ -575,8 +592,10 @@ connectivity remains WP-14-owned.
   `docs/reports/wp-10-artifact-drafting-tools-closure-report.md`) (WP-9's
   six-tool inspection inventory unchanged). The
   next work package remains subject to separate authorization. WP-11
-  NOT STARTED; WP-12 NOT STARTED; WP-14 remains blocked by WP-13 (see
-  the WP-9 section above).
+  is **CLOSED** (`9695c5d`); WP-12 is **CLOSED** (`164b8a0`); WP-5B is
+  **CLOSED** (`1067d5c`); the current phase is the WP-13 pre-implementation
+  contract decision (see the current-state note above); WP-14 remains
+  blocked by WP-13 (see the current-state note above).
 
 WP-9 and later
 packages are **not authorized**. No push, release, publication,

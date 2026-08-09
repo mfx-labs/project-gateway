@@ -128,6 +128,41 @@ export function payloadDigestOf(payload: Readonly<Record<string, unknown>>): str
   return computePayloadDigest(payload);
 }
 
+export interface RevocationRecordPayloadInput {
+  readonly recordId: string;
+  readonly createdAt: string;
+  readonly targetRecordType: 'ApprovalRecord' | 'IssuanceRecord';
+  readonly targetRecordId: string;
+  readonly scope: 'all-uses' | 'execution-use';
+  readonly effectiveAt: string;
+  readonly reasonCode: string;
+  readonly registry: AcceptedRegistryContext;
+}
+
+/**
+ * RevocationRecord payload (append-only usability withdrawal; schema/fixture
+ * shaped — no workspace field exists in the accepted schema; workspace
+ * correlation is carried by the exact target record identity and the host
+ * context). The registry reference binds the CURRENT accepted context
+ * (C6), never the historical target's context.
+ */
+export function buildRevocationRecordPayload(input: RevocationRecordPayloadInput): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    record_type: 'RevocationRecord',
+    record_id: input.recordId,
+    created_at: input.createdAt,
+    responsible_role: 'trusted-revocation-authority',
+    registry_snapshot_reference: registryReferenceFor(input.registry),
+    target: Object.freeze({
+      record_type: input.targetRecordType,
+      record_id: input.targetRecordId,
+    }),
+    scope: input.scope,
+    effective_at: input.effectiveAt,
+    reason_code: input.reasonCode,
+  });
+}
+
 /** Keys excluded from decision-content identity (record identity/creation time). */
 const DECISION_CONTENT_IGNORED_KEYS: ReadonlySet<string> = new Set(['record_id', 'created_at']);
 

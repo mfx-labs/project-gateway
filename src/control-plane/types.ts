@@ -18,6 +18,7 @@
 import type { SchemaRegistry } from '../schema/registry.js';
 import type {
   AcceptedRegistryContext,
+  ConsumerSupportDeclaration,
   ValidationReport,
   ValidatedArtifact,
 } from '../api/types.js';
@@ -35,9 +36,43 @@ import type { ValidatedTrustedWorkspaceConfiguration, ValidatedWorkspaceRecord }
 export const SLICE_1_KIND_IDS = ['TaskSpec', 'AuthorityPolicy', 'ContextManifest', 'CompletionContract', 'ExecutionBundle'] as const;
 export type Slice1KindId = (typeof SLICE_1_KIND_IDS)[number];
 
-/** Slice-1 operations (exactly recordValidation, approve, issue). */
-export const SLICE_1_OPERATIONS = ['recordValidation', 'approve', 'issue'] as const;
+/** Slice-1 family operations + Slice 2A revoke + Slice 2B verify (exactly these five). */
+export const SLICE_1_OPERATIONS = ['recordValidation', 'approve', 'issue', 'revoke', 'verifyCurrentLifecycleState'] as const;
 export type Slice1Operation = (typeof SLICE_1_OPERATIONS)[number];
+
+/** Slice-2A operational revocation target record types (schema target enum subset). */
+export const SLICE_2A_TARGET_RECORD_TYPES = ['ApprovalRecord', 'IssuanceRecord'] as const;
+export type Slice2ATargetRecordType = (typeof SLICE_2A_TARGET_RECORD_TYPES)[number];
+
+/** Slice-2A operational revocation scopes for approval/issuance targets. */
+export const REVOKE_SCOPES = ['all-uses', 'execution-use'] as const;
+export type RevokeScope = (typeof REVOKE_SCOPES)[number];
+
+/** Accepted RevocationRecord reason_code syntax (schema pattern). */
+export const REASON_CODE_RE = /^[a-z][a-z0-9-]{0,63}$/;
+/** Registry snapshot identity syntax (pgw:g: + 32 lowercase hex). */
+export const REGISTRY_SNAPSHOT_ID_RE = /^pgw:g:[0-9a-f]{32}$/;
+/** The Slice-2A primary publication class for revocation records. */
+export const REVOCATION_RECORD_CLASS = 'revocation-record' as const;
+
+/**
+ * Accepted capability identifier syntax (capability-vocabulary.md): the
+ * `project-gateway.<class>` convention with a lowercase class token. Only
+ * SYNTAX is enforced here; vocabulary membership is the accepted
+ * `isKnownCapability` check (well-formed-but-unknown fails closed at
+ * evaluation as `eligibility-denied`, never here).
+ */
+export const CAPABILITY_IDENTIFIER_RE = /^project-gateway\.[a-z][a-z0-9-]*$/;
+/** Bound on requested capabilities per verify request (untrusted operand). */
+export const VERIFY_CAPABILITY_MAX_COUNT = 64;
+/** Bound on one capability identifier length (untrusted operand). */
+export const VERIFY_CAPABILITY_MAX_LENGTH = 128;
+/** Bound on ConsumerSupportDeclaration array lengths (untrusted operand). */
+export const CONSUMER_SUPPORT_MAX_ITEMS = 128;
+/** Bound on one ConsumerSupportDeclaration item length (untrusted operand). */
+export const CONSUMER_SUPPORT_MAX_ITEM_LENGTH = 128;
+/** Bound on the consumer identity length (untrusted operand). */
+export const CONSUMER_ID_MAX_LENGTH = 256;
 
 /** Accepted artifact protocol identity/version (schema const). */
 export const ARTIFACT_PROTOCOL_ID = 'project-gateway.artifact' as const;
@@ -96,10 +131,11 @@ export interface CanonicalSubject {
 
 // ─── untrusted request model ────────────────────────────────────────────────
 
-/** Untrusted Slice-1 request operands (exact-key validated; never authority-bearing). */
+/** Untrusted Slice-1/Slice-2A request operands (exact-key validated; never authority-bearing). */
 export interface Slice1Request {
   readonly operation: Slice1Operation;
-  readonly subject: CanonicalSubject;
+  /** Slice-1 operations only (recordValidation/approve/issue); absent for revoke. */
+  readonly subject?: CanonicalSubject;
   readonly workspaceId: string;
   /** approve only; must equal the accepted purpose enum value. */
   readonly purpose?: string;
@@ -109,6 +145,22 @@ export interface Slice1Request {
   readonly validationRecordIds?: readonly string[];
   /** Optional bounded descriptive operand; never decision-bearing. */
   readonly reason?: string;
+  /** revoke only: exact target record type (ApprovalRecord | IssuanceRecord). */
+  readonly targetRecordType?: Slice2ATargetRecordType;
+  /** revoke only: exact target record identity (pgw:l:). */
+  readonly targetRecordId?: string;
+  /** revoke only: operational scope (all-uses | execution-use). */
+  readonly scope?: RevokeScope;
+  /** revoke only: accepted trusted timestamp; MAY be future-dated. */
+  readonly effectiveAt?: string;
+  /** revoke only: bounded reason code (schema pattern); descriptive only. */
+  readonly reasonCode?: string;
+  /** revoke/verify only: REQUIRED untrusted registry-context correlation echo. */
+  readonly registryEcho?: Readonly<{ registry_snapshot_id: string; registry_snapshot_digest: string }>;
+  /** verify only: REQUIRED untrusted requested capability identifiers (accepted `project-gateway.<class>` grammar). */
+  readonly capabilityRequirements?: readonly string[];
+  /** verify only: REQUIRED untrusted consumer-support declaration (accepted ConsumerSupportDeclaration fields). */
+  readonly consumerSupport?: ConsumerSupportDeclaration;
 }
 
 // ─── accepted WP-4 validation evidence (host-injected) ─────────────────────
@@ -183,6 +235,8 @@ export interface ControlPlaneOperatorContext {
   readonly approverRole: boolean;
   /** Issuance authority exists only when the host asserts this role. */
   readonly issuerRole: boolean;
+  /** Revocation authority exists only when the host asserts this role (Slice 2A; optional for Slice-1 hosts). */
+  readonly revokerRole?: boolean;
   /** Host-owned operational attribution; never itself authority. */
   readonly operatorIdentity: string;
 }
@@ -254,7 +308,7 @@ export type Slice1FailureCategory =
   | 'lock-conflict'
   | 'internal-failure';
 
-export type Slice1Outcome = 'recorded' | 'approved' | 'issued';
+export type Slice1Outcome = 'recorded' | 'approved' | 'issued' | 'revoked' | 'verified';
 
 /** Bounded deterministic success evidence (identity/digest facts only). */
 export interface Slice1Success {
@@ -268,6 +322,27 @@ export interface Slice1Success {
     readonly auditEventId?: string;
     readonly subject: CanonicalSubject;
     readonly workspaceId: string;
+    // ── Slice-2B verifyCurrentLifecycleState evidence (outcome 'verified') ──
+    // Bounded NON-AUTHORIZING current-state facts for the completed
+    // evaluation only (contract §25.3/§25.17/§25.18): nothing here is
+    // accepted as authority input by any mutating operation, carries no
+    // freshness token, and is never sufficient for later privileged work.
+    /** Verification form selector: exactly one of purpose (approval form) / useClass (issuance form). */
+    readonly purpose?: string;
+    readonly useClass?: string;
+    /** The exact current usable ApprovalRecord (approval form: the verified record; issuance form: the referenced approval). */
+    readonly approvalRecordId?: string;
+    /** Issuance form only: the exact current usable IssuanceRecord (equals recordId). */
+    readonly issuanceRecordId?: string;
+    /** The current accepted registry context (host-injected). */
+    readonly registrySnapshotId?: string;
+    readonly registrySnapshotDigest?: string;
+    /** Trusted verification time from the host-injected time source. */
+    readonly verifiedAt?: string;
+    /** Derived fact: the requested lifecycle state was current at evaluation time. */
+    readonly currentState?: 'current';
+    /** Derived fact: the requested capability/consumer/ceiling intersection held. */
+    readonly intersection?: 'satisfied';
   };
 }
 

@@ -289,6 +289,7 @@ export interface ContextOverrides {
   readonly identity?: DeterministicIdentity;
   readonly approverRole?: boolean;
   readonly issuerRole?: boolean;
+  readonly revokerRole?: boolean;
   readonly operatorIdentity?: string;
   readonly validationEvidence?: AcceptedValidationEvidence;
   readonly subjectArtifact?: ValidatedArtifact;
@@ -305,6 +306,7 @@ export function makeContext(env: StoreEnv, overrides: ContextOverrides = {}): Co
     operator: {
       approverRole: overrides.approverRole ?? true,
       issuerRole: overrides.issuerRole ?? true,
+      revokerRole: overrides.revokerRole ?? false,
       operatorIdentity: overrides.operatorIdentity ?? 'test-operator',
     },
     store: overrides.store ?? makeStoreBoundary(env),
@@ -325,7 +327,7 @@ export interface FakeStoreState {
   publishCalls: number;
   readCalls: number;
   enumerateCalls: number;
-  readonly failReads: boolean;
+  failReads: boolean;
   throwOnPublish: boolean;
 }
 

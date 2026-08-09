@@ -24,14 +24,27 @@ export interface LifecycleGraphInputs {
   /** Exact validated artifact models by revision/instance identity (host evidence). */
   readonly artifactsByRevision: ReadonlyMap<string, Readonly<Record<string, unknown>>>;
   readonly artifactsByInstance: ReadonlyMap<string, Readonly<Record<string, unknown>>>;
+  /**
+   * Verification-only: extra entry identities included in the REGISTRY
+   * entry check (e.g., applicable revocation records relevant to the
+   * candidate). They are registry-checked by the accepted REG rules but are
+   * never LFC entries (revocations are not LFC subjects). Approve/issue
+   * omit this; behavior is then byte-identical to the accepted Slice-1
+   * evaluation.
+   */
+  readonly extraRegistryEntries?: ReadonlySet<string>;
 }
 
 /** Graph evaluation over one candidate entry record. */
 export function evaluateCandidateLifecycleRecord(input: LifecycleGraphInputs): ValidationReport {
   const candidateId = String(input.candidate['record_id'] ?? '');
+  const entries = new Set<string>([candidateId]);
+  for (const id of input.extraRegistryEntries ?? []) {
+    entries.add(id);
+  }
   return validateLifecycleGraph({
     records: [...input.existing, input.candidate],
-    entryRecordIds: new Set([candidateId]),
+    entryRecordIds: entries,
     registry: input.registry,
     artifactsByRevision: input.artifactsByRevision,
     artifactsByInstance: input.artifactsByInstance,
@@ -63,6 +76,24 @@ export function mapGraphFindings(findings: readonly Finding[]): Slice1FailureCat
   if (findings.length === 0) return undefined;
   if (findings.some(isRegistryFinding)) return 'registry-context-mismatch';
   if (findings.some((f) => isLfcFinding(f, 'LFC-001') || isLfcFinding(f, 'LFC-002'))) return 'subject-not-validated';
+  if (findings.some((f) => isLfcFinding(f, 'LFC-003'))) return 'issuance-not-authorized';
+  return 'eligibility-denied';
+}
+
+/**
+ * Map accepted graph findings to the closed verification taxonomy (Slice
+ * 2B). REG findings → registry-context-mismatch; LFC-001/002 (approval
+ * validation-chain) → the form's missing-approval category; LFC-003
+ * (issuance approval dependency) → issuance-not-authorized; any other
+ * finding → eligibility-denied (general intersection denial).
+ */
+export function mapVerificationFindings(
+  findings: readonly Finding[],
+  missingApprovalCategory: 'lifecycle-state-missing' | 'issuance-not-authorized',
+): Slice1FailureCategory | undefined {
+  if (findings.length === 0) return undefined;
+  if (findings.some(isRegistryFinding)) return 'registry-context-mismatch';
+  if (findings.some((f) => isLfcFinding(f, 'LFC-001') || isLfcFinding(f, 'LFC-002'))) return missingApprovalCategory;
   if (findings.some((f) => isLfcFinding(f, 'LFC-003'))) return 'issuance-not-authorized';
   return 'eligibility-denied';
 }

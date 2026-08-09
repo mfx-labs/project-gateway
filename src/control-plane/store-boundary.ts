@@ -22,8 +22,8 @@ import type { StorageWriteActionProvenance } from './storage-write-action.js';
 import type { LockTimeSource, RecordClassId } from '../storage/types.js';
 import type { ControlPlaneStoreBoundary, LifecycleEnumerateResult, LifecycleReadResult } from './types.js';
 
-/** The three Slice-1 publishable lifecycle record classes. */
-const SLICE_1_PUBLISH_CLASSES: ReadonlySet<string> = new Set(['validation-record', 'approval-record', 'issuance-record']);
+/** The four Slice-1/Slice-2A primary publishable lifecycle record classes. */
+const CONTROL_PLANE_PUBLISH_CLASSES: ReadonlySet<string> = new Set(['validation-record', 'approval-record', 'issuance-record', 'revocation-record']);
 
 export interface ControlPlaneStoreBoundaryOptions {
   /** Genuine WP-6 validated trusted configuration (runtime-branded). */
@@ -57,8 +57,8 @@ export function buildRecordEnvelope(
   trustedActionId: string,
 ): Readonly<Record<string, unknown>> {
   const profile = recordClassProfile(recordClass);
-  if (profile === undefined || !SLICE_1_PUBLISH_CLASSES.has(recordClass)) {
-    throw new TypeError(`record class is not publishable by WP-12 Slice 1: ${String(recordClass)}`);
+  if (profile === undefined || !CONTROL_PLANE_PUBLISH_CLASSES.has(recordClass)) {
+    throw new TypeError(`record class is not publishable by the WP-12 control plane: ${String(recordClass)}`);
   }
   const recordId = payload['record_id'];
   const createdAt = payload['created_at'];

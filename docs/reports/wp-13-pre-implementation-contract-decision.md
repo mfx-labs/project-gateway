@@ -17,6 +17,17 @@ ACCEPTED — READY FOR CONTRACT BASELINE COMMIT** — recorded; the
 baseline is now committed — **WP-13 CONTRACT BASELINE COMMITTED — READY
 FOR HUMAN IMPLEMENTATION AUTHORIZATION** (implementation authorization
 is not claimed by this document).
+**Amendment note (2026-08-11):** subsequent to this baseline, WP-13A/B/C/D
+were implemented and reviewed, and this contract received the WP-13
+closure durability amendment during implementation/closure (ADR-039;
+`docs/reports/wp-13-closure-durability-architecture-decision.md`,
+including the SCR-WP13-DURABILITY-001…012 corrections and the final
+execution-eligibility/observation-reference consistency fix). §5.1/§5.2/
+§5.3/§5.6 and §6/§7 reflect the amended model; the historical baseline
+statements above are preserved. The amended contract has passed the
+WP-13 durability focused contract rereview (verdict: `WP-13 DURABILITY
+FOCUSED CONTRACT REREVIEW ACCEPTED — READY FOR DURABILITY CONTRACT
+BASELINE COMMIT`; zero new findings); no additional protocol change.
 **Baseline:** HEAD `1067d5c6f9161b3d04443b0bdc73c5c80eda9253` (branch
 `main`; `feat: complete WP-5B Pi enforcement integration`); working tree
 clean at baseline; this phase adds documentation only.
@@ -427,7 +438,15 @@ or schedules deferred executions.
 
 TrustedReceipt issuance is WP-15-owned (F-08; decision matrix: WP-15
 normative owner; WP-13 input provider). EXE-008 requires every started
-attempt to have an attempt record and available trusted receipt facts.
+attempt to have an attempt record, and — as amended by the WP-13 closure
+durability amendment (ADR-039;
+`docs/reports/wp-13-closure-durability-architecture-decision.md`) —
+available trusted receipt facts are required only when the attempt reaches
+a verified retrospective-complete state. A durably recorded attempt that
+never reaches that state is explicitly `terminal-unverifiable`:
+such attempts emit no `ExecutionRetrospectiveFacts`, are
+receipt-ineligible, never receive fabricated disposition/evidence, and
+have no inferred recovery. TrustedReceipt issuance remains WP-15-owned.
 This decision defines the exact retrospective fact-set WP-13 emits; it
 does not authorize receipt issuance, persistence of the fact-set, or any
 WP-15 work.
@@ -435,9 +454,19 @@ WP-15 work.
 ### 5.2 Definition
 
 **`ExecutionRetrospectiveFacts`** — a bounded, deterministic, read-only
-host-side object emitted by WP-13 at execution completion (one per
-attempt). It is a **derived view** over committed records and verified
-evidence: no new persistence, no new record class, no store mutation.
+host-side object emitted by WP-13 at execution completion (at most one
+deterministic view per exact attempt). The view exists only when an exact
+durable `ExecutionOutcomeRecord` exists and all other required durable
+correlations validate; a `terminal-unverifiable` attempt has NO fact-set.
+It is a **derived view** over committed records and
+verified evidence: fact-set emission itself performs no new persistence, no new
+record class, and no store mutation. (Durability of the fact-set's
+process-local inputs — disposition, observation evidence reference,
+validated-result association — is provided by the WP-13 closure
+durability amendment: the `ExecutionOutcomeRecord` class of the
+outcome-recorder authority; see
+`docs/reports/wp-13-closure-durability-architecture-decision.md` and
+ADR-039. Fact-set emission remains write-free.)
 WP-15 re-derives the same fact-set at receipt-issuance time from the
 referenced committed records/evidence; identical inputs ⇒ identical
 fact-set. Emission is not an authority event and grants nothing.
@@ -497,7 +526,7 @@ this phase):
 | `result_validation_record_id` | string or `null` | `null` when no evaluator-produced result exists (WP-12 `recordValidation` id, §3.1) |
 | `result_publication_record_id` | string or `null` | `null` when no `ResultPublicationRecord` exists |
 | `publication_scopes` | array of `publicationScope` | always present; `[]` when no publication; WP-13 publications are exactly `["ordinary-review"]` |
-| `observation_references` | array of evidence references (session/turn correlation ids; committed evidence-reference vocabulary) | always present; `[]` when empty; for a started WP-13 attempt at least one reference is required (observations are required for every attempt) |
+| `observation_references` | array of committed `external-evidence` references | exactly one reference for every emitted fact-set, sourced from `ExecutionOutcomeRecord.observation_evidence`; `evidence_id` = opaque `pgw:e:<32 lowercase hex>`; `content_digest` = canonical digest binding the verified `PiExecutionObservation`; committed media type (`application/json`) / observation role (`evaluation-evidence`); session/turn ids are correlation facts inside the digest-bound observation material, NOT evidence identities; `terminal-unverifiable` attempts emit no fact-set at all, so this row creates no "observation required for every started attempt" obligation |
 | `enforcement_evidence_identity` | string or `null` | `null` when enforcement was never active for the attempt |
 | `enforcement_evidence_fingerprint` | string or `null` | `null` when enforcement was never active for the attempt |
 | `orchestration_evidence_identity` | string | always present (WP-12 orchestration evidence, required) |
@@ -567,7 +596,13 @@ disposition vocabulary (`attempt-start`, `attempt-end`,
 `result-publication-correlation`, …) is WP-15-side mapping, not WP-13.
 EXE-008 "available trusted receipt facts" is satisfied by the deterministic
 derivability of the fact-set from the committed records/evidence it
-references. WP-15 re-derives the fact-set **without stamping it**
+references (for attempts reaching a trusted retrospective-complete
+outcome, the durable `ExecutionOutcomeRecord` is the source of
+disposition/observation/result-association facts per the closure
+durability amendment; `terminal-unverifiable` attempts — durably recorded
+but never reaching a verified retrospective-complete outcome — are the
+explicit fail-closed exception and are receipt-ineligible). WP-15
+re-derives the fact-set **without stamping it**
 (SCR-WP13-001); the re-derived fact-set is byte-identical to the emitted
 one.
 
@@ -579,6 +614,7 @@ one.
 | `ValidationRecord` production | WP-12 control plane, role `trusted-validator` (via `recordValidation`) | Committed operation + schema; WP-13 supplies the accepted WP-4 validation result through it and never records/mints validation records itself (§3.1, SCR-WP13-002) |
 | `ResultPublicationRecord` production | WP-13 result-publication authority, role `trusted-result-publisher` | ADR-038; one class; WP-8 `publishRecord` path; replay idempotence/conflict at the authority boundary (§3.3–3.4, SCR-WP13-003) |
 | `ExecutionAttemptRecord` production | WP-12, role `trusted-execution-recorder` | Committed schema; S4-D3/D4; WP-12 slice-4 §6 |
+| `ExecutionOutcomeRecord` production | WP-13 outcome-recorder authority, role `trusted-execution-outcome-recorder` | ADR-039 (closure durability amendment); one class; WP-8 `publishRecord` path; at most one per exact attempt; only for verified retrospective-complete attempts; attempt-level lock Model 1; replay/conflict per decision-report §9 |
 | Activation / occurrence / grant records | WP-12 control plane | Committed eight-class allowlist (unchanged) |
 | pi-guard activation + `PiEnforcementEvidence` | WP-5B | Closure record; ADR-026/027 |
 | `TrustedReceipt` issuance | WP-15 (WP-13 input provider only) | F-08; ADR-012; §5 |
@@ -587,9 +623,12 @@ one.
 
 WP-12's committed store boundary, WP-11's controlled-writing boundary,
 WP-5B's enforcement surface, and WP-8's storage authority are all
-unchanged. No lifecycle authority is widened; no new record class is
-introduced; no pi-guard, storage, or control-plane modification is
-contemplated.
+unchanged. No lifecycle authority is widened; WP-13 gains a second
+narrowly confined trusted record-producing authority domain
+(`trusted-execution-outcome-recorder` → `ExecutionOutcomeRecord` only) in
+addition to the ADR-038 `trusted-result-publisher` domain; each domain
+produces exactly one record class. No pi-guard, storage, or
+control-plane modification is contemplated.
 
 ## 7. Closure-gate mapping (roadmap: "End-to-end execution with
 enforcement and retrospective results")
@@ -597,10 +636,13 @@ enforcement and retrospective results")
 Under this contract, WP-13 implementation (when separately authorized)
 must deliver: orchestrated execution consuming the validated plan, active
 enforcement (WP-5B), and observations (WP-5A); retry decisions per §4;
-completion evaluation and one-instance result production per §3; result
+completion evaluation and one-instance result production per §3;
+optional outcome-record durability for every verified
+retrospective-complete attempt (ADR-039; before publication); result
 publication through the ADR-038 authority via the WP-8 `publishRecord`
-path with `ordinary-review` scope; and `ExecutionRetrospectiveFacts`
-emission per §5. Tests: end-to-end execution, retry-ordinal matrices,
+path with `ordinary-review` scope (with the required future precondition:
+exact `ExecutionOutcomeRecord` result association matching, decision-report
+§11); and `ExecutionRetrospectiveFacts` emission per §5. Tests: end-to-end execution, retry-ordinal matrices,
 result provenance, publication fail-closed matrices, fact-set
 canonicalization.
 

@@ -145,22 +145,26 @@ implementation is **not closed**. WP-9 and later
 packages are **not authorized**. No push, release,
 publication, installation, or deployment has occurred.
 
-**Current state (WP-13 pre-implementation contract decision; recorded
-2026-08-10):** WP-11 is **CLOSED** (`9695c5d8a5f42404884f11c02c493ed56d6f9e72`,
-`feat: close WP-11 controlled artifact writing slice 1`); WP-12 is
-**CLOSED** (`164b8a04d05cb03c733fa1cef7f489e189e3c3be`, `feat: close
-WP-12 local approval and execution control plane`); WP-5B is **CLOSED**
-(`1067d5c6f9161b3d04443b0bdc73c5c80eda9253`, `feat: complete WP-5B Pi
-enforcement integration` — the current HEAD). The current phase is the
-**WP-13 pre-implementation contract decision**
-(`docs/reports/wp-13-pre-implementation-contract-decision.md`; ADR-038),
-which resolves the three WP-13-owned contract decisions (completion
-evaluator / ExecutionResult publication path; retry / attempt-ordering
-rule; WP-13 → WP-15 retrospective facts) and establishes the WP-13
-contract baseline. WP-13 implementation is **NOT AUTHORIZED**; WP-14 and
-WP-15 remain **blocked** behind WP-13. This current-state note supersedes
-earlier "current work package" statements in the historical chronology
-below; historical records are preserved.
+**Current state (WP-13 durability contract baseline; recorded
+2026-08-11):** WP-11, WP-12, WP-5B are **CLOSED**; WP-13 implementation
+slices A/B/C are **committed/closed** (baselines `bc8429a`/`02bce4b`/
+`5cddfc8`). The original WP-13D closure attempt
+(`src/retrospective/`, `tests/unit/wp13d-retrospective.test.ts`,
+`tests/unit/wp13d-static-guard.test.ts`,
+`docs/reports/wp-13d-retrospective-facts-and-closure-implementation-report.md`)
+remains **uncommitted and superseded** pending the durability
+implementation. The WP-13 senior closure review findings
+(SCR-WP13-CLOSURE-001, CRITICAL — cold re-derivability;
+SCR-WP13-CLOSURE-002, MAJOR — observation evidence identity) are
+resolved **at contract level** by the docs-only closure durability
+decision (`docs/reports/wp-13-closure-durability-architecture-decision.md`;
+ADR-039, **Accepted**), which passed the focused contract rereview: the
+**WP-13 durability architecture/contract is ACCEPTED** (this baseline
+commit). **WP-13 remains NOT CLOSED**; the current implementation gate
+is **S1 — NOT STARTED, requires explicit human authorization**. WP-14
+and WP-15 remain **blocked** behind WP-13. This current-state note
+supersedes the earlier "WP-13 closure durability decision"
+current-state note; historical records are preserved.
 
 **WP-8-E (contract §29 phase 4 — audit, registry indexes, and recovery;
 read-only slice) is implemented**: WP-8-D is **closed** at commit

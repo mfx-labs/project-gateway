@@ -278,10 +278,10 @@ test('registry: entry limit exact and +1', () => {
     assert.equal(exact.truncated, false);
     assert.equal(exact.scannedEntries, 4);
     assert.equal(exact.observations.length, 2);
-    // Parent-level report: exactly the 14 absent record-class directories
+    // Parent-level report: exactly the 15 absent record-class directories
     // (approval and audit-event exist); budget-free (F3).
-    assert.equal(missingClassFindings(exact.findings).length, 14);
-    assert.equal(exact.findings.length, 14);
+    assert.equal(missingClassFindings(exact.findings).length, 15);
+    assert.equal(exact.findings.length, 15);
     const plusOne = scanOf(env, { totalScanEntries: 3 });
     assert.equal(plusOne.ok, true);
     assert.equal(plusOne.truncated, true);
@@ -318,7 +318,7 @@ test('registry: byte limit exact and +1', () => {
     assert.equal(exact.truncated, false);
     assert.equal(exact.scannedBytes, recSize + audSize);
     assert.equal(exact.observations.length, 2);
-    assert.equal(missingClassFindings(exact.findings).length, 14);
+    assert.equal(missingClassFindings(exact.findings).length, 15);
     const plusOne = scanOf(env, { totalScanBytes: recSize + audSize - 1 });
     assert.equal(plusOne.ok, true);
     assert.equal(plusOne.truncated, true);
@@ -827,17 +827,17 @@ test('registry: parent-level anomalies under records/ are reported (F3)', () => 
     symlinkSync('does-not-exist', join(storePath(env), 'records', 'link'));
     const scan = scanOf(env);
     assert.equal(scan.ok, true);
-    // Missing-class findings: issuance (removed) plus the 13 classes that
-    // never existed (approval and audit-event present) = 14.
+    // Missing-class findings: issuance (removed) plus the 14 classes that
+    // never existed (approval and audit-event present) = 15.
     const missing = missingClassFindings(scan.findings);
-    assert.equal(missing.length, 14);
+    assert.equal(missing.length, 15);
     const missingIds = missing.map((f) => f.message.slice('required record-class directory is absent: '.length)).sort();
     assert.equal(missingIds.includes('issuance-record'), true);
     assert.equal(missingIds.includes('approval-record'), false);
     // Deterministic finding order: (code, message) sorted.
     const messages = missing.map((f) => f.message);
     assert.deepEqual(messages, [...messages].sort());
-    assert.equal(scan.findings.length, 14, 'no non-missing-class findings');
+    assert.equal(scan.findings.length, 15, 'no non-missing-class findings');
     // Parent-level foreign entries are reported as foreign observations with
     // best-effort descriptor facts, never promoted to records.
     const foreign = scan.observations.filter((o) => o.kind === 'foreign-object' && o.entry !== undefined && ['evil', 'stray.txt', 'link'].includes(o.entry));

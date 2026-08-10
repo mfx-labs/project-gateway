@@ -505,7 +505,7 @@ test('static guard: src/index.ts is unchanged and does not import src/storage', 
         if (name) names.add(name);
       }
     }
-    assert.equal(names.size, 42, `public export count ${names.size} != 42`);
+    assert.equal(names.size, 43, `public export count ${names.size} != 43`);
   }
 });
 

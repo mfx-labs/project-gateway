@@ -145,7 +145,7 @@ implementation is **not closed**. WP-9 and later
 packages are **not authorized**. No push, release,
 publication, installation, or deployment has occurred.
 
-**Current state (WP-13 durability contract baseline; recorded
+**Current state (WP-13 durability S2 baseline; recorded
 2026-08-11):** WP-11, WP-12, WP-5B are **CLOSED**; WP-13 implementation
 slices A/B/C are **committed/closed** (baselines `bc8429a`/`02bce4b`/
 `5cddfc8`). The original WP-13D closure attempt
@@ -158,14 +158,14 @@ implementation. The WP-13 senior closure review findings
 SCR-WP13-CLOSURE-002, MAJOR — observation evidence identity) are
 resolved **at contract level** by the docs-only closure durability
 decision (`docs/reports/wp-13-closure-durability-architecture-decision.md`;
-ADR-039, **Accepted**), which passed the focused contract rereview: the
-**WP-13 durability architecture/contract is ACCEPTED** (this baseline
-commit). **WP-13 remains NOT CLOSED**; the current implementation gate
-is **S1 — implementation ACCEPTED (focused rereview), baseline commit in
-preparation**; **S2 — NOT STARTED / NOT AUTHORIZED** (requires explicit
-human authorization). WP-14 and WP-15 remain **blocked** behind WP-13.
-This current-state note supersedes the earlier "WP-13 closure durability
-decision" current-state note; historical records are preserved.
+ADR-039, **Accepted**); the durability architecture/contract and the
+S1 foundation are **ACCEPTED** (committed baselines), and the
+**S2 authority boundary is ACCEPTED** (focused senior review; this
+baseline commit). **S1 CLOSED; S2 CLOSED; S3 — NOT STARTED / NOT
+AUTHORIZED** (requires explicit human authorization); **WP-13 remains
+NOT CLOSED**. WP-14 and WP-15 remain **blocked** behind WP-13. This
+current-state note supersedes the earlier "WP-13 durability contract
+baseline" current-state note; historical records are preserved.
 
 **WP-8-E (contract §29 phase 4 — audit, registry indexes, and recovery;
 read-only slice) is implemented**: WP-8-D is **closed** at commit

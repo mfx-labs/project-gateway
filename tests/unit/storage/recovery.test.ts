@@ -161,9 +161,9 @@ test('recovery: verified records, verified audit, and a clean store produce an e
     assert.equal(assessment.quarantineEligible.length, 0);
     assert.equal(assessment.requiresDisposition.length, 0);
     assert.equal(assessment.findings.length, 0);
-    // Parent-level report (F3): the 14 record-class directories that do not
+    // Parent-level report (F3): the 15 record-class directories that do not
     // exist (approval and audit-event exist — the store holds one record).
-    assert.equal(result.findings?.length, 14);
+    assert.equal(result.findings?.length, 15);
     assert.ok(result.findings!.every((f) => f.code === 'ERR-STO-INTEGRITY' && f.message.startsWith('required record-class directory is absent: ')));
     assert.equal(result.findings!.some((f) => f.message === 'required audit class directory is absent: authoritative-audit-event'), false);
     const plan = result.plan!;

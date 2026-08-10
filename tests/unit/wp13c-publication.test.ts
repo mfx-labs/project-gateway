@@ -40,12 +40,16 @@ import {
   buildActivationRecordPayload,
   buildExecutionOccurrenceRecordPayload,
   buildExecutionAttemptRecordPayload,
+  registryReferenceFor,
 } from '../../src/control-plane/records.js';
 import { publishValidatedResult, createPublicationStoreBoundary } from '../../src/publication/index.js';
 import { enumerateClass } from '../../src/storage/read/index.js';
 import { createResultPublicationCapability } from '../../src/publication/capability.js';
+import { createOutcomeStoreBoundary } from '../../src/outcome/index.js';
+import { createPublicationOutcomePrecondition } from '../../src/internal/publication-outcome-context.js';
 import { createProcessLocalCoordinator, LockContentionError } from '../../src/control-plane/coordination.js';
 import { defaultLimitProfile } from '../../src/storage/limits/limits.js';
+import { seedRawRecord } from './wp12-helpers.js';
 import type { PiInvocationPlan, PiExecutionObservation } from '../../src/adapters/pi/types.js';
 import type { ExecutionAttemptOutcome } from '../../src/execution/types.js';
 import type { ValidatedArtifact } from '../../src/api/types.js';
@@ -261,10 +265,47 @@ interface PublicationEnv {
   readonly store: ControlPlaneStoreBoundary;
   readonly boundary: ReturnType<typeof createPublicationStoreBoundary>;
   readonly capability: NonNullable<ReturnType<typeof createResultPublicationCapability>>;
+  /** The genuine S2 outcome store boundary (WP-13 durability S3). */
+  readonly outcomeBoundary: ReturnType<typeof createOutcomeStoreBoundary>;
+  /** The branded outcome-precondition context (minted here; S3 host-composition pattern). */
+  readonly outcomePrecondition: NonNullable<ReturnType<typeof createPublicationOutcomePrecondition>>;
   readonly root: string;
-  /** The exact publication input (reusable); mutating copies per test. */
+  /** The exact publication input (reusable; mutating copies per test). */
   input(overrides?: Partial<PublicationInput>): PublicationInput;
   publishCount(): number;
+}
+
+/** Seed one schema-valid exact-material ExecutionOutcomeRecord for a handoff (S3 precondition fixture). */
+function seedOutcomeFor(env: PublicationEnv, handoff: ValidatedResultHandoff, attemptRecordId: string = ATTEMPT_RECORD_ID, overrides: Partial<Readonly<Record<string, unknown>>> = {}): string {
+  const payload = Object.freeze({
+    record_type: 'ExecutionOutcomeRecord',
+    record_id: nextRecordId(),
+    created_at: FIXED_NOW,
+    responsible_role: 'trusted-execution-outcome-recorder',
+    registry_snapshot_reference: registryReferenceFor(env.registryCtx),
+    workspace_id: handoff.workspaceId,
+    bundle: Object.freeze({ ...handoff.bundleReference }),
+    occurrence_id: handoff.occurrenceId,
+    attempt_id: handoff.attemptId,
+    ordinal: handoff.ordinal,
+    execution_attempt_record_id: attemptRecordId,
+    disposition: 'completed',
+    observation_evidence: Object.freeze({
+      kind: 'external-evidence',
+      evidence_id: 'pgw:e:' + '0'.repeat(32),
+      content_digest: 'sha-256:' + '1'.repeat(64),
+      declared_media_type: 'application/json',
+      observation_role: 'evaluation-evidence',
+    }),
+    result_association: Object.freeze({
+      instance_id: handoff.resultInstanceId,
+      revision_digest: handoff.resultDigest,
+      association_mode: handoff.associationMode,
+      validation_record_id: handoff.validationRecordId,
+    }),
+    ...overrides,
+  });
+  return seedRawRecord(env.integration.storeEnv, 'execution-outcome-record', payload);
 }
 
 function makeEnv(): PublicationEnv {
@@ -332,6 +373,28 @@ function makeEnv(): PublicationEnv {
     actionIdentity: 'result-publication-action-1',
   });
   if (capability === undefined) throw new Error('capability minting failed');
+  // WP-13 durability S3: the genuine S2 outcome boundary + branded
+  // outcome-precondition context (the trusted host-composition pattern).
+  const outcomeBoundary = createOutcomeStoreBoundary({
+    trustedConfiguration: integration.storeEnv.config,
+    bootstrapInput: integration.storeEnv.bootstrapInput,
+    writeAction: {
+      actionIdentity: WRITE_ACTION,
+      locator: integration.storeEnv.dir,
+      serviceUid: UID,
+      forbiddenRoots: [],
+      configurationIdentity: integration.storeEnv.config.identity,
+      limitProfile: defaultLimitProfile(),
+    },
+    locator: integration.storeEnv.dir,
+    serviceUid: UID,
+    forbiddenRoots: [],
+    limitProfile: defaultLimitProfile(),
+    timeSource: { now: () => 1000, processStartTime: 500 },
+    schemaRegistry: registry,
+  });
+  const outcomePrecondition = createPublicationOutcomePrecondition(outcomeBoundary);
+  if (outcomePrecondition === undefined) throw new Error('outcome precondition minting failed');
 
   let publishCalls = 0;
   const countingStore: PublicationStoreBoundary = {
@@ -356,6 +419,7 @@ function makeEnv(): PublicationEnv {
     identity: { nowUtcIso: () => FIXED_NOW, newRecordId: () => nextRecordId() },
     schemaRegistry: registry,
     capability,
+    outcome: outcomePrecondition,
     ...overrides,
   });
 
@@ -368,6 +432,8 @@ function makeEnv(): PublicationEnv {
     store: wp12Context.store,
     boundary,
     capability,
+    outcomeBoundary,
+    outcomePrecondition,
     root,
     input,
     publishCount: () => publishCalls,
@@ -395,6 +461,8 @@ function publicationRecords(env: PublicationEnv): Readonly<Record<string, unknow
 
 test('WP-13C: first valid publication produces exactly one schema-correct ResultPublicationRecord', () => {
   const env = makeEnv();
+  // WP-13 durability S3: exactly one matching durable outcome record is required.
+  seedOutcomeFor(env, env.handoff);
   const result = publishValidatedResult(env.input());
   const pub = publishedOf(result);
   assert.equal(pub.replay, false);
@@ -440,6 +508,7 @@ test('WP-13C: first valid publication produces exactly one schema-correct Result
 
 test('WP-13C: exact replay returns the SAME durable record with zero second write', () => {
   const env = makeEnv();
+  seedOutcomeFor(env, env.handoff);
   const first = publishedOf(publishValidatedResult(env.input()));
   assert.equal(env.publishCount(), 1);
   const second = publishedOf(publishValidatedResult(env.input()));
@@ -451,12 +520,65 @@ test('WP-13C: exact replay returns the SAME durable record with zero second writ
 
 // ─── conflicts ──────────────────────────────────────────────────────────────
 
-test('WP-13C: a different result instance for the exact attempt fails closed as a typed conflict', () => {
+test('WP-13C: a different result instance for the exact attempt fails closed (outcome precondition first)', () => {
   const env = makeEnv();
+  // The single durable outcome matches the original handoff; the first
+  // publication succeeds.
+  seedOutcomeFor(env, env.handoff);
   publishedOf(publishValidatedResult(env.input()));
   const otherValidationId = nextRecordId();
   const other = { ...env.handoff, resultInstanceId: 'pgw:i:' + 'd'.repeat(32), resultRevisionId: 'pgw:r:' + 'e'.repeat(32), resultDigest: 'sha-256:' + 'f'.repeat(64), validationRecordId: otherValidationId };
   seedResultValidation(env.store, env.registryCtx, other, otherValidationId);
+  const result = publishValidatedResult(env.input({ handoff: other }));
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    // The outcome precondition fails BEFORE any publication decision: one
+    // durable outcome cannot match two result instances.
+    assert.equal(result.category, 'PUBLICATION-OUTCOME-REJECTED');
+    assert.equal(result.code, 'outcome.mismatch.instance');
+  }
+  assert.equal(publicationRecords(env).length, 1);
+});
+
+test('WP-13C: legacy durable publication + matching outcome — competing instance still conflicts (no double publication)', () => {
+  const env = makeEnv();
+  // A durable publication for instance A exists from a legacy-era run (no
+  // outcome record then); the current outcome matches instance B.
+  const otherValidationId = nextRecordId();
+  const other = { ...env.handoff, resultInstanceId: 'pgw:i:' + 'd'.repeat(32), resultRevisionId: 'pgw:r:' + 'e'.repeat(32), resultDigest: 'sha-256:' + 'f'.repeat(64), validationRecordId: otherValidationId };
+  seedResultValidation(env.store, env.registryCtx, other, otherValidationId);
+  seedRawRecord(env.integration.storeEnv, 'result-publication-record', Object.freeze({
+    record_type: 'ResultPublicationRecord',
+    record_id: nextRecordId(),
+    created_at: FIXED_NOW,
+    responsible_role: 'trusted-result-publisher',
+    registry_snapshot_reference: registryReferenceFor(env.registryCtx),
+    result_subject: Object.freeze({
+      protocol_version: '1.0',
+      kind: Object.freeze({ id: 'ExecutionResult', version: '1.0' }),
+      instance_id: env.handoff.resultInstanceId,
+      revision_id: env.handoff.resultRevisionId,
+      digest: env.handoff.resultDigest,
+      workspace_id: env.handoff.workspaceId,
+    }),
+    evaluator_provenance: Object.freeze({ evaluator_id: env.handoff.evaluatorId, capability_profile_id: env.handoff.capabilityProfileId }),
+    association_mode: env.handoff.associationMode,
+    validation_record_id: env.handoff.validationRecordId,
+    bundle: Object.freeze({ ...env.handoff.bundleReference }),
+    workspace_id: env.handoff.workspaceId,
+    occurrence_id: env.handoff.occurrenceId,
+    attempt_id: env.handoff.attemptId,
+    publication_scopes: Object.freeze(['ordinary-review']),
+    receipt_correlations: Object.freeze([]),
+  }));
+  // The outcome matches the competing instance B: the precondition passes,
+  // and the publication decision fails closed as a result-instance conflict.
+  seedOutcomeFor(env, other, ATTEMPT_RECORD_ID, { result_association: Object.freeze({
+    instance_id: other.resultInstanceId,
+    revision_digest: other.resultDigest,
+    association_mode: other.associationMode,
+    validation_record_id: other.validationRecordId,
+  }) });
   const result = publishValidatedResult(env.input({ handoff: other }));
   assert.equal(result.ok, false);
   if (!result.ok) {
@@ -466,8 +588,9 @@ test('WP-13C: a different result instance for the exact attempt fails closed as 
   assert.equal(publicationRecords(env).length, 1);
 });
 
-test('WP-13C: same instance with divergent revision/digest fails closed as a material-divergence conflict', () => {
+test('WP-13C: same instance with divergent revision/digest fails closed (outcome precondition first)', () => {
   const env = makeEnv();
+  seedOutcomeFor(env, env.handoff);
   publishedOf(publishValidatedResult(env.input()));
   const otherValidationId = nextRecordId();
   const divergent = { ...env.handoff, resultRevisionId: 'pgw:r:' + 'e'.repeat(32), resultDigest: 'sha-256:' + 'f'.repeat(64), validationRecordId: otherValidationId };
@@ -475,38 +598,80 @@ test('WP-13C: same instance with divergent revision/digest fails closed as a mat
   const result = publishValidatedResult(env.input({ handoff: divergent }));
   assert.equal(result.ok, false);
   if (!result.ok) {
-    assert.equal(result.category, 'PUBLICATION-CONFLICT');
-    assert.equal(result.code, 'conflict.material-divergence');
+    // The single durable outcome binds the original revision digest; the
+    // divergent publication request fails the outcome precondition first.
+    assert.equal(result.category, 'PUBLICATION-OUTCOME-REJECTED');
+    assert.equal(result.code, 'outcome.mismatch.digest');
   }
 });
 
 test('WP-13C: divergent evaluator provenance / ValidationRecord id / registry context conflict on the same instance', () => {
-  const env = makeEnv();
-  publishedOf(publishValidatedResult(env.input()));
-  // Divergent provenance (different handoff labels + request provenance).
+  // Provenance divergence: not part of the outcome precondition comparison,
+  // so the precondition passes and the publication decision conflicts.
+  const envA = makeEnv();
+  seedOutcomeFor(envA, envA.handoff);
+  publishedOf(publishValidatedResult(envA.input()));
   const otherEval = 'pgw:ev:' + 'd'.repeat(32);
   const otherCp = 'pgw:cp:' + 'e'.repeat(32);
-  const provenanceVariant = { ...env.handoff, evaluatorId: otherEval, capabilityProfileId: otherCp };
-  const resultA = publishValidatedResult(env.input({ handoff: provenanceVariant, evaluatorProvenance: { evaluator_id: otherEval, capability_profile_id: otherCp } }));
+  const provenanceVariant = { ...envA.handoff, evaluatorId: otherEval, capabilityProfileId: otherCp };
+  const resultA = publishValidatedResult(envA.input({ handoff: provenanceVariant, evaluatorProvenance: { evaluator_id: otherEval, capability_profile_id: otherCp } }));
   assert.equal(resultA.ok, false);
   if (!resultA.ok) assert.equal(resultA.code, 'conflict.material-divergence');
-  // Divergent ValidationRecord id (with a matching durable validation record).
-  const validationVariant = { ...env.handoff, validationRecordId: nextRecordId() };
-  seedResultValidation(env.store, env.registryCtx, validationVariant, validationVariant.validationRecordId);
-  const resultB = publishValidatedResult(env.input({ handoff: validationVariant }));
+
+  // ValidationRecord id divergence: a legacy durable publication binds the
+  // same instance with a different validation id; the current outcome
+  // matches the variant, so the precondition passes and the publication
+  // decision conflicts on the divergent validation binding.
+  const envB = makeEnv();
+  const validationVariant = { ...envB.handoff, validationRecordId: nextRecordId() };
+  seedResultValidation(envB.store, envB.registryCtx, validationVariant, validationVariant.validationRecordId);
+  const legacyValidationId = nextRecordId();
+  seedRawRecord(envB.integration.storeEnv, 'result-publication-record', Object.freeze({
+    record_type: 'ResultPublicationRecord',
+    record_id: nextRecordId(),
+    created_at: FIXED_NOW,
+    responsible_role: 'trusted-result-publisher',
+    registry_snapshot_reference: registryReferenceFor(envB.registryCtx),
+    result_subject: Object.freeze({
+      protocol_version: '1.0',
+      kind: Object.freeze({ id: 'ExecutionResult', version: '1.0' }),
+      instance_id: validationVariant.resultInstanceId,
+      revision_id: validationVariant.resultRevisionId,
+      digest: validationVariant.resultDigest,
+      workspace_id: validationVariant.workspaceId,
+    }),
+    evaluator_provenance: Object.freeze({ evaluator_id: validationVariant.evaluatorId, capability_profile_id: validationVariant.capabilityProfileId }),
+    association_mode: validationVariant.associationMode,
+    validation_record_id: legacyValidationId,
+    bundle: Object.freeze({ ...validationVariant.bundleReference }),
+    workspace_id: validationVariant.workspaceId,
+    occurrence_id: validationVariant.occurrenceId,
+    attempt_id: validationVariant.attemptId,
+    publication_scopes: Object.freeze(['ordinary-review']),
+    receipt_correlations: Object.freeze([]),
+  }));
+  seedOutcomeFor(envB, validationVariant);
+  const resultB = publishValidatedResult(envB.input({ handoff: validationVariant }));
   assert.equal(resultB.ok, false);
   if (!resultB.ok) assert.equal(resultB.code, 'conflict.material-divergence');
-  // Divergent registry context (a genuinely different snapshot, not the
-  // identical fixture): any registry-context divergence conflicts.
+
+  // Registry divergence: not part of the outcome precondition comparison,
+  // so the precondition passes and the publication decision conflicts.
+  const envC = makeEnv();
+  seedOutcomeFor(envC, envC.handoff);
+  publishedOf(publishValidatedResult(envC.input()));
   const otherRegistry = { ...makeRegistryContext(), registrySnapshotId: 'pgw:g:' + 'f'.repeat(32), registrySnapshotDigest: 'sha-256:' + '0'.repeat(64) };
-  const resultC = publishValidatedResult(env.input({ registry: otherRegistry }));
+  const resultC = publishValidatedResult(envC.input({ registry: otherRegistry }));
   assert.equal(resultC.ok, false);
   if (!resultC.ok) assert.equal(resultC.code, 'conflict.material-divergence');
-  assert.equal(publicationRecords(env).length, 1);
+  assert.equal(publicationRecords(envA).length, 1);
+  assert.equal(publicationRecords(envB).length, 1);
+  assert.equal(publicationRecords(envC).length, 1);
 });
 
 test('WP-13C: a publication for a different attempt is NOT an association (independent first publication)', () => {
   const env = makeEnv();
+  seedOutcomeFor(env, env.handoff);
   publishedOf(publishValidatedResult(env.input()));
   // Same occurrence, different attempt id: the attempt-scoped lookup must
   // NOT discover it (the lock key and lookup are attempt-scoped). The
@@ -519,6 +684,7 @@ test('WP-13C: a publication for a different attempt is NOT an association (indep
     bundle: env.chain.bundleReference, workspaceId: WS_A, runtimeGrantId: GRANT_ID, registry: env.registryCtx,
   }));
   const variant = { ...env.handoff, attemptId: otherAttempt, artifactRelativePath: `results/${OCCURRENCE_ID}/${otherAttempt}/execution-result.json` };
+  seedOutcomeFor(env, variant, otherAttemptRecordId);
   const result = publishValidatedResult(env.input({ handoff: variant }));
   const pub = publishedOf(result);
   assert.equal(pub.replay, false, 'different attempt must publish independently');
@@ -545,18 +711,28 @@ test('WP-13C: scope and receipt operands are NEVER caller inputs (unknown-key re
 
 test('WP-13C: missing or mismatched ValidationRecord binding fails closed', () => {
   const env = makeEnv();
-  const missing = publishValidatedResult(env.input({ handoff: { ...env.handoff, validationRecordId: 'pgw:l:' + 'e'.repeat(32) } }));
+  // Missing: the outcome association matches the variant handoff; the
+  // durable ValidationRecord itself is missing, so the independent re-read
+  // denies.
+  const missingVariant = { ...env.handoff, validationRecordId: nextRecordId() };
+  seedOutcomeFor(env, missingVariant);
+  const missing = publishValidatedResult(env.input({ handoff: missingVariant }));
   assert.equal(missing.ok, false);
   if (!missing.ok) {
     assert.equal(missing.category, 'PUBLICATION-LIFECYCLE-REJECTED');
     assert.equal(missing.code, 'lifecycle.validation-record-missing');
   }
-  // A validation record whose subject does not match the handoff result ids.
-  const wrongSubject = { ...env.handoff, resultInstanceId: 'pgw:i:' + 'f'.repeat(32), resultRevisionId: 'pgw:r:' + 'e'.repeat(32), resultDigest: 'sha-256:' + '0'.repeat(64) };
-  const result = publishValidatedResult(env.input({ handoff: wrongSubject }));
+  // A validation record whose subject does not match the handoff result ids:
+  // the outcome association matches the variant, and the re-read denies on
+  // the mismatched validation subject.
+  const envB = makeEnv();
+  const wrongSubject = { ...envB.handoff, resultInstanceId: 'pgw:i:' + 'f'.repeat(32), resultRevisionId: 'pgw:r:' + 'e'.repeat(32), resultDigest: 'sha-256:' + '0'.repeat(64) };
+  seedOutcomeFor(envB, wrongSubject);
+  const result = publishValidatedResult(envB.input({ handoff: wrongSubject }));
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.code, 'lifecycle.validation-record-mismatch');
   assert.equal(publicationRecords(env).length, 0);
+  assert.equal(publicationRecords(envB).length, 0);
 });
 
 test('WP-13C: stale/current-state failures fail closed (attempt missing, grant revoked, grant expired)', () => {
@@ -604,6 +780,7 @@ test('WP-13C: stale/current-state failures fail closed (attempt missing, grant r
 
 test('WP-13C: capability forgery / clone / detached / disposal fail closed (adversarial preserved)', () => {
   const env = makeEnv();
+  seedOutcomeFor(env, env.handoff);
   // Structural forgery (spread clone): never genuine.
   const forged = { ...env.capability };
   const r1 = publishValidatedResult(env.input({ capability: forged }));
@@ -632,6 +809,7 @@ test('WP-13C: capability forgery / clone / detached / disposal fail closed (adve
 
 test('WP-13C: same trusted configuration — minting B never invalidates A (SIR-WP13C-002)', () => {
   const env = makeEnv();
+  seedOutcomeFor(env, env.handoff);
   // Mint capability B under the SAME genuine trusted configuration.
   const capB = createResultPublicationCapability({ trustedConfiguration: env.integration.storeEnv.config, actionIdentity: 'result-publication-action-3' });
   assert.ok(capB !== undefined);
@@ -650,6 +828,7 @@ test('WP-13C: same trusted configuration — minting B never invalidates A (SIR-
   const shared = createProcessLocalCoordinator();
   const a = publishedOf(publishValidatedResult(env.input({ coordinate: shared })));
   const variant = { ...env.handoff, attemptId: otherAttempt, artifactRelativePath: `results/${OCCURRENCE_ID}/${otherAttempt}/execution-result.json` };
+  seedOutcomeFor(env, variant, otherAttemptRecordId);
   const b = publishedOf(publishValidatedResult(env.input({ coordinate: shared, handoff: variant, capability: capB })));
   assert.notEqual(a.recordId, b.recordId);
   assert.equal(publicationRecords(env).length, 2);
@@ -660,6 +839,7 @@ test('WP-13C: same trusted configuration — minting B never invalidates A (SIR-
 
 test('WP-13C: genuine trusted-configuration replacement invalidates earlier capabilities (SIR-WP13C-002)', () => {
   const envA = makeEnv();
+  seedOutcomeFor(envA, envA.handoff);
   // A valid publication with the original capability succeeds.
   publishedOf(publishValidatedResult(envA.input()));
   // Genuine replacement configuration (new configuration identity for the
@@ -689,6 +869,7 @@ test('WP-13C: genuine trusted-configuration replacement invalidates earlier capa
     bundle: envA.chain.bundleReference, workspaceId: WS_A, runtimeGrantId: GRANT_ID, registry: envA.registryCtx,
   }));
   const variant = { ...envA.handoff, attemptId: otherAttempt, artifactRelativePath: `results/${OCCURRENCE_ID}/${otherAttempt}/execution-result.json` };
+  seedOutcomeFor(envA, variant, otherAttemptRecordId);
   const fresh = publishedOf(publishValidatedResult(envA.input({ handoff: variant, capability: capB })));
   assert.equal(fresh.replay, false);
   assert.equal(publicationRecords(envA).length, 2);
@@ -698,6 +879,7 @@ test('WP-13C: genuine trusted-configuration replacement invalidates earlier capa
 
 test('WP-13C: in-flight contention fails closed; the waiter re-reads durable state after release (idempotent)', () => {
   const env = makeEnv();
+  seedOutcomeFor(env, env.handoff);
   const coordinator = createProcessLocalCoordinator();
   let inner: PublicationResult | undefined;
   const racing = publishValidatedResult(
@@ -728,20 +910,22 @@ test('WP-13C: in-flight contention fails closed; the waiter re-reads durable sta
   assert.equal(env.publishCount(), 1);
 });
 
-test('WP-13C: competing different result instance after release fails closed as conflict (no double publication)', () => {
+test('WP-13C: competing different result instance after release fails closed (no double publication)', () => {
   const env = makeEnv();
+  seedOutcomeFor(env, env.handoff);
   publishedOf(publishValidatedResult(env.input()));
   const otherValidationId = nextRecordId();
   const other = { ...env.handoff, resultInstanceId: 'pgw:i:' + 'd'.repeat(32), resultRevisionId: 'pgw:r:' + 'e'.repeat(32), resultDigest: 'sha-256:' + 'f'.repeat(64), validationRecordId: otherValidationId };
   seedResultValidation(env.store, env.registryCtx, other, otherValidationId);
   const result = publishValidatedResult(env.input({ handoff: other }));
   assert.equal(result.ok, false);
-  if (!result.ok) assert.equal(result.code, 'conflict.result-instance');
+  if (!result.ok) assert.equal(result.code, 'outcome.mismatch.instance');
   assert.equal(publicationRecords(env).length, 1);
 });
 
 test('WP-13C: different attempts use independent lock keys (no unnecessary serialization)', () => {
   const env = makeEnv();
+  seedOutcomeFor(env, env.handoff);
   // Different attempt ids (and lock keys): both publish independently even
   // with a SHARED coordinator (independent keys never contend), each with
   // its own capability minted under the SAME trusted configuration (no
@@ -758,6 +942,7 @@ test('WP-13C: different attempts use independent lock keys (no unnecessary seria
   const shared = createProcessLocalCoordinator();
   const a = publishedOf(publishValidatedResult(env.input({ coordinate: shared })));
   const variant = { ...env.handoff, attemptId: otherAttempt, artifactRelativePath: `results/${OCCURRENCE_ID}/${otherAttempt}/execution-result.json` };
+  seedOutcomeFor(env, variant, otherAttemptRecordId);
   const b = publishedOf(publishValidatedResult(env.input({ coordinate: shared, handoff: variant, capability: capB })));
   assert.notEqual(a.recordId, b.recordId);
   assert.equal(publicationRecords(env).length, 2);
@@ -767,6 +952,7 @@ test('WP-13C: different attempts use independent lock keys (no unnecessary seria
 
 test('WP-13C: publishRecord failure while the lock is held is typed and writes nothing', () => {
   const env = makeEnv();
+  seedOutcomeFor(env, env.handoff);
   const failingStore: PublicationStoreBoundary = {
     ...env.boundary,
     publishResultPublicationRecord() {
@@ -822,6 +1008,7 @@ test('WP-13C: malformed handoff / provenance / boundaries fail closed as PUBLICA
 
 test('WP-13C: throwing / malformed trusted boundaries fail typed and closed (no raw leakage)', () => {
   const env = makeEnv();
+  seedOutcomeFor(env, env.handoff);
   const SECRET = 'WP13C-SECRET-MARKER';
   // Throwing store boundary.
   const throwingStore: PublicationStoreBoundary = {

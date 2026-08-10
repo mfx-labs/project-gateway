@@ -22,6 +22,7 @@ import type { ValidatedResultHandoff } from '../completion/types.js';
 import type { DecisionCoordinator } from '../control-plane/types.js';
 import type { LifecycleEnumerateResult, LifecycleReadResult } from '../control-plane/types.js';
 import type { LockTimeSource, PublishRecordResult, RecordClassId } from '../storage/types.js';
+import type { OutcomeStoreBoundary } from '../outcome/types.js';
 
 /** WP-13 publication scope: ordinary-review ONLY (closed vocabulary; §3.6). */
 export const RESULT_PUBLICATION_SCOPE = 'ordinary-review' as const;
@@ -38,6 +39,10 @@ export const PUBLICATION_FAILURE_CATEGORIES = [
   'PUBLICATION-LOCK-CONFLICT',
   'PUBLICATION-STATE-UNVERIFIABLE',
   'PUBLICATION-LIFECYCLE-REJECTED',
+  // WP-13 durability S3: the mandatory outcome-record precondition failed
+  // (missing/multiple/invalid outcome record, missing result association,
+  // or an exact-match divergence from the publication request/handoff).
+  'PUBLICATION-OUTCOME-REJECTED',
   'PUBLICATION-CONFLICT',
   'PUBLICATION-WRITE-FAILED',
   'PUBLICATION-INTERNAL-FAILURE',
@@ -68,6 +73,24 @@ export interface PublicationStoreBoundary {
   readonly enumerateLifecycleRecords: (recordClass: RecordClassId) => LifecycleEnumerateResult;
 }
 
+/**
+ * S3 outcome-record precondition context (ADR-039 §11; durability decision
+ * §11; SIR-WP13-DUR-S3-001): a branded, module-private context wrapping the
+ * genuine S2 outcome store boundary. It is constructed ONLY by the trusted
+ * S3 host composition (`createPublicationOutcomePrecondition`, static-guard
+ * confined) and verified by `publishValidatedResult` before use — an
+ * arbitrary caller cannot fabricate the outcome view WP-13C reads.
+ *
+ * The TypeScript property is kept optional solely for source compatibility
+ * with legacy callers; RUNTIME omission deterministically fails closed as
+ * `PUBLICATION-OUTCOME-REJECTED` `outcome.context-missing` with zero
+ * publication write.
+ */
+export interface PublicationOutcomePrecondition {
+  /** The genuine S2 outcome store boundary (reads confined to execution-outcome-record). */
+  readonly store: OutcomeStoreBoundary;
+}
+
 /** The trusted publication request material (host-composed; §2). */
 export interface PublicationInput {
   /** The exact WP-13B validated-result handoff (never reconstructed). */
@@ -91,6 +114,12 @@ export interface PublicationInput {
   readonly schemaRegistry: unknown;
   /** Genuine result-publication capability (module-private brand; CAP-008…016). */
   readonly capability: unknown;
+  /**
+   * WP-13 durability S3 outcome precondition (see PublicationOutcomePrecondition).
+   * Absent only on the superseded pre-durability closure path; the trusted S3
+   * host composition always supplies it.
+   */
+  readonly outcome?: PublicationOutcomePrecondition;
   /**
    * Test/host seam (WP-12 race-coverage pattern): runs inside the
    * attempt-level lock after the under-lock re-read, immediately before the

@@ -29,6 +29,8 @@
 import { validateLifecycleRecord } from '../api/validate.js';
 import { registryReferenceFor } from '../control-plane/records.js';
 import { LockContentionError } from '../control-plane/coordination.js';
+import { attemptCoordinationKey } from '../internal/attempt-coordination-key.js';
+import { isGenuinePublicationOutcomePrecondition } from '../internal/publication-outcome-context.js';
 import { resultRelativePath } from '../completion/writer.js';
 import { computePayloadDigest } from '../storage/format/envelope.js';
 import { jcsSerialize } from '../canonical/jcs.js';
@@ -64,6 +66,7 @@ const PUBLICATION_INPUT_KEYS: ReadonlySet<string> = new Set([
   'schemaRegistry',
   'capability',
   'hooks',
+  'outcome',
 ]);
 
 /** Keys excluded from material-exactness comparison (record identity/time). */
@@ -162,14 +165,14 @@ function registryShape(value: unknown): { readonly ok: true; readonly registry: 
 /** Attempt-level coordination key: workspace|bundle|occurrence|attempt (SCR-WP13-006). */
 function attemptLockKey(handoff: ValidatedResultHandoff): string {
   const bundle = handoff.bundleReference as Readonly<Record<string, unknown>>;
-  return [
-    handoff.workspaceId,
-    bundle['target_instance_id'],
-    bundle['target_revision_id'],
-    bundle['target_digest'],
-    handoff.occurrenceId,
-    handoff.attemptId,
-  ].join('|');
+  return attemptCoordinationKey({
+    workspaceId: handoff.workspaceId,
+    bundleInstanceId: String(bundle['target_instance_id'] ?? ''),
+    bundleRevisionId: String(bundle['target_revision_id'] ?? ''),
+    bundleDigest: String(bundle['target_digest'] ?? ''),
+    occurrenceId: handoff.occurrenceId,
+    attemptId: handoff.attemptId,
+  });
 }
 
 /** Exact-artifact-reference equality for the bundle binding. */
@@ -193,6 +196,77 @@ function isAttemptAssociation(payload: Readonly<Record<string, unknown>>, handof
   if (payload['attempt_id'] !== handoff.attemptId) return false;
   const bundle = payload['bundle'];
   return isRecord(bundle) && bundleMatches(bundle, handoff.bundleReference as Readonly<Record<string, unknown>>);
+}
+
+/** Attempt-scoped outcome-record test (workspace + bundle + occurrence + attempt; NEVER result instance). */
+function isAttemptOutcome(payload: Readonly<Record<string, unknown>>, handoff: ValidatedResultHandoff): boolean {
+  if (payload['record_type'] !== 'ExecutionOutcomeRecord') return false;
+  if (payload['workspace_id'] !== handoff.workspaceId) return false;
+  if (payload['occurrence_id'] !== handoff.occurrenceId) return false;
+  if (payload['attempt_id'] !== handoff.attemptId) return false;
+  const bundle = payload['bundle'];
+  return isRecord(bundle) && bundleMatches(bundle, handoff.bundleReference as Readonly<Record<string, unknown>>);
+}
+
+/**
+ * WP-13 durability S3 mandatory outcome precondition (ADR-039 §11; decision
+ * §11; SIR-WP13-DUR-S3-001/003 correction): before first publication OR
+ * replay acceptance, require the GENUINE branded outcome-precondition
+ * context and exactly one valid matching ExecutionOutcomeRecord for the
+ * exact attempt with a complete result association that exact-matches the
+ * publication request/handoff. The outcome record is NOT publication
+ * provenance; ResultPublicationRecord remains authoritative for publication.
+ *
+ * Fail-closed by construction: an omitted context (legacy caller) and a
+ * forged structurally-compatible context are both typed denials; any
+ * corrupt/unreadable/schema-invalid entry discovered in the
+ * execution-outcome-record storage domain fails closed and is never
+ * silently skipped.
+ */
+function outcomePreconditionCheck(
+  input: PublicationInput,
+  handoff: ValidatedResultHandoff,
+): { readonly ok: true } | { readonly ok: false; readonly code: string } {
+  const context = input['outcome'];
+  if (context === undefined) return { ok: false, code: 'outcome.context-missing' };
+  if (!isGenuinePublicationOutcomePrecondition(context)) return { ok: false, code: 'outcome.context-not-genuine' };
+  const boundary = context.store;
+  const enumerated = boundary.enumerateLifecycleRecords('execution-outcome-record');
+  if (!enumerated.ok) return { ok: false, code: 'outcome.state-unverifiable' };
+  const candidates: Readonly<Record<string, unknown>>[] = [];
+  for (const recordId of enumerated.recordIds) {
+    const read = boundary.readLifecyclePayload('execution-outcome-record', recordId);
+    if (!read.ok || read.payload === undefined) return { ok: false, code: 'outcome.state-unverifiable' };
+    const payload = read.payload;
+    // Every entry discovered through the outcome storage domain must be a
+    // valid ExecutionOutcomeRecord; corrupt entries fail closed and are
+    // NEVER silently skipped (one valid + one corrupt must not become one
+    // clean valid outcome for publication purposes).
+    if (!isRecord(payload) || payload['record_type'] !== 'ExecutionOutcomeRecord') return { ok: false, code: 'outcome.invalid' };
+    const gate = safeCall(() => validateLifecycleRecord(payload, input.schemaRegistry as unknown as SchemaRegistry));
+    if (!gate.ok || gate.value.ok !== true) return { ok: false, code: 'outcome.invalid' };
+    if (isAttemptOutcome(payload, handoff)) candidates.push(payload);
+  }
+  if (candidates.length === 0) return { ok: false, code: 'outcome.missing' };
+  if (candidates.length > 1) return { ok: false, code: 'outcome.multiple' };
+  const outcome = candidates[0]!;
+  const association = outcome['result_association'];
+  if (!isRecord(association)) return { ok: false, code: 'outcome.association-missing' };
+  // Exact-match the publication request/handoff against the outcome
+  // association (result instance, revision digest, mode, ValidationRecord
+  // id) and the attempt bindings (workspace, bundle, occurrence, attempt).
+  if (association['instance_id'] !== handoff.resultInstanceId) return { ok: false, code: 'outcome.mismatch.instance' };
+  if (association['revision_digest'] !== handoff.resultDigest) return { ok: false, code: 'outcome.mismatch.digest' };
+  if (association['association_mode'] !== handoff.associationMode) return { ok: false, code: 'outcome.mismatch.mode' };
+  if (association['validation_record_id'] !== handoff.validationRecordId) return { ok: false, code: 'outcome.mismatch.validation' };
+  if (outcome['workspace_id'] !== handoff.workspaceId) return { ok: false, code: 'outcome.mismatch.workspace' };
+  const bundle = outcome['bundle'];
+  if (!isRecord(bundle) || !bundleMatches(bundle, handoff.bundleReference as Readonly<Record<string, unknown>>)) {
+    return { ok: false, code: 'outcome.mismatch.bundle' };
+  }
+  if (outcome['occurrence_id'] !== handoff.occurrenceId) return { ok: false, code: 'outcome.mismatch.occurrence' };
+  if (outcome['attempt_id'] !== handoff.attemptId) return { ok: false, code: 'outcome.mismatch.attempt' };
+  return { ok: true };
 }
 
 /**
@@ -507,6 +581,13 @@ export function publishValidatedResult(input: PublicationInput): PublicationResu
       const stateCheck = safeCall(() => reReadUnderLock(input, handoff, now));
       if (!stateCheck.ok) return internalFailure('state.re-read-exception', 'the under-lock state re-read raised an unexpected exception');
       if (!stateCheck.value.ok) return failure(stateCheck.value.category, stateCheck.value.code, 'the under-lock trusted-state re-read rejected the publication');
+
+      // ─── 3b. WP-13 durability S3 outcome precondition (§11) ───────────────
+      const outcomeGate = safeCall(() => outcomePreconditionCheck(input, handoff));
+      if (!outcomeGate.ok) return internalFailure('state.outcome-precondition-exception', 'the outcome-record precondition raised an unexpected exception');
+      if (!outcomeGate.value.ok) {
+        return failure('PUBLICATION-OUTCOME-REJECTED', outcomeGate.value.code, 'the outcome-record precondition rejected the publication');
+      }
 
       // ─── 4. atomic decision under the lock (§6) ────────────────────────────
       const associations = stateCheck.value.state.associations;

@@ -166,14 +166,22 @@ test('outcome static guard: capability/permit internals never exported from the 
   // The barrel exposes the narrow boundary factory and the closed vocabulary only.
   assert.ok(barrel.includes('createOutcomeStoreBoundary'), 'the boundary factory must be exported');
   // Production mint sites are bounded: the capability creator is referenced
-  // ONLY in src/outcome/capability.ts (its definition) across all of src/**
-  // — zero production consumers exist; the future S3 host composition is
-  // the sole authorized mint owner and does not exist yet.
+  // ONLY in src/outcome/capability.ts (its definition) and the ONE
+  // explicitly authorized S3 host-composition mint site
+  // (src/outcome-production/compose.ts) across all of src/** — no second
+  // producer, no re-export.
   const capabilityMentions: { file: string }[] = [];
   for (const file of collectTsFiles(join(REPO, 'src'))) {
     if (codeOf(file).includes('createExecutionOutcomeCapability')) capabilityMentions.push({ file: rel(file) });
   }
-  assert.deepEqual(capabilityMentions, [{ file: 'src/outcome/capability.ts' }], 'createExecutionOutcomeCapability must have zero production mint sites outside capability.ts');
+  assert.deepEqual(
+    capabilityMentions,
+    [
+      { file: 'src/outcome/capability.ts' },
+      { file: 'src/outcome-production/compose.ts' },
+    ],
+    'createExecutionOutcomeCapability must have EXACTLY ONE production mint site (the S3 host composition) outside capability.ts',
+  );
   // No generic lifecycle writer is exported from the barrel.
   for (const forbidden of ['publishLifecycleRecord', 'generic', 'writeAction']) {
     assert.ok(!barrel.includes(forbidden), `${forbidden} in src/outcome/index.ts`);

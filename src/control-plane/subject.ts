@@ -162,7 +162,20 @@ function unknownKeyOf(container: Readonly<Record<string, unknown>>, allowed: Rea
 }
 
 /** Parse and validate the canonical subject operand (exact keys + exact syntax). */
-export function parseCanonicalSubject(value: unknown): { readonly ok: true; readonly subject: CanonicalSubject } | { readonly ok: false; readonly reason: 'shape' | 'syntax' } {
+/**
+ * WP-13B (recordValidation only): the committed `ExecutionResult` artifact
+ * kind is a recordable canonical-subject kind for VALIDATION RECORDING only.
+ * It is deliberately NOT part of `SLICE_1_KIND_IDS` (approve/issue/revoke/
+ * grant/activation must keep rejecting it — ADR-012: ExecutionResult never
+ * receives ApprovalRecord/IssuanceRecord). The extra kind is accepted ONLY
+ * through the `recordValidation` operation's parse call.
+ */
+export const RESULT_VALIDATION_SUBJECT_KIND = 'ExecutionResult' as const;
+
+export function parseCanonicalSubject(
+  value: unknown,
+  extraKindId?: string,
+): { readonly ok: true; readonly subject: CanonicalSubject } | { readonly ok: false; readonly reason: 'shape' | 'syntax' } {
   if (!isRecord(value)) return { ok: false, reason: 'shape' };
   if (!hasExactKeys(value, SUBJECT_KEYS)) return { ok: false, reason: 'shape' };
   const protocolId = value['protocolId'];
@@ -178,7 +191,9 @@ export function parseCanonicalSubject(value: unknown): { readonly ok: true; read
   }
   if (protocolId !== ARTIFACT_PROTOCOL_ID) return { ok: false, reason: 'syntax' };
   if (protocolVersion !== ARTIFACT_PROTOCOL_VERSION) return { ok: false, reason: 'syntax' };
-  if (!(SLICE_1_KIND_IDS as readonly string[]).includes(kindId as string)) return { ok: false, reason: 'syntax' };
+  const allowedKinds: readonly string[] =
+    extraKindId === undefined ? SLICE_1_KIND_IDS : [...SLICE_1_KIND_IDS, extraKindId];
+  if (!(allowedKinds as readonly string[]).includes(kindId as string)) return { ok: false, reason: 'syntax' };
   if (!VERSION_RE.test(kindVersion as string)) return { ok: false, reason: 'syntax' };
   if (!INSTANCE_ID_RE.test(instanceId as string)) return { ok: false, reason: 'syntax' };
   if (!REVISION_ID_RE.test(revisionId as string)) return { ok: false, reason: 'syntax' };
@@ -578,7 +593,14 @@ export function captureSlice1Request(input: unknown): RequestParseResult {
     };
   }
 
-  const subjectParsed = parseCanonicalSubject(snapshot['subject']);
+  // WP-13B: `recordValidation` is the ONLY slice-1 operation that may record
+  // a validation for an `ExecutionResult` subject (ADR-012: results never
+  // receive approval/issuance; the shared `SLICE_1_KIND_IDS` stays closed
+  // for approve/issue/revoke/grant/activation).
+  const subjectParsed = parseCanonicalSubject(
+    snapshot['subject'],
+    op === 'recordValidation' ? RESULT_VALIDATION_SUBJECT_KIND : undefined,
+  );
   if (!subjectParsed.ok) {
     return { ok: false, reason: subjectParsed.reason === 'shape' ? 'subject-shape' : 'subject-syntax' };
   }

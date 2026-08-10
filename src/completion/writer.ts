@@ -1,0 +1,353 @@
+/**
+ * WP-13B — narrow result-write executor (the ONLY filesystem-mutation
+ * module in the completion family).
+ *
+ * Committed contract §3.4 (SCR-WP13-003): write of exactly one canonical
+ * file at a deterministic destination inside the WP-6 verified workspace
+ * root; EXCLUSIVE CREATE only — never overwrite/replace/truncate/update;
+ * no directory creation; containment-bound with point-of-use revalidation.
+ *
+ * DESCRIPTOR-ANCHORED CONTAINMENT (SIR-WP13B-003; the established
+ * WP-11/WP-6 point-of-use pattern): the verified workspace root is opened
+ * O_RDONLY|O_DIRECTORY|O_NOFOLLOW and retained as a descriptor for the
+ * whole operation; every directory component of the destination chain is
+ * opened RELATIVE TO the previously verified descriptor
+ * (`/proc/self/fd/<fd>/<component>`) with O_DIRECTORY|O_NOFOLLOW,
+ * fstat-verified (directory, service uid), and resolution-path verified
+ * (`readlink(/proc/self/fd/<fd>)` must equal the expected canonical path)
+ * — an intermediate component replaced by a symlink diverges here and
+ * fails closed (`parent-not-verified`/`containment-denied`). The final
+ * exclusive create and the EEXIST recovery read both happen relative to
+ * the same verified parent descriptor, so there is NO parent-swap window
+ * between containment verification and the final operation.
+ *
+ * EEXIST / ADOPTION PATH (SIR-WP13B-002): the existing final component is
+ * opened O_RDONLY|O_NOFOLLOW|O_NONBLOCK THROUGH THE VERIFIED PARENT
+ * DESCRIPTOR and fstat-verified (ordinary regular file, service uid)
+ * BEFORE any read. O_NONBLOCK is the established repository pattern for
+ * type-inspection opens (reader lane): a FIFO at the destination can
+ * never block the open (final FIFO defect CLOSED). A symlink (dangling or
+ * pointing at the exact expected bytes), FIFO, directory, device, socket,
+ * or other non-regular final component fails closed as a typed
+ * `exclusive-create-conflict` — a symlink to the exact expected bytes
+ * NEVER returns `already-exact`, and NO bytes are read before successful
+ * regular-file fstat verification.
+ *
+ * - destination: `<root>/results/<occurrence>/<attempt>/execution-result.json`
+ *   — deterministic for the exact workspace + bundle + occurrence + attempt
+ *   (destination clarification, SIR-WP13B-005; NOT derived from the opaque
+ *   result instance/revision ids — the file content carries and binds
+ *   those). occurrence/attempt are committed `pgw:o:`/`pgw:a:` identities,
+ *   so the relative tail can never escape;
+ * - an existing ORDINARY FILE with the EXACT expected canonical bytes is
+ *   reused as adoption/recovery (crash recovery between artifact creation
+ *   and trusted publication) — byte equality alone never confers evaluator
+ *   provenance (validation + publication remain required);
+ * - an existing destination with conflicting bytes fails closed as a typed
+ *   `exclusive-create-conflict` — a second distinct result instance for one
+ *   attempt cannot be written;
+ * - the byte ceiling is the COMMITTED WP-3 artifact input bound
+ *   (`INPUT_BYTE_LIMITS.artifact`, SIR-WP13B-004) — the same bound the
+ *   committed WP-4 intake applies, so no schema-valid result accepted by
+ *   the committed intake is rejected by an implementation-local ceiling.
+ */
+import { constants, openSync, closeSync, readSync, writeSync, fstatSync, readlinkSync, unlinkSync } from 'node:fs';
+import * as path from 'node:path';
+import { INPUT_BYTE_LIMITS } from '../internal/phase.js';
+
+export const RESULT_RELATIVE_DIR = 'results';
+export const RESULT_FILE_NAME = 'execution-result.json';
+/** Committed WP-3 artifact input byte bound (single source; SIR-WP13B-004). */
+export const RESULT_BYTE_LIMIT = INPUT_BYTE_LIMITS.artifact;
+
+const OCCURRENCE_ID_RE = /^pgw:o:[0-9a-f]{32}$/;
+const ATTEMPT_ID_RE = /^pgw:a:[0-9a-f]{32}$/;
+
+const { O_CREAT, O_EXCL, O_WRONLY, O_RDONLY, O_NOFOLLOW, O_DIRECTORY, O_NONBLOCK } = constants;
+const RESULT_FILE_MODE = 0o600;
+
+export type ResultWriteCode =
+  | 'invalid-operand'
+  | 'bytes-too-large'
+  | 'containment-denied'
+  | 'missing-parent'
+  | 'parent-not-verified'
+  | 'ownership-mismatch'
+  | 'exclusive-create-conflict'
+  | 'io-failure';
+
+export type ResultWriteOutcome =
+  | { readonly ok: true; readonly outcome: 'created' | 'already-exact' }
+  | { readonly ok: false; readonly code: ResultWriteCode };
+
+export interface ResultWriteInput {
+  /** WP-6 verified workspace root (absolute, canonical). */
+  readonly root: string;
+  readonly serviceUid: number;
+  readonly occurrenceId: string;
+  readonly attemptId: string;
+  /** Exact canonical result bytes. */
+  readonly bytes: Uint8Array;
+  /**
+   * Test/host seam (the WP-11 race-coverage pattern): runs after the root
+   * descriptor is anchored, before the anchored descent. A throwing hook
+   * is a typed failure before any create.
+   */
+  readonly hooks?: { readonly afterRootOpen?: () => void };
+}
+
+/** The deterministic destination relative to the result root. */
+export function resultRelativePath(occurrenceId: string, attemptId: string): string {
+  return `${RESULT_RELATIVE_DIR}/${occurrenceId}/${attemptId}/${RESULT_FILE_NAME}`;
+}
+
+/** Descriptor-anchored path: resolves relative to the already-open directory object. */
+function fdRelativePath(fd: number, relative: string): string {
+  return `/proc/self/fd/${fd}/${relative}`;
+}
+
+function errnoOf(err: unknown): string | undefined {
+  return (err as NodeJS.ErrnoException).code ?? undefined;
+}
+
+function closeFd(fd: number | undefined): void {
+  if (fd === undefined) return;
+  try {
+    closeSync(fd);
+  } catch {
+    // best-effort close; the typed verdict stands
+  }
+}
+
+function mapOpenError(code: string | undefined): ResultWriteCode {
+  switch (code) {
+    case 'ENOENT':
+      return 'missing-parent';
+    case 'ENOTDIR':
+      return 'parent-not-verified';
+    case 'ELOOP':
+    case 'EMLINK':
+      return 'containment-denied';
+    default:
+      return 'io-failure';
+  }
+}
+
+/**
+ * Open one directory component anchored to an already-verified parent
+ * descriptor: O_DIRECTORY|O_NOFOLLOW, fstat-verified (directory, service
+ * uid), resolution-path verified against the expected canonical path. The
+ * returned descriptor is retained (never re-resolved lexically later); a
+ * failure closes any opened descriptor and returns a typed code.
+ */
+function openVerifiedDirectory(
+  parentFd: number,
+  component: string,
+  expectedResolved: string,
+  serviceUid: number,
+): { readonly ok: true; readonly fd: number } | { readonly ok: false; readonly code: ResultWriteCode } {
+  let fd: number | undefined;
+  try {
+    fd = openSync(fdRelativePath(parentFd, component), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    const stat = fstatSync(fd);
+    if (!stat.isDirectory()) {
+      closeFd(fd);
+      fd = undefined;
+      return { ok: false, code: 'parent-not-verified' };
+    }
+    if (stat.uid !== serviceUid) {
+      closeFd(fd);
+      fd = undefined;
+      return { ok: false, code: 'ownership-mismatch' };
+    }
+    const resolved = readlinkSync(`/proc/self/fd/${fd}`);
+    if (resolved !== expectedResolved) {
+      closeFd(fd);
+      fd = undefined;
+      return { ok: false, code: 'parent-not-verified' };
+    }
+    return { ok: true, fd };
+  } catch (err) {
+    closeFd(fd);
+    return { ok: false, code: mapOpenError(errnoOf(err)) };
+  }
+}
+
+/**
+ * EEXIST recovery read, anchored to the verified parent descriptor
+ * (SIR-WP13B-002): the final component is opened O_RDONLY|O_NOFOLLOW and
+ * fstat-verified as an ordinary service-owned regular file BEFORE any
+ * read. A symlink/device/socket/FIFO/directory final component fails
+ * closed as `exclusive-create-conflict` — never `already-exact`. Reads
+ * are bounded by the committed byte ceiling.
+ */
+function readExistingForRecovery(parentFd: number, finalComponent: string, serviceUid: number, expected: Uint8Array): ResultWriteOutcome {
+  let existingFd: number | undefined;
+  try {
+    try {
+      // O_RDONLY|O_NOFOLLOW|O_NONBLOCK: the established repository pattern
+      // for type-inspection opens (reader lane). O_NONBLOCK guarantees a
+      // FIFO at the destination can never block the open; the fstat below
+      // then rejects it as non-regular. A symlinked final component
+      // (dangling or not) is never followed (ELOOP → conflict).
+      existingFd = openSync(fdRelativePath(parentFd, finalComponent), O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    } catch (err) {
+      const code = errnoOf(err);
+      // A symlinked final component (dangling or not) is never followed.
+      if (code === 'ELOOP' || code === 'EMLINK') return { ok: false, code: 'exclusive-create-conflict' };
+      return { ok: false, code: 'io-failure' };
+    }
+    const stat = fstatSync(existingFd);
+    if (!stat.isFile()) {
+      // Directory/device/socket/FIFO/other kind: not an adoptable
+      // project-visible result file.
+      return { ok: false, code: 'exclusive-create-conflict' };
+    }
+    if (stat.uid !== serviceUid) {
+      return { ok: false, code: 'ownership-mismatch' };
+    }
+    if (stat.size !== expected.byteLength || stat.size > RESULT_BYTE_LIMIT) {
+      return { ok: false, code: 'exclusive-create-conflict' };
+    }
+    const existing = Buffer.allocUnsafe(stat.size);
+    let offset = 0;
+    while (offset < stat.size) {
+      let n: number;
+      try {
+        n = readSync(existingFd, existing, offset, stat.size - offset, offset);
+      } catch {
+        return { ok: false, code: 'io-failure' };
+      }
+      if (!Number.isSafeInteger(n) || n <= 0) return { ok: false, code: 'io-failure' };
+      offset += n;
+    }
+    if (existing.every((b, i) => b === expected[i])) {
+      return { ok: true, outcome: 'already-exact' };
+    }
+    return { ok: false, code: 'exclusive-create-conflict' };
+  } finally {
+    closeFd(existingFd);
+  }
+}
+
+/**
+ * Write the exact canonical result bytes to the deterministic destination.
+ * Creates nothing but the final file component; never touches anything
+ * else; typed result only (never throws for expected filesystem outcomes).
+ */
+export function writeResultArtifact(input: ResultWriteInput): ResultWriteOutcome {
+  if (typeof input.root !== 'string' || input.root.length === 0 || !path.isAbsolute(input.root)) {
+    return { ok: false, code: 'invalid-operand' };
+  }
+  if (!OCCURRENCE_ID_RE.test(input.occurrenceId) || !ATTEMPT_ID_RE.test(input.attemptId)) {
+    return { ok: false, code: 'invalid-operand' };
+  }
+  if (typeof input.serviceUid !== 'number' || !Number.isSafeInteger(input.serviceUid) || input.serviceUid < 0) {
+    return { ok: false, code: 'invalid-operand' };
+  }
+  if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength === 0 || input.bytes.byteLength > RESULT_BYTE_LIMIT) {
+    return { ok: false, code: input.bytes instanceof Uint8Array && input.bytes.byteLength > RESULT_BYTE_LIMIT ? 'bytes-too-large' : 'invalid-operand' };
+  }
+
+  const root = path.resolve(input.root);
+  const dirComponents = [RESULT_RELATIVE_DIR, input.occurrenceId, input.attemptId];
+  const finalComponent = RESULT_FILE_NAME;
+
+  let rootFd: number | undefined;
+  let parentFd: number | undefined;
+  let fd: number | undefined;
+  let created = false;
+  try {
+    // 1. Anchor: retain the verified workspace root descriptor (no-follow)
+    //    and verify it descriptor-bound (directory, service uid, canonical
+    //    resolution path).
+    try {
+      rootFd = openSync(root, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+      const rootStat = fstatSync(rootFd);
+      if (!rootStat.isDirectory()) return { ok: false, code: 'parent-not-verified' };
+      if (rootStat.uid !== input.serviceUid) return { ok: false, code: 'ownership-mismatch' };
+      const resolvedRoot = readlinkSync(`/proc/self/fd/${rootFd}`);
+      if (resolvedRoot !== root) return { ok: false, code: 'parent-not-verified' };
+    } catch (err) {
+      const code = errnoOf(err);
+      if (code === 'ENOENT' || code === 'ENOTDIR') return { ok: false, code: 'missing-parent' };
+      if (code === 'ELOOP' || code === 'EMLINK') return { ok: false, code: 'containment-denied' };
+      return { ok: false, code: 'io-failure' };
+    }
+
+    // Test/host seam (WP-11 race-coverage pattern): post-anchor
+    // root-replacement race tests. A throwing hook is a typed failure
+    // before any create.
+    try {
+      input.hooks?.afterRootOpen?.();
+    } catch {
+      return { ok: false, code: 'io-failure' };
+    }
+
+    // 2. Anchored descent: every directory component is opened relative to
+    //    the previously verified descriptor and descriptor-verified. A
+    //    component swapped for a symlink before its open is opened through
+    //    the retained parent descriptor (which pins the already-verified
+    //    inode) and diverges at the resolution check; a swap after its
+    //    open cannot redirect the next step at all.
+    parentFd = rootFd;
+    let resolvedPath = root;
+    for (const component of dirComponents) {
+      const expectedResolved = `${resolvedPath}/${component}`;
+      const opened = openVerifiedDirectory(parentFd, component, expectedResolved, input.serviceUid);
+      if (!opened.ok) return { ok: false, code: opened.code };
+      if (parentFd !== rootFd) closeFd(parentFd);
+      parentFd = opened.fd;
+      resolvedPath = expectedResolved;
+    }
+
+    // 3. Exclusive create of the single final component through the
+    //    verified parent descriptor (O_EXCL never follows a symlink;
+    //    O_NOFOLLOW is belt-and-braces). Any existing final component —
+    //    regular file, directory, symlink, dangling symlink, unsupported
+    //    kind — fails closed here; EEXIST routes to the anchored recovery
+    //    read, never to an overwrite.
+    try {
+      fd = openSync(fdRelativePath(parentFd, finalComponent), O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW, RESULT_FILE_MODE);
+      created = true;
+    } catch (err) {
+      const code = errnoOf(err);
+      if (code === 'EEXIST') {
+        return readExistingForRecovery(parentFd, finalComponent, input.serviceUid, input.bytes);
+      }
+      if (code === 'EISDIR') return { ok: false, code: 'exclusive-create-conflict' };
+      return { ok: false, code: mapOpenError(code) };
+    }
+
+    // 4. Exact byte write (bounded loop; short writes continue).
+    try {
+      let offset = 0;
+      while (offset < input.bytes.byteLength) {
+        const written = writeSync(fd, input.bytes, offset, input.bytes.byteLength - offset, offset);
+        if (!Number.isSafeInteger(written) || written <= 0) throw new Error('short write');
+        offset += written;
+      }
+      const stat = fstatSync(fd);
+      if (!stat.isFile() || stat.uid !== input.serviceUid || stat.size !== input.bytes.byteLength) {
+        throw new Error('created object verification failed');
+      }
+      return { ok: true, outcome: 'created' };
+    } catch {
+      // Best-effort cleanup of the object we created, THROUGH THE SAME
+      // VERIFIED PARENT descriptor and the same single final component.
+      if (created) {
+        try {
+          unlinkSync(fdRelativePath(parentFd, finalComponent));
+        } catch {
+          // cleanup failure is itself typed; the conflict stands
+        }
+      }
+      return { ok: false, code: 'io-failure' };
+    } finally {
+      closeFd(fd);
+    }
+  } finally {
+    if (parentFd !== undefined && parentFd !== rootFd) closeFd(parentFd);
+    closeFd(rootFd);
+  }
+}

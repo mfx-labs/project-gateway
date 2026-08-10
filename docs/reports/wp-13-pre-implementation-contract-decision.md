@@ -237,9 +237,12 @@ across attempts.
   written by the **WP-13 result-write executor**, an injected host write
   executor in the WP-11 pattern but a distinct, narrower contract with
   exact create-only semantics (SCR-WP13-003):
-  - the destination is deterministic (derived from the result-instance
-    identity/revision) and containment-verified under the WP-6 workspace
-    root at point of use;
+  - the destination is deterministic for the exact workspace + bundle +
+    occurrence + attempt — it is NOT derived from the opaque result
+    instance/revision identifiers (destination clarification,
+    SIR-WP13B-005); the file content itself carries and binds the opaque
+    result instance/revision — and containment-verified under the WP-6
+    workspace root at point of use;
   - initial creation uses **exclusive create semantics**;
   - the executor never overwrites, replaces, truncates, or mutates an
     existing destination;

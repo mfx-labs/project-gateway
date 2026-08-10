@@ -135,8 +135,14 @@ test('security: production modules perform no hidden filesystem/network/process 
   // (tests/writing/static-guard.test.ts) proving that node:fs appears ONLY
   // in the injected host write executor (exact create-only API discipline)
   // and that the pure core is I/O-free; excluded here by boundary.
+  // WP-13B completion/result (src/completion): a dedicated module boundary
+  // with its own stricter guard
+  // (tests/unit/wp13b-static-guard.test.ts) proving that node:fs appears
+  // ONLY in the narrow result-write executor (writer.ts; exclusive-create
+  // discipline) and that every other completion module is I/O-free;
+  // excluded here by boundary.
   const prodFiles = walk(DIST)
-    .filter((p) => !p.includes('conformance') && !p.includes('/adapters/') && !p.includes('/reader/') && !p.includes('/git/') && !p.includes('/fff/') && !p.includes('/runtime/') && !p.includes('/writing/'))
+    .filter((p) => !p.includes('conformance') && !p.includes('/adapters/') && !p.includes('/reader/') && !p.includes('/git/') && !p.includes('/fff/') && !p.includes('/runtime/') && !p.includes('/writing/') && !p.includes('/completion/'))
     .filter((p) => !isStorageFsDelegatedModule(p));
   for (const p of prodFiles) {
     if (p.includes('runner.js') || p.includes('corpus-bundle')) continue;

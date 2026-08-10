@@ -167,7 +167,13 @@ rereview ACCEPTED; `SIR-WP13-DUR-S3-RR-001` retained as an accepted
 non-blocking MINOR note; this baseline commit). **S1 CLOSED; S2 CLOSED;
 S3 CLOSED; S4 — NOT STARTED / NOT AUTHORIZED** (requires explicit human
 authorization); **WP-13 remains NOT CLOSED**. WP-14 and WP-15 remain
-**blocked** behind WP-13. This current-state note supersedes the earlier
+**blocked** behind WP-13. The WP-13 retrospective simplification
+contract amendment (`docs/reports/wp-13-retrospective-simplification-amendment.md`)
+is COMPLETE at contract level (docs-only): ONE shared pure derivation
+primitive with structural semantic equality replaces the cross-engine
+byte-identical proof; cold re-derivation from trusted durable records is
+preserved; S4 remains NOT STARTED / NOT AUTHORIZED under the amended
+contract. This current-state note supersedes the earlier
 "WP-13 durability S2 baseline" current-state note; historical records are
 preserved.
 

@@ -28,6 +28,17 @@ statements above are preserved. The amended contract has passed the
 WP-13 durability focused contract rereview (verdict: `WP-13 DURABILITY
 FOCUSED CONTRACT REREVIEW ACCEPTED — READY FOR DURABILITY CONTRACT
 BASELINE COMMIT`; zero new findings); no additional protocol change.
+**Amendment note (2026-08-11, retrospective simplification):** the WP-13
+retrospective assurance model is amended at contract level
+(`docs/reports/wp-13-retrospective-simplification-amendment.md`): the
+separate WP-13/WP-15 derivation engines, the cross-engine byte-identical
+comparison, and the canonical-byte retrospective fact-set identity
+(`PGAP-EXECUTION-RETROSPECTIVE-FACTS-v1`) are retired as normative
+requirements; ONE shared pure derivation primitive
+(`deriveExecutionRetrospectiveFacts(durableState)`, implemented by S4 and
+reused by WP-15) replaces them, with structural semantic equality as the
+determinism/cold-restart proof target. §5.2/§5.3/§5.4/§5.6 reflect the
+amended model; historical baseline text is preserved.
 **Baseline:** HEAD `1067d5c6f9161b3d04443b0bdc73c5c80eda9253` (branch
 `main`; `feat: complete WP-5B Pi enforcement integration`); working tree
 clean at baseline; this phase adds documentation only.
@@ -467,9 +478,11 @@ durability amendment: the `ExecutionOutcomeRecord` class of the
 outcome-recorder authority; see
 `docs/reports/wp-13-closure-durability-architecture-decision.md` and
 ADR-039. Fact-set emission remains write-free.)
-WP-15 re-derives the same fact-set at receipt-issuance time from the
-referenced committed records/evidence; identical inputs ⇒ identical
-fact-set. Emission is not an authority event and grants nothing.
+WP-15 later reuses the SAME shared pure derivation primitive over the
+referenced committed records/evidence (no second derivation engine;
+retrospective simplification amendment); identical durable semantic
+state ⇒ structurally equal fact-set (semantic equality). Emission is not
+an authority event and grants nothing.
 
 **Determinism rule (SCR-WP13-001):** `ExecutionRetrospectiveFacts` is a
 **pure deterministic derived view over already committed records and
@@ -477,18 +490,20 @@ evidence only**:
 
 - WP-13 does NOT stamp the fact-set when emitting it; WP-15 does NOT
   stamp the fact-set when re-deriving it;
-- the fact-set contains no newly synthesized/emission-time timestamp and
-  no `timestampSource`;
-- its canonical identity (`PGAP-EXECUTION-RETROSPECTIVE-FACTS-v1`) is
-  derived over the fact-set content only and contains no
-  operation-time/current-time value;
+- the fact-set contains no newly synthesized/emission-time timestamp, no
+  random identity, no operation-time state, and no `timestampSource`;
+- no derivation-time entropy of any kind may enter the facts;
 - temporal facts (attempt `created_at`, activation time, enforcement
   `observedAt`, record timestamps, …) remain obtainable from the exact
   referenced committed records/evidence — they are referenced, never
   replaced by a new fact-set timestamp;
-- identical committed inputs MUST produce byte-identical facts and the
-  same `PGAP-EXECUTION-RETROSPECTIVE-FACTS-v1` identity regardless of
-  derivation time.
+- identical committed inputs MUST produce **structurally equal** facts
+  (the 21 contract-defined fields equal per the semantic-equality
+  contract of the retrospective simplification amendment) regardless of
+  derivation time; canonical-byte serialization/hash equality of the
+  fact-set itself is NOT required (the former
+  `PGAP-EXECUTION-RETROSPECTIVE-FACTS-v1` byte identity is retired as a
+  normative retrospective requirement).
 
 ### 5.3 Fixed v1 shape — complete property vocabulary
 
@@ -548,16 +563,26 @@ validation):**
   `enforcement_evidence_fingerprint` are both `null` together
   (enforcement never active) or both non-null together.
 
-**Canonicalization (SCR-WP13-001):** JCS-canonical serialization; NFC
-strings; the domain-separated SHA-256 identity
-`PGAP-EXECUTION-RETROSPECTIVE-FACTS-v1` is derived over the canonical
-serialization of the fact-set content and is not itself a member of the
-fact-set. The identity contains no operation-time/current-time value.
-The fact-set contains **no synthesized/emission-time timestamp and no
-`timestampSource`**; temporal facts are obtained from the exact
-referenced committed records/evidence.
+**Semantic-equality contract (SCR-WP13-001, as amended by the
+retrospective simplification amendment):** the fact-set is a fixed
+21-field **semantic object**; repeated derivation of the same valid
+durable semantic state MUST produce structurally equal field values
+(scalars equal; exact durable references equal; `null`/`[]` retain their
+defined absence meanings; array contents/order equal where ordering is
+normative). A normal structural equality assertion (`deepStrictEqual`)
+is sufficient — JCS/canonical-byte serialization or a content-derived
+hash identity of the fact-set itself is NOT a normative retrospective
+requirement (the former domain-separated SHA-256 identity
+`PGAP-EXECUTION-RETROSPECTIVE-FACTS-v1` is retired for cross-engine
+byte-identity proof). The committed JCS/NFC/hash disciplines remain
+normative wherever they protect actual durable records, observation
+evidence, artifact identity, permits, or coordination — this amendment
+applies only to the derived `ExecutionRetrospectiveFacts` view. The
+fact-set contains **no synthesized/emission-time timestamp, no random
+identity, and no `timestampSource`**; temporal facts are obtained from
+the exact referenced committed records/evidence.
 
-### 5.4 Canonicalization / validation expectations
+### 5.4 Structural validation / semantic-equality expectations
 
 The fact-set is structurally validated against the committed schema
 vocabulary it references (closed taxonomy; `unevaluatedProperties: false`
@@ -570,9 +595,10 @@ top-level property present (keys never conditionally omitted), JSON
 `null` for unavailable scalars/references, `[]` for empty collections, no
 `undefined`, no alternate absence sentinel, and grouped-field consistency
 (partial presence is malformed and fails validation). The fact-set is
-**timestamp-free**: no synthesized/emission-time timestamp, no
-`timestampSource`, and its identity contains no operation-time/
-current-time value (SCR-WP13-001).
+**timestamp-free**: no synthesized/emission-time timestamp, no random
+identity, no operation-time/current-time value, and no `timestampSource`
+(SCR-WP13-001; semantic-equality contract per the retrospective
+simplification amendment).
 
 ### 5.5 Explicitly excluded
 
@@ -602,9 +628,11 @@ disposition/observation/result-association facts per the closure
 durability amendment; `terminal-unverifiable` attempts — durably recorded
 but never reaching a verified retrospective-complete outcome — are the
 explicit fail-closed exception and are receipt-ineligible). WP-15
-re-derives the fact-set **without stamping it**
-(SCR-WP13-001); the re-derived fact-set is byte-identical to the emitted
-one.
+later reuses the SAME shared pure derivation primitive **without
+stamping it** (SCR-WP13-001; retrospective simplification amendment);
+the re-derived fact-set is **structurally equal** to the emitted one
+(semantic equality — no second derivation engine, no byte-identity
+comparison).
 
 ## 6. Ownership and boundary check
 
@@ -644,7 +672,7 @@ path with `ordinary-review` scope (with the required future precondition:
 exact `ExecutionOutcomeRecord` result association matching, decision-report
 §11); and `ExecutionRetrospectiveFacts` emission per §5. Tests: end-to-end execution, retry-ordinal matrices,
 result provenance, publication fail-closed matrices, fact-set
-canonicalization.
+structural semantic equality.
 
 ## 8. Not authorized / open items
 
@@ -665,7 +693,7 @@ canonicalization.
 
 | Finding | Severity | Disposition | Applied change |
 |---|---|---|---|
-| SCR-WP13-001 — retrospective-facts determinism | MAJOR | CLOSED | §2 identity-conventions note; §5.2 determinism rule (no emission-time stamp by WP-13 or WP-15; no operation-time value in the canonical identity; identical committed inputs ⇒ byte-identical facts and identical `PGAP-EXECUTION-RETROSPECTIVE-FACTS-v1` identity regardless of derivation time); §5.3 canonicalization row; §5.4 validation expectation; §5.6 no-stamp re-derivation. All conflicting timestamp statements removed/qualified. |
+| SCR-WP13-001 — retrospective-facts determinism | MAJOR | CLOSED | §2 identity-conventions note; §5.2 determinism rule (no emission-time stamp by WP-13 or WP-15; no operation-time value in the facts; identical committed inputs ⇒ structurally equal facts regardless of derivation time — semantic equality per the retrospective simplification amendment; the former canonical byte identity retired as a normative retrospective requirement); §5.3 semantic-equality row; §5.4 validation expectation; §5.6 no-stamp shared-primitive re-derivation. All conflicting timestamp statements removed/qualified. |
 | SCR-WP13-002 — ValidationRecord ownership | MODERATE | CLOSED | §3.1 explicit validation path: WP-4 machinery → WP-12 `recordValidation` → durable `ValidationRecord` id (role `trusted-validator`) consumed for `ResultPublicationRecord`; §3.7 requires the exact passing id before publication; §6 ownership table row added. WP-12 remains the trusted producer; no allowlist widening; authority still produces only `ResultPublicationRecord`; WP-13 gains no generic validation-record authority. |
 | SCR-WP13-003 — result-write / publication idempotence | MODERATE | CLOSED | §3.4 exclusive-create result-file semantics, typed exclusive-create conflict, ADR-012 adoption/recovery on exact existing destination (never a create replay; byte equality alone never confers provenance), crash-recovery coverage between artifact creation and trusted publication; §3.3 publication replay idempotence (exact replay recognized, no second record) and publication-conflict fail-closed on any divergence; idempotence confined to the result-publication authority/boundary; WP-8 storage semantics unchanged. Its concurrency mechanism is now explicitly pinned by SCR-WP13-005 (§3.3). |
 | SCR-WP13-005 — publication concurrency/idempotence | MODERATE | CLOSED | §3.3 pins the uniqueness/idempotence operation as ONE host-coordinated atomic decision using the existing trusted host-side coordination-lock pattern (WP-12 §15 pattern; publication decision key over workspace/bundle/occurrence/attempt): acquire lock → re-read/re-verify (current trusted lifecycle/registry context, existing publication state for the exact attempt, evaluator provenance, ValidationRecord identity, result revision/digest, bindings, scopes) → no existing ⇒ publish exactly one `ResultPublicationRecord` via WP-8 `publishRecord`; exact existing (identical identity/content/bindings/scope/registry context) ⇒ idempotent success, no write; conflicting existing ⇒ typed publication conflict, fail closed, no write; lock held through the uniqueness decision and the `publishRecord` outcome; concurrent invocations re-read under the lock (exact replay or conflict); no deterministic/content-derived record ID introduced; WP-8 semantics unchanged. ADR-038 decision 3 aligned. Its atomic mechanism is retained and its uniqueness domain is corrected by SCR-WP13-006 (§3.3): the lock key is attempt-level — result instance no longer participates in the key. |

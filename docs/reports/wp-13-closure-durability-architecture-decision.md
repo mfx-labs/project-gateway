@@ -18,15 +18,30 @@ former "WP-13 only trusted-store production" consequence. Recorded as
 ADR-039 (`docs/decisions/ADR-039-wp-13-execution-outcome-record.md`),
 status **Accepted** (by the WP-13 durability focused contract rereview;
 see §18 acceptance record).
+**Amendment (2026-08-11, retrospective simplification):** the
+retrospective assurance model is amended per
+`docs/reports/wp-13-retrospective-simplification-amendment.md` — the
+WP-13/WP-15 cross-engine byte-identical proof and the
+`PGAP-EXECUTION-RETROSPECTIVE-FACTS-v1` canonical-byte fact-set identity
+are retired as normative retrospective requirements; ONE shared pure
+derivation primitive with structural semantic equality replaces them
+(S4 implements; WP-15 later reuses the same primitive). Cold
+re-derivation from trusted durable records (§12) is preserved unchanged.
 
 ---
 
 ## 1. Problem restated
 
-`ExecutionRetrospectiveFacts` (WP-13 contract §5) must be re-derivable by
-WP-15 after total process loss from durable trusted records/evidence only
-(§5.2, §5.6; byte-identical facts and identical
-`PGAP-EXECUTION-RETROSPECTIVE-FACTS-v1` identity). The senior review
+`ExecutionRetrospectiveFacts` (WP-13 contract §5) must be re-derivable
+after total process loss from durable trusted records/evidence only
+(§5.2, §5.6; cold re-derivation of the exact 21-field fact-set). The
+retrospective simplification amendment
+(`docs/reports/wp-13-retrospective-simplification-amendment.md`)
+retires the former cross-engine byte-identical proof and the
+`PGAP-EXECUTION-RETROSPECTIVE-FACTS-v1` canonical-byte identity as
+normative retrospective requirements; the proof target is structural
+semantic equality via ONE shared pure derivation primitive (S4-owned,
+reused by WP-15). The senior review
 established that three fact groups currently exist only process-locally:
 
 1. **disposition** — only in the transient WP-13A `ExecutionAttemptOutcome`
@@ -437,6 +452,14 @@ sourced exclusively from the outcome record; rows 12–15 from the outcome
 record's association, cross-verified against the durable `ValidationRecord`
 and any publication.
 
+**Derivation proof target (retrospective simplification amendment):**
+repeated derivation of the same valid durable semantic state yields
+structurally equal 21-field values (semantic equality;
+`docs/reports/wp-13-retrospective-simplification-amendment.md`) — no
+canonical-byte/hash identity of the fact-set itself is required. This
+table remains the exact durable-source mapping for the ONE shared pure
+derivation primitive (S4).
+
 ## 13. Orchestration evidence mapping (preserved)
 
 The closure-review conclusion stands: under committed WP-12 Slice-4
@@ -568,6 +591,13 @@ Accepted by the WP-13 durability focused contract rereview:
   source, schema, fixture, test, or generated-file change);
 - **S1 requires explicit human authorization** (separate gate; not granted
   here).
+
+Retrospective simplification amendment applied at contract level
+(`docs/reports/wp-13-retrospective-simplification-amendment.md`): shared
+pure derivation primitive (S4-owned, WP-15-reused), structural semantic
+equality proof target, byte-identity proof retired; cold re-derivation
+and all §12 durable-source mapping preserved. S1/S2/S3 semantics
+untouched.
 
 ADR-039 status updated to **Accepted** accordingly; WP-13 remains
 **NOT CLOSED**.

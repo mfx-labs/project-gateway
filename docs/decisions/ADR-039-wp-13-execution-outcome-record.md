@@ -129,18 +129,24 @@ observation references place raw session/turn ids in
    rerun and no scheduler/resume protocol; WP-13C idempotent replay
    applies only when a durable publication already exists or a valid live
    publication invocation is actually available.
-10. **Cold re-derivation:** WP-15 re-derives the exact 21-field fact-set
-    from durable records only, per the field-source table in the decision
-    report (§12). No process-local object is a required source; the
-    project-visible `ExecutionResult` file is never trusted provenance;
-    no fact-set is emitted for `terminal-unverifiable` attempts.
+10. **Cold re-derivation:** a fresh process re-derives the exact
+    21-field fact-set from durable records only, per the field-source
+table in the decision report (§12), through ONE shared pure derivation
+primitive (S4-owned; WP-15 later reuses the same primitive — no second
+derivation engine; retrospective simplification amendment
+`docs/reports/wp-13-retrospective-simplification-amendment.md`). No
+process-local object is a required source; the project-visible
+`ExecutionResult` file is never trusted provenance; no fact-set is
+emitted for `terminal-unverifiable` attempts.
 
 ## Rationale
 
 One attempt-scoped outcome record is the minimum durable protocol surface
-satisfying the contract's byte-identical re-derivation requirement without
-weakening it, without mutating WP-12 records, without trusting project
-bytes, and without collapsing result/receipt separation. Reusing the
+satisfying the contract's durable cold re-derivation requirement
+(structural semantic equality per the retrospective simplification
+amendment) without weakening it, without mutating WP-12 records, without
+trusting project bytes, and without collapsing result/receipt
+separation. Reusing the
 ADR-038 authority-domain pattern keeps every record-producing domain
 narrow and singly owned; at-most-one eligibility and
 `terminal-unverifiable` semantics keep the record honest (never

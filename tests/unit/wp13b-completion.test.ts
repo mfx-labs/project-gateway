@@ -238,6 +238,13 @@ test('WP-13B: completed attempt originates one result with exact correlation, ca
   assert.equal(handoff.ordinal, 1);
   assert.equal(handoff.evaluatorId, COMPLETION_EVALUATOR_ID);
   assert.equal(handoff.capabilityProfileId, COMPLETION_EVALUATOR_CAPABILITY_PROFILE_ID);
+  // SIR-WP13C-001 amendment: the handoff emits the canonical schema-valid
+  // opaque provenance identities (committed pgw:ev:/pgw:cp: syntax) — never
+  // the legacy human-readable labels, and never content-derived.
+  assert.match(handoff.evaluatorId, /^pgw:ev:[0-9a-f]{32}$/);
+  assert.match(handoff.capabilityProfileId, /^pgw:cp:[0-9a-f]{32}$/);
+  assert.equal(handoff.evaluatorId.includes('project-gateway.completion'), false, 'no legacy dotted provenance label remains in the handoff');
+  assert.equal(handoff.capabilityProfileId.includes('project-gateway.completion'), false, 'no legacy dotted provenance label remains in the handoff');
   assert.match(handoff.resultInstanceId, /^pgw:i:[0-9a-f]{32}$/);
   assert.match(handoff.resultRevisionId, /^pgw:r:[0-9a-f]{32}$/);
   assert.match(handoff.resultDigest, /^sha-256:[0-9a-f]{64}$/);
@@ -309,6 +316,9 @@ test('WP-13B: crash-recovery replay adopts the existing artifact (same opaque id
   assert.equal(second.resultRevisionId, first.resultRevisionId, 'adoption preserves the candidate opaque revision id');
   assert.equal(second.writeOutcome, 'already-exact');
   assert.equal(second.validationRecordId, first.validationRecordId);
+  // SIR-WP13C-001: replay preserves the canonical evaluator provenance.
+  assert.equal(second.evaluatorId, first.evaluatorId, 'replay preserves the canonical evaluator identity');
+  assert.equal(second.capabilityProfileId, first.capabilityProfileId, 'replay preserves the canonical capability-profile identity');
   assert.equal(validationRecords(store).length, 1, 'no second validation record on exact replay');
   // The file was not rewritten (bytes unchanged).
   assert.deepEqual(readFileSync(join(root, first.artifactRelativePath)), canonicalBytes);
@@ -325,6 +335,10 @@ test('WP-13B: exact compatible candidate is adopted (opaque ids preserved, bytes
   assert.equal(adopted.associationMode, 'adopted');
   assert.equal(adopted.resultInstanceId, handoff.resultInstanceId, 'adoption preserves the candidate opaque instance id');
   assert.equal(adopted.resultRevisionId, handoff.resultRevisionId, 'adoption preserves the candidate opaque revision id');
+  // SIR-WP13C-001: the canonical evaluator provenance is preserved exactly
+  // through the adopt path (never re-derived, never replaced).
+  assert.equal(adopted.evaluatorId, handoff.evaluatorId, 'adoption preserves the canonical evaluator identity');
+  assert.equal(adopted.capabilityProfileId, handoff.capabilityProfileId, 'adoption preserves the canonical capability-profile identity');
   assert.equal(adopted.writeOutcome, 'created');
   assert.equal(readFileSync(join(root, adopted.artifactRelativePath)).byteLength, canonicalBytes.byteLength);
   assert.equal(validationRecords(store).length, 1);

@@ -35,9 +35,23 @@ import type {
   ValidatedResultHandoff,
 } from './types.js';
 
-/** Committed evaluator provenance constants (ADR-012 publication bindings). */
-export const COMPLETION_EVALUATOR_ID = 'project-gateway.completion-evaluator.v1';
-export const COMPLETION_EVALUATOR_CAPABILITY_PROFILE_ID = 'project-gateway.completion-evaluation.v1';
+/**
+ * Canonical evaluator provenance identities (ADR-012 publication bindings;
+ * SIR-WP13C-001 provenance amendment).
+ *
+ * The committed lifecycle schema requires the opaque `pgw:ev:<32hex>` /
+ * `pgw:cp:<32hex>` forms. No canonical assigned identity pair existed in
+ * the committed repository (only the schema syntax and the legacy
+ * human-readable labels), so these are the assigned stable opaque
+ * identities of the project-gateway completion evaluator v1: fixed
+ * constants within the committed identity conventions — NOT content-
+ * derived, NOT hashed from the legacy labels, no derivation rule, no
+ * translation layer. The pair flows unchanged from completion evaluation
+ * through `ValidatedResultHandoff` into result publication; exact equality
+ * is preserved end to end (WP-13C re-correlates, never maps).
+ */
+export const COMPLETION_EVALUATOR_ID = 'pgw:ev:2c1a9f4b7d3e8056a1f2c3d4e5f60718';
+export const COMPLETION_EVALUATOR_CAPABILITY_PROFILE_ID = 'pgw:cp:8e4d2f6a1b9c3057d2e3f4a5b6c71829';
 
 const WORKSPACE_ID_RE = /^pgw:w:[0-9a-f]{32}$/;
 const OCCURRENCE_ID_RE = /^pgw:o:[0-9a-f]{32}$/;

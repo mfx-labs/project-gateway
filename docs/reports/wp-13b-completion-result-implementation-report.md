@@ -238,8 +238,10 @@ workspace/occurrence/attempt/ordinal, exact bundle reference, disposition,
 association mode (originated/adopted), opaque result instance/revision/digest,
 the deterministic artifact relative path (binding is by digest, never by
 path), the durable ValidationRecord id, evaluator provenance
-(`project-gateway.completion-evaluator.v1` /
-`project-gateway.completion-evaluation.v1`), the committed enforcement
+(`pgw:ev:2c1a9f4b7d3e8056a1f2c3d4e5f60718` /
+`pgw:cp:8e4d2f6a1b9c3057d2e3f4a5b6c71829` — the canonical schema-valid
+opaque identities assigned by the SIR-WP13C-001 provenance amendment; see
+§14), the committed enforcement
 evidence reference, and the write outcome. No publication, no scopes, no
 receipts.
 
@@ -325,3 +327,45 @@ clean. WP-13C/D **NOT STARTED**; WP-14/WP-15 remain blocked.
 ---
 
 **WP-13B BASELINE COMMIT READY**
+
+## 14. WP-13B provenance amendment (SIR-WP13C-001) — pending focused rereview
+
+**Integration finding (SIR-WP13C-001, MAJOR):** the committed WP-13B
+`ValidatedResultHandoff` emitted human-readable provenance labels
+(`project-gateway.completion-evaluator.v1` /
+`project-gateway.completion-evaluation.v1`) while the committed lifecycle
+schema requires the opaque `pgw:ev:<32hex>` / `pgw:cp:<32hex>` forms for
+`evaluator_id` / `capability_profile_id`. WP-13C correctly requires exact
+equality and must NOT normalize or translate these values — therefore
+WP-13B must emit canonical schema-valid provenance identities.
+
+**Root cause:** WP-13B introduced the evaluator provenance constants as
+human-readable labels without checking the committed `identifiers.json`
+syntax for the lifecycle `evaluatorProvenance` component; no canonical
+assigned identity pair existed anywhere in the committed repository at
+amendment time.
+
+**Amendment:** the constants are now the assigned canonical opaque
+identities of the project-gateway completion evaluator v1:
+
+- `COMPLETION_EVALUATOR_ID = 'pgw:ev:2c1a9f4b7d3e8056a1f2c3d4e5f60718'`
+- `COMPLETION_EVALUATOR_CAPABILITY_PROFILE_ID =
+  'pgw:cp:8e4d2f6a1b9c3057d2e3f4a5b6c71829'`
+
+Both satisfy the committed schema syntax. They are fixed stable opaque
+assignments within the existing identity conventions — NOT content-derived,
+NOT hashed from the legacy labels, no derivation rule, no translation/mapping
+layer, and WP-13C was NOT modified to accept legacy labels. The one canonical
+pair flows unchanged from completion evaluation through
+`ValidatedResultHandoff` into future publication (originate, adopt, and
+crash-recovery replay paths all preserve it exactly).
+
+**Regression evidence (amendment-focused):** WP-13B focused **21/21** ·
+WP-13B static guards **4/4** · WP-13A **43/43** · full unit
+**513/513** (excluding the untouched untracked WP-13C suites) · security
+**15/15** · both typechecks clean ·
+`git diff --check` clean. (The untracked WP-13C implementation was NOT
+modified and is NOT counted in this amendment's evidence.)
+
+**Status: WP-13B PROVENANCE AMENDMENT COMPLETE — READY FOR FOCUSED
+REREVIEW.**

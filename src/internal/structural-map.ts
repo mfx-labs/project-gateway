@@ -14,6 +14,7 @@ const AUTHORITY_POLICY = 'urn:project-gateway:schema:artifact:1.0:kinds:authorit
 const COMPLETION_CONTRACT = 'urn:project-gateway:schema:artifact:1.0:kinds:completion-contract';
 const CONTEXT_MANIFEST = 'urn:project-gateway:schema:artifact:1.0:kinds:context-manifest';
 const EXECUTION_BUNDLE = 'urn:project-gateway:schema:artifact:1.0:kinds:execution-bundle';
+const EXECUTION_OUTCOME_RECORD = 'urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record';
 const REVOCATION_RECORD = 'urn:project-gateway:schema:lifecycle:1.0:records:revocation-record';
 const ARTIFACT_KIND_PREFIX = 'urn:project-gateway:schema:artifact:1.0:kinds:';
 
@@ -85,6 +86,15 @@ export function structuralRuleIds(schemaId: string, errors: readonly SchemaError
       rules.add('WSP-001');
       rules.add('WSP-002');
     }
+  }
+  if (schemaId === EXECUTION_OUTCOME_RECORD) {
+    // EXE-011 (observation evidence trust): the evidence reference must be a
+    // genuine committed external-evidence form with an opaque evidence id,
+    // canonical digest, and committed media type/role.
+    if (has(errs, 'required', (p) => p === '', 'observation_evidence')) rules.add('EXE-011');
+    if (has(errs, 'pattern', (p) => p.includes('/observation_evidence/evidence_id'))) rules.add('EXE-011');
+    if (has(errs, 'pattern', (p) => p.includes('/observation_evidence/content_digest'))) rules.add('EXE-011');
+    if (has(errs, 'const', (p) => p.includes('/observation_evidence/declared_media_type') || p.includes('/observation_evidence/observation_role') || p.includes('/observation_evidence/kind'))) rules.add('EXE-011');
   }
   if (schemaId === REVOCATION_RECORD) {
     if (has(errs, 'enum', (p) => p.includes('/target/record_type'))) {

@@ -98,6 +98,14 @@ A trusted local control-plane record that withdraws the current usability or pub
 
 A trusted local historical fact record of a lifecycle or execution event, such as approval, issuance, grant use, activation decision, occurrence, or attempt fact. A receipt remains outside the repository, is distinct from a project-visible `ExecutionResult` artifact, is not revocable as an erased fact, and is required to corroborate privileged result uses where the protocol requires receipt correlation.
 
+## Execution Outcome Record
+
+A trusted local immutable lifecycle record produced by the `trusted-execution-outcome-recorder` domain, at most one per exact execution attempt, that durably persists the retrospective facts of an attempt that have no other durable trusted source: disposition, the verified-observation evidence reference (one committed `external-evidence` reference with an opaque `pgw:e:` identity and canonical observation digest), the enforcement evidence references (identity + fingerprint) when enforcement was active, and — when an evaluator-produced validated result exists — the exact result association quartet (result instance id, revision digest, association mode, passing `ValidationRecord` id). It is not an authority, scheduler, receipt, publication substitute, recovery mechanism, or generic execution log; it never carries publication id/scopes, receipt material, or authority operands. It is produced only for attempts reaching a verified retrospective-complete state; an attempt recorded without such an outcome is `terminal-unverifiable` and receipt-ineligible.
+
+## Trusted Execution Outcome Recorder
+
+One of the two separately confined WP-13 trusted record-producing authority domains (the other being `trusted-result-publisher` → `ResultPublicationRecord` only). The outcome recorder produces exactly one record class, `ExecutionOutcomeRecord`, through the WP-8 `publishRecord` path under a branded generation-bound capability and exact-record publication permit. It grants nothing and confers no lifecycle, publication, receipt, or execution authority.
+
 ## Completion Contract
 
 An artifact that specifies how task completion must be proven or evaluated. It defines prospective requirements and must remain separate from task instructions, authority, and retrospective execution results.

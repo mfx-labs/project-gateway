@@ -33,7 +33,7 @@ export type StoreDirectoryName = (typeof STORE_DIRECTORY_NAMES)[number];
 export type NamespaceKind = 'store-records' | 'configuration';
 
 /**
- * The closed 18-class record taxonomy (contract 6.2, TAX-011). Kebab-case
+ * The closed 19-class record taxonomy (contract 6.2, TAX-011). Kebab-case
  * storage identifiers; the PascalCase contract label is carried per class.
  */
 export const RECORD_CLASS_IDS = [
@@ -45,6 +45,7 @@ export const RECORD_CLASS_IDS = [
   'activation-record',
   'execution-occurrence-record',
   'execution-attempt-record',
+  'execution-outcome-record',
   'trusted-receipt',
   'result-publication-record',
   'supersession-record',

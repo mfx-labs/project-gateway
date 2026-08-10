@@ -14818,6 +14818,1156 @@
       },
       "notes": "Migration correlates separate generation-zero subjects without lifecycle transfer.",
       "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-B48C54C5",
+      "paths": [
+        "fixtures/lifecycle/valid/outcome-main-1.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid outcome record with result association and enforcement group.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-5B9F7C47",
+      "paths": [
+        "fixtures/lifecycle/valid/outcome-main-2.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid outcome record without result association or enforcement group.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-59AAB467",
+      "paths": [
+        "fixtures/lifecycle/valid/result-publication-replay.json"
+      ],
+      "subject_type": "ResultPublicationRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:result-publication-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid replay-shaped publication exactly matching the outcome-record association.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-57BEF115",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-missing-observation.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "EXE-011"
+      ],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Required observation evidence absent.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-A4563502",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-raw-session-evidence.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "EXE-011"
+      ],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Raw session/turn correlation id used as evidence_id.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-27FFD154",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-malformed-evidence-id.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "EXE-011"
+      ],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Malformed pgw:e evidence id.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-AD9782F5",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-invalid-digest.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "EXE-011"
+      ],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Non-canonical content digest syntax.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-9D36B041",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-invalid-media-type.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "EXE-011"
+      ],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Non-committed declared media type.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-2176C10D",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-invalid-observation-role.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "EXE-011"
+      ],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Non-committed observation role.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-D8C402E9",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-partial-enforcement.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Partial enforcement group rejected.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-C3DB1CF1",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-partial-association.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Partial result association quartet rejected.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-0CD60813",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-publication-fields.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Publication fields rejected from outcome record.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-507CCD1A",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-receipt-material.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Receipt material rejected from outcome record.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-B3ADDB1A",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-wrong-role.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Wrong responsible_role rejected.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-4E834738",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-wrong-record-type.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-attempt-record",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Wrong record_type discriminator selects the attempt schema and is rejected there.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-12744930",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-malformed-bindings.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Malformed workspace binding rejected.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-9E4666BE",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-unknown-properties.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Unknown properties rejected (closed object).",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-4DBA3554",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-divergent-1.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "EXE-010"
+      ],
+      "expected_failure_category": "LIFECYCLE-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Outcome record binding diverges from its bound attempt record (binding semantics vector).",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-2B54ECF2",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-dup-1a.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "EXE-010"
+      ],
+      "expected_failure_category": "LIFECYCLE-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Duplicate outcome record for the exact attempt (isolated cardinality violation; binding valid).",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-CBCF4727",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-dup-1b.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "EXE-010"
+      ],
+      "expected_failure_category": "LIFECYCLE-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Duplicate outcome record with divergent result material (isolated cardinality violation; binding valid).",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-F5BF9595",
+      "paths": [
+        "fixtures/lifecycle/invalid/publication-orphan-attempt.json"
+      ],
+      "subject_type": "ResultPublicationRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:result-publication-record",
+      "expected_semantic_rule_ids": [
+        "EXE-013"
+      ],
+      "expected_failure_category": "RESULT-PUBLICATION-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Publication without any outcome record for the attempt.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-91AC2546",
+      "paths": [
+        "fixtures/lifecycle/invalid/publication-mismatch-instance.json"
+      ],
+      "subject_type": "ResultPublicationRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:result-publication-record",
+      "expected_semantic_rule_ids": [
+        "EXE-013"
+      ],
+      "expected_failure_category": "RESULT-PUBLICATION-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Publication result instance diverges from the outcome association.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-C36C90C7",
+      "paths": [
+        "fixtures/lifecycle/invalid/publication-mismatch-digest.json"
+      ],
+      "subject_type": "ResultPublicationRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:result-publication-record",
+      "expected_semantic_rule_ids": [
+        "EXE-013"
+      ],
+      "expected_failure_category": "RESULT-PUBLICATION-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Publication result digest diverges from the outcome association.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-91115A0B",
+      "paths": [
+        "fixtures/lifecycle/invalid/publication-mismatch-mode.json"
+      ],
+      "subject_type": "ResultPublicationRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:result-publication-record",
+      "expected_semantic_rule_ids": [
+        "EXE-013"
+      ],
+      "expected_failure_category": "RESULT-PUBLICATION-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Publication association mode diverges from the outcome association.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-EA617436",
+      "paths": [
+        "fixtures/lifecycle/invalid/publication-mismatch-validation.json"
+      ],
+      "subject_type": "ResultPublicationRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:result-publication-record",
+      "expected_semantic_rule_ids": [
+        "EXE-013"
+      ],
+      "expected_failure_category": "RESULT-PUBLICATION-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Publication validation id diverges from the outcome association.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-4ECB0AC6",
+      "paths": [
+        "fixtures/lifecycle/invalid/publication-mismatch-workspace.json"
+      ],
+      "subject_type": "ResultPublicationRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:result-publication-record",
+      "expected_semantic_rule_ids": [
+        "EXE-013"
+      ],
+      "expected_failure_category": "RESULT-PUBLICATION-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Publication workspace binding diverges from the outcome record.",
+      "normative": true
+    },
+    {
+      "fixture_id": "RULE-EXE-010-PASS",
+      "paths": [
+        "fixtures/lifecycle/valid/outcome-main-1.json"
+      ],
+      "subject_type": "semantic-rule-coverage",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "EXE-010"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "One valid outcome record; identical material re-evaluates cleanly.",
+      "normative": true
+    },
+    {
+      "fixture_id": "RULE-EXE-010-FAIL",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-dup-1a.json"
+      ],
+      "subject_type": "semantic-rule-coverage",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "EXE-010"
+      ],
+      "expected_failure_category": "LIFECYCLE-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Duplicate outcome record for the exact attempt (isolated cardinality violation; binding valid).",
+      "normative": true
+    },
+    {
+      "fixture_id": "RULE-EXE-011-PASS",
+      "paths": [
+        "fixtures/lifecycle/valid/outcome-main-2.json"
+      ],
+      "subject_type": "semantic-rule-coverage",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "EXE-011"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Genuine committed external-evidence observation reference.",
+      "normative": true
+    },
+    {
+      "fixture_id": "RULE-EXE-011-FAIL",
+      "paths": [
+        "fixtures/lifecycle/invalid/outcome-raw-session-evidence.json"
+      ],
+      "subject_type": "semantic-rule-coverage",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "EXE-011"
+      ],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Raw session/turn correlation id is never an evidence identity.",
+      "normative": true
+    },
+    {
+      "fixture_id": "RULE-EXE-013-PASS",
+      "paths": [
+        "fixtures/lifecycle/valid/result-publication-replay.json"
+      ],
+      "subject_type": "semantic-rule-coverage",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:result-publication-record",
+      "expected_semantic_rule_ids": [
+        "EXE-013"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Publication exactly matches the outcome-record result association.",
+      "normative": true
+    },
+    {
+      "fixture_id": "RULE-EXE-013-FAIL",
+      "paths": [
+        "fixtures/lifecycle/invalid/publication-mismatch-instance.json"
+      ],
+      "subject_type": "semantic-rule-coverage",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:result-publication-record",
+      "expected_semantic_rule_ids": [
+        "EXE-013"
+      ],
+      "expected_failure_category": "RESULT-PUBLICATION-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Publication result instance diverges from the outcome association.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-4CAECE2A",
+      "paths": [
+        "fixtures/lifecycle/valid/attempt-orphan-1.json"
+      ],
+      "subject_type": "ExecutionAttemptRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-attempt-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid durable attempt with no outcome record: terminal-unverifiable is a VALID lifecycle state (no lifecycle finding).",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-0347B565",
+      "paths": [
+        "fixtures/lifecycle/valid/activation-dup-1.json"
+      ],
+      "subject_type": "ActivationRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:activation-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid activation for the duplicate-vector occurrence.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-57FDBEB0",
+      "paths": [
+        "fixtures/lifecycle/valid/occurrence-dup-1.json"
+      ],
+      "subject_type": "ExecutionOccurrenceRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-occurrence-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid occurrence for the duplicate-vector chain.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-209516F5",
+      "paths": [
+        "fixtures/lifecycle/valid/grant-dup-1.json"
+      ],
+      "subject_type": "RuntimeGrant",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:runtime-grant",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid grant (attempt allowance 2) for the duplicate-vector chain.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-D7F01F13",
+      "paths": [
+        "fixtures/lifecycle/valid/attempt-dup-1.json"
+      ],
+      "subject_type": "ExecutionAttemptRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-attempt-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid durable attempt bound by both duplicate outcome records.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-62C64CBB",
+      "paths": [
+        "fixtures/lifecycle/valid/receipt-dup-1.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid receipt for the duplicate-vector attempt.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-94A86614",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-orphan-1.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [
+        "EXE-012"
+      ],
+      "expected_failure_category": "RECEIPT-CORRELATION-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Receipt claims retrospective facts for a terminal-unverifiable attempt (no outcome record).",
+      "normative": true
+    },
+    {
+      "fixture_id": "RULE-EXE-012-PASS",
+      "paths": [
+        "fixtures/lifecycle/valid/attempt-orphan-1.json"
+      ],
+      "subject_type": "semantic-rule-coverage",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-attempt-record",
+      "expected_semantic_rule_ids": [
+        "EXE-012"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid lifecycle state; retrospective eligibility = terminal-unverifiable; no lifecycle finding.",
+      "normative": true
+    },
+    {
+      "fixture_id": "RULE-EXE-012-FAIL",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-orphan-1.json"
+      ],
+      "subject_type": "semantic-rule-coverage",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [
+        "EXE-012"
+      ],
+      "expected_failure_category": "RECEIPT-CORRELATION-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Receipt eligibility claimed for a terminal-unverifiable attempt fails closed.",
+      "normative": true
     }
   ]
 }

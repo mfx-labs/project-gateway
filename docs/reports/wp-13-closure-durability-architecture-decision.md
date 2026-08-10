@@ -388,6 +388,17 @@ outcome record is NOT publication provenance. This is the ONLY
 WP-13A/B/C semantic change required by this decision (rule work §15
 EXE-013).
 
+The §11 precondition and EXE-013 govern the WP-13 attempt-scoped
+evaluator-produced publication path only. A later-owned ADR-012 §8
+supersession/correction publication (a `SupersessionRecord` prior or
+successor with subject type `result-publication`) is NOT a second WP-13
+attempt result association: it is evaluated under the committed
+supersession contract rather than being forced to equal the original
+outcome association. Nothing in that exemption permits a competing second
+WP-13 result instance for the same attempt, weakens the S3 WP-13C
+first-publication precondition, or makes the outcome record publication
+provenance.
+
 ## 12. Cold re-derivation contract — exact 21-field durable-source mapping
 
 After total process loss, a fresh process derives the fact-set from these
@@ -501,8 +512,8 @@ Identified — NOT implemented in this phase:
 |---|---|
 | **EXE-010** | `ExecutionOutcomeRecord` cardinality/immutability: at most one per exact attempt; record only for retrospective-complete attempts; material replay idempotent (opaque operation-assigned values excluded from equivalence); divergence conflict; exact attempt/result/validation correlations |
 | **EXE-011** | Observation evidence trust: genuine `PiExecutionObservation`; exact attempt correlation; opaque `pgw:e:` allocation ONLY in the no-existing branch; canonical observation digest; one durable evidence reference |
-| **EXE-012** | Terminal-unverifiable attempt: durable attempt exists; no trustworthy retrospective-complete outcome; no outcome record; no retrospective facts; receipt-ineligible; no inferred recovery |
-| **EXE-013** | Outcome/publication consistency: publication requires an exact outcome result association; both the publication boundary and retrospective derivation fail closed on divergence |
+| **EXE-012** | Terminal-unverifiable attempt: durable attempt exists; no trustworthy retrospective-complete outcome; no outcome record; no retrospective facts; receipt-ineligible; no inferred recovery. Absence of an outcome record is a VALID lifecycle state (never a lifecycle-graph failure); eligibility is a separate classification, and only a receipt claim for such an attempt fails closed (`RECEIPT-CORRELATION-FAILURE`) |
+| **EXE-013** | Outcome/publication consistency: EXE-013 governs the WP-13 attempt-scoped evaluator-produced publication whose result association is represented by the `ExecutionOutcomeRecord`; the original/non-supersession `ResultPublicationRecord` for the attempt must exact-match the outcome result association; both the publication boundary and retrospective derivation fail closed on divergence. A later-owned ADR-012 §8 supersession/correction publication path is NOT a second WP-13 attempt result association and is governed by the committed supersession contract: a valid superseded record or successor record is evaluated under the supersession rules, never forced to equal the original outcome association; the exemption grants no competing second WP-13 result instance for the same attempt, does not weaken the future S3 WP-13C first-publication precondition, and does not make the outcome record publication provenance |
 
 Numbers confirmed free in the committed inventory (EXE-001…009 exist).
 

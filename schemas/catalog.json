@@ -377,6 +377,19 @@
       "normative_status": "normative"
     },
     {
+      "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "path": "schemas/lifecycle/1.0/records/execution-outcome-record.json",
+      "profile": "lifecycle",
+      "version": "1.0",
+      "subject_type": "ExecutionOutcomeRecord",
+      "dependencies": [
+        "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference",
+        "urn:project-gateway:schema:artifact:1.0:common:identifiers",
+        "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+      ],
+      "normative_status": "normative"
+    },
+    {
       "schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-occurrence-record",
       "path": "schemas/lifecycle/1.0/records/execution-occurrence-record.json",
       "profile": "lifecycle",

@@ -95,6 +95,15 @@ observation references place raw session/turn ids in
    association mode, ValidationRecord id, workspace, bundle, occurrence,
    attempt), and independently re-check the passing ValidationRecord; no
    outcome record or mismatch → fail closed, no publication write.
+   EXE-013 governs this WP-13 attempt-scoped evaluator-produced publication
+   path only. A later-owned ADR-012 §8 supersession/correction publication
+   (a `SupersessionRecord` prior or successor with subject type
+   `result-publication`) is NOT a second WP-13 attempt result association
+   and is governed by the committed supersession contract rather than being
+   forced to equal the original outcome association; the exemption grants
+   no competing second WP-13 result instance, does not weaken this S3
+   first-publication precondition, and does not make the outcome record
+   publication provenance.
 7. **Observation evidence identity:** raw session/turn correlation ids are
    never used as `evidence_id`. The trusted host composition allocates one
    opaque `pgw:e:<32hex>` evidence identity per exact verified

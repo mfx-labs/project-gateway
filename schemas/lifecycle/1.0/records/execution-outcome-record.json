@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+  "title": "ExecutionOutcomeRecord",
+  "type": "object",
+  "required": [
+    "record_type",
+    "record_id",
+    "created_at",
+    "responsible_role",
+    "registry_snapshot_reference",
+    "workspace_id",
+    "bundle",
+    "occurrence_id",
+    "attempt_id",
+    "ordinal",
+    "execution_attempt_record_id",
+    "disposition",
+    "observation_evidence"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "ExecutionOutcomeRecord"
+    },
+    "record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "created_at": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/timestamp"
+    },
+    "responsible_role": {
+      "const": "trusted-execution-outcome-recorder"
+    },
+    "registry_snapshot_reference": {
+      "$ref": "urn:project-gateway:schema:registry:1.0:registry-snapshot-reference"
+    },
+    "workspace_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/workspaceId"
+    },
+    "bundle": {
+      "allOf": [
+        {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:exact-artifact-reference"
+        },
+        {
+          "properties": {
+            "target_kind": {
+              "properties": {
+                "id": {
+                  "const": "ExecutionBundle"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "occurrence_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/occurrenceId"
+    },
+    "attempt_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/attemptId"
+    },
+    "ordinal": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64
+    },
+    "execution_attempt_record_id": {
+      "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+    },
+    "disposition": {
+      "enum": [
+        "completed",
+        "incomplete",
+        "failed",
+        "cancelled",
+        "timed-out",
+        "crashed",
+        "rejected"
+      ]
+    },
+    "observation_evidence": {
+      "type": "object",
+      "required": [
+        "kind",
+        "evidence_id",
+        "content_digest",
+        "declared_media_type",
+        "observation_role"
+      ],
+      "properties": {
+        "kind": {
+          "const": "external-evidence"
+        },
+        "evidence_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/evidenceId"
+        },
+        "content_digest": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/digest"
+        },
+        "declared_media_type": {
+          "const": "application/json"
+        },
+        "observation_role": {
+          "const": "evaluation-evidence"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "enforcement_evidence": {
+      "type": "object",
+      "required": [
+        "projection_identity",
+        "evidence_fingerprint"
+      ],
+      "properties": {
+        "projection_identity": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/digest"
+        },
+        "evidence_fingerprint": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/digest"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "result_association": {
+      "type": "object",
+      "required": [
+        "instance_id",
+        "revision_digest",
+        "association_mode",
+        "validation_record_id"
+      ],
+      "properties": {
+        "instance_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/artifactInstanceId"
+        },
+        "revision_digest": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/digest"
+        },
+        "association_mode": {
+          "enum": [
+            "originated",
+            "adopted"
+          ]
+        },
+        "validation_record_id": {
+          "$ref": "urn:project-gateway:schema:artifact:1.0:common:identifiers#/$defs/lifecycleRecordId"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  },
+  "unevaluatedProperties": false
+}

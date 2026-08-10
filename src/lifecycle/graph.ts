@@ -235,6 +235,7 @@ export function evaluateLifecycleGraph(input: LifecycleGraphInput): Finding[] {
   // ---- attempts
   const attempts = index.byType.get('ExecutionAttemptRecord') ?? [];
   const attemptContext = input.attemptsContext ?? attempts;
+  const outcomes = index.byType.get('ExecutionOutcomeRecord') ?? [];
   for (const r of attempts) {
     const activationId = str(r, 'activation_record_id');
     const occurrenceId = str(r, 'occurrence_id');
@@ -281,11 +282,59 @@ export function evaluateLifecycleGraph(input: LifecycleGraphInput): Finding[] {
     }
   }
 
+  // ---- execution outcome records (EXE-010: cardinality + exact binding)
+  for (const r of outcomes) {
+    const ws = str(r, 'workspace_id');
+    const occ = str(r, 'occurrence_id');
+    const att = str(r, 'attempt_id');
+    const bundle = r['bundle'];
+    // exact binding: the anchor must resolve to an attempt record with
+    // exact-equal workspace/bundle/occurrence/attempt/ordinal
+    const anchor = str(r, 'execution_attempt_record_id');
+    const bound = index.byId.get(anchor);
+    const boundOk =
+      bound !== undefined &&
+      str(bound, 'record_type') === 'ExecutionAttemptRecord' &&
+      str(bound, 'workspace_id') === ws &&
+      str(bound, 'occurrence_id') === occ &&
+      str(bound, 'attempt_id') === att &&
+      Number(bound['ordinal']) === Number(r['ordinal']) &&
+      bundleReferencesEqual(bound['bundle'], bundle);
+    if (!boundOk) {
+      emitFor(r, ['EXE-010'], 'lifecycle.outcome-binding', 'outcome record does not exactly bind its execution attempt record', 'LIFECYCLE-FAILURE', '/execution_attempt_record_id');
+    }
+    // at most one outcome record per exact attempt (result instance,
+    // disposition, observation evidence, and validation material are never
+    // uniqueness key material)
+    const duplicate = outcomes.some(
+      (o) => o !== r && str(o, 'workspace_id') === ws && str(o, 'occurrence_id') === occ && str(o, 'attempt_id') === att && bundleReferencesEqual(o['bundle'], bundle),
+    );
+    if (duplicate) {
+      emitFor(r, ['EXE-010'], 'lifecycle.outcome-duplicate', 'more than one outcome record for the same exact attempt', 'LIFECYCLE-FAILURE', '/attempt_id');
+    }
+  }
+
   // ---- receipts
   for (const r of index.byType.get('TrustedReceipt') ?? []) {
     const event = index.byId.get(str(r, 'event_record_id'));
     if (!event || str(event, 'record_type') !== 'ExecutionAttemptRecord') {
       emitFor(r, ['EXE-008'], 'lifecycle.receipt-event', 'receipt does not correlate to an attempt record', 'LIFECYCLE-FAILURE', '/event_record_id');
+      continue;
+    }
+    // EXE-012 (retrospective eligibility): a receipt correlated to an attempt
+    // with no trustworthy outcome record claims retrospective facts for a
+    // `terminal-unverifiable` attempt. Absence of an outcome record is a
+    // VALID durable lifecycle state (execution in progress, crash, or
+    // post-recording failure); only the receipt claim is invalid.
+    const covered = outcomes.some(
+      (o) =>
+        str(o, 'workspace_id') === str(r, 'workspace_id') &&
+        str(o, 'occurrence_id') === str(r, 'occurrence_id') &&
+        str(o, 'attempt_id') === str(r, 'attempt_id') &&
+        bundleReferencesEqual(o['bundle'], event['bundle']),
+    );
+    if (!covered) {
+      emitFor(r, ['EXE-012'], 'lifecycle.receipt-orphan', 'receipt correlates to an attempt without a trustworthy outcome record (terminal-unverifiable)', 'RECEIPT-CORRELATION-FAILURE', '/attempt_id');
     }
   }
 
@@ -296,6 +345,11 @@ export function evaluateLifecycleGraph(input: LifecycleGraphInput): Finding[] {
   for (const s of supersessions) {
     const prior = s['prior'] as Record<string, unknown> | undefined;
     if (prior && str(prior, 'subject_type') === 'result-publication') superseded.add(str(prior, 'record_id'));
+  }
+  const supersessionSuccessors = new Set<string>();
+  for (const s of supersessions) {
+    const succ = s['successor'] as Record<string, unknown> | undefined;
+    if (succ && str(succ, 'subject_type') === 'result-publication') supersessionSuccessors.add(str(succ, 'record_id'));
   }
   const currentPublications = publications.filter((p) => !superseded.has(str(p, 'record_id')));
   for (const r of publications) {
@@ -334,6 +388,38 @@ export function evaluateLifecycleGraph(input: LifecycleGraphInput): Finding[] {
     if (!evaluator || (establishedEvaluator && establishedEvaluator !== evaluator)) {
       emitFor(r, ['PUB-003', 'PUB-004', 'PUB-008'], 'publication.provenance', 'publication evaluator provenance is absent or incompatible', 'RESULT-PUBLICATION-FAILURE', '/evaluator_provenance');
       emitFor(r, ['RES-007'], 'publication.receipt-impersonation', 'publication without compatible provenance cannot confer receipt-like status', 'AGGREGATE-RESPONSIBILITY-FAILURE', '/evaluator_provenance');
+    }
+    // EXE-013 (outcome/publication consistency): the first-publication path
+    // requires an exact matching outcome result association. Superseded
+    // publications and supersession successors are the later-owned
+    // correction path (ADR-012 §8) and are exempt here; their consistency
+    // handling is separately owned.
+    const isSuperseded = superseded.has(str(r, 'record_id'));
+    const isSuccessor = supersessionSuccessors.has(str(r, 'record_id'));
+    if (!isSuperseded && !isSuccessor) {
+      const outcome = outcomes.find(
+        (o) =>
+          str(o, 'workspace_id') === str(r, 'workspace_id') &&
+          str(o, 'occurrence_id') === str(r, 'occurrence_id') &&
+          str(o, 'attempt_id') === attempt &&
+          bundleReferencesEqual(o['bundle'], r['bundle']),
+      );
+      const assoc = outcome ? (outcome['result_association'] as Record<string, unknown> | undefined) : undefined;
+      if (!outcome) {
+        emitFor(r, ['EXE-013'], 'publication.outcome-absent', 'publication has no outcome record for the exact attempt', 'RESULT-PUBLICATION-FAILURE', '/attempt_id');
+      } else if (!assoc) {
+        emitFor(r, ['EXE-013'], 'publication.outcome-association-absent', 'publication requires a result association that the outcome record lacks', 'RESULT-PUBLICATION-FAILURE', '/result_association');
+      } else {
+        const resultSubject = r['result_subject'] as Record<string, unknown> | undefined;
+        const exact =
+          str(assoc, 'instance_id') === (resultSubject ? str(resultSubject, 'instance_id') : '') &&
+          str(assoc, 'revision_digest') === (resultSubject ? str(resultSubject, 'digest') : '') &&
+          str(assoc, 'association_mode') === str(r, 'association_mode') &&
+          str(assoc, 'validation_record_id') === str(r, 'validation_record_id');
+        if (!exact) {
+          emitFor(r, ['EXE-013'], 'publication.outcome-mismatch', 'publication result association diverges from the outcome record association', 'RESULT-PUBLICATION-FAILURE', '/result_subject');
+        }
+      }
     }
     // competing active publications (PUB-006): active = not superseded AND has receipt correlations
     const active = currentPublications.filter((p) => !superseded.has(str(p, 'record_id')));

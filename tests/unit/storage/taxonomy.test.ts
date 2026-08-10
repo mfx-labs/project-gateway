@@ -1,5 +1,5 @@
 /**
- * WP-8-B tests: the closed 18-class record taxonomy (contract 6.2,
+ * WP-8-B tests: the closed 19-class record taxonomy (contract 6.2,
  * TAX-001…014).
  */
 import { test } from 'node:test';
@@ -13,27 +13,27 @@ import {
   recordClassProfile,
 } from '../../../src/storage/index.js';
 
-test('taxonomy: exactly 18 classes, unique ids, unique segments', () => {
-  assert.equal(RECORD_CLASS_IDS.length, 18);
-  assert.equal(RECORD_CLASS_PROFILES.length, 18);
-  assert.equal(new Set(RECORD_CLASS_IDS).size, 18);
-  assert.equal(new Set(RECORD_CLASS_PROFILES.map((p) => p.segment)).size, 18);
+test('taxonomy: exactly 19 classes, unique ids, unique segments', () => {
+  assert.equal(RECORD_CLASS_IDS.length, 19);
+  assert.equal(RECORD_CLASS_PROFILES.length, 19);
+  assert.equal(new Set(RECORD_CLASS_IDS).size, 19);
+  assert.equal(new Set(RECORD_CLASS_PROFILES.map((p) => p.segment)).size, 19);
   for (const id of RECORD_CLASS_IDS) assert.equal(isAcceptedRecordClass(id), true);
   assert.equal(isAcceptedRecordClass('unknown-class'), false);
 });
 
-test('taxonomy: expected composition (13 WP-2 lifecycle + audit + snapshot + metadata + evidence + config)', () => {
+test('taxonomy: expected composition (14 WP-2 lifecycle + audit + snapshot + metadata + evidence + config)', () => {
   const ids: Set<string> = new Set(RECORD_CLASS_IDS as readonly string[]);
   const lifecycle = [
     'validation-record', 'approval-record', 'issuance-record', 'revocation-record', 'runtime-grant',
-    'activation-record', 'execution-occurrence-record', 'execution-attempt-record', 'trusted-receipt',
+    'activation-record', 'execution-occurrence-record', 'execution-attempt-record', 'execution-outcome-record', 'trusted-receipt',
     'result-publication-record', 'supersession-record', 'execution-summary-record', 'migration-record',
   ];
   for (const id of lifecycle) assert.equal(ids.has(id), true, id);
   for (const extra of ['authoritative-audit-event', 'registry-snapshot', 'store-metadata', 'store-evidence-record', 'configuration-snapshot-record']) {
     assert.equal(ids.has(extra), true, extra);
   }
-  assert.equal(new Set([...lifecycle, 'authoritative-audit-event', 'registry-snapshot', 'store-metadata', 'store-evidence-record', 'configuration-snapshot-record']).size, 18);
+  assert.equal(new Set([...lifecycle, 'authoritative-audit-event', 'registry-snapshot', 'store-metadata', 'store-evidence-record', 'configuration-snapshot-record']).size, 19);
 });
 
 test('taxonomy: layout attributes (segment, suffix, namespace)', () => {
@@ -105,6 +105,6 @@ test('taxonomy: unknown class lookup returns undefined (fail-closed on read)', (
 
 test('taxonomy: no class is counted twice or concealed as a subtype', () => {
   const labels = RECORD_CLASS_PROFILES.map((p) => p.label);
-  assert.equal(new Set(labels).size, 18);
-  assert.equal(RECORD_CLASS_BY_ID.size, 18);
+  assert.equal(new Set(labels).size, 19);
+  assert.equal(RECORD_CLASS_BY_ID.size, 19);
 });

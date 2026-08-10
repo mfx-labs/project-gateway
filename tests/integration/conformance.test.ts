@@ -29,8 +29,8 @@ const manifest = CONFORMANCE_MANIFEST as { fixtures: { fixture_id: string; paths
 
 test('integration: manifest stats match the committed package', () => {
   const stats = manifestStats();
-  assert.equal(stats.entries, 587);
-  assert.equal(stats.schemas, 51);
+  assert.equal(stats.entries, 628);
+  assert.equal(stats.schemas, 52);
   assert.ok(stats.inputs >= 300);
 });
 
@@ -40,9 +40,9 @@ test('integration: every physical corpus input is listed in the manifest', () =>
   for (const rel of Object.keys(corpus)) assert.ok(listed.has(rel), `unlisted input ${rel}`);
 });
 
-test('integration: all 228 artifact RULE matrix entries point at existing inputs', () => {
+test('integration: all 236 artifact RULE matrix entries point at existing inputs', () => {
   const ruleEntries = manifest.fixtures.filter((f) => f.fixture_id.startsWith('RULE-'));
-  assert.equal(ruleEntries.length, 228); // artifact RULE matrix entries (114 rules x PASS/FAIL); NOT complete catalog coverage
+  assert.equal(ruleEntries.length, 236); // artifact RULE matrix entries (118 rules x PASS/FAIL); NOT complete catalog coverage
   for (const f of ruleEntries) {
     for (const p of f.paths) assert.ok(corpus[p] !== undefined, `missing ${p} for ${f.fixture_id}`);
   }
@@ -65,11 +65,11 @@ test('integration: all 36 digest vectors recompute', () => {
   }
 });
 
-test('integration: full conformance manifest executes 587/587 including the PointOfUse v2 context', () => {
+test('integration: full conformance manifest executes 628/628 including the PointOfUse v2 context', () => {
   const summary = new ConformanceRunner().run();
-  assert.equal(summary.total, 587);
-  assert.equal(summary.executed, 587);
-  assert.equal(summary.passed, 587);
+  assert.equal(summary.total, 628);
+  assert.equal(summary.executed, 628);
+  assert.equal(summary.passed, 628);
   assert.equal(summary.failed, 0);
   assert.deepEqual(summary.mismatches, []);
 });
@@ -118,7 +118,7 @@ test('integration: every Phase-3 emitted rule ID is registered in the catalog (M
   assert.ok(emitted.has('LFC-012'));
 });
 
-test('integration: artifact RULE matrix — 114 rules x exactly one PASS + one FAIL entry = 228', () => {
+test('integration: artifact RULE matrix — 118 rules x exactly one PASS + one FAIL entry = 236', () => {
   // The artifact RULE matrix is a DISJOINT coverage mode from the POUV2-only
   // rules: every artifact rule has exactly two RULE-* entries (one PASS, one
   // FAIL) and the POUV2-only rules have ZERO RULE-* entries.
@@ -140,8 +140,8 @@ test('integration: artifact RULE matrix — 114 rules x exactly one PASS + one F
     );
     assert.equal(f.expected_result, f.fixture_id.endsWith('-PASS') ? 'pass' : 'fail');
   }
-  assert.equal(RULE_ENTRIES.length, 228, 'artifact RULE matrix entries');
-  assert.equal(byRule.size, 114, 'artifact matrix rules');
+  assert.equal(RULE_ENTRIES.length, 236, 'artifact RULE matrix entries');
+  assert.equal(byRule.size, 118, 'artifact matrix rules');
   for (const [rule, entry] of byRule) {
     assert.equal(entry.pass, 1, `rule ${rule} PASS side`);
     assert.equal(entry.fail, 1, `rule ${rule} FAIL side`);
@@ -162,10 +162,10 @@ test('integration: coverage partition — catalog = artifact matrix ∪ POUV2-on
   // disjoint
   for (const id of artifactRules) assert.ok(!pouv2Only.has(id), `artifact matrix must not contain ${id}`);
   // exact counts
-  assert.equal(artifactRules.size, 114);
-  assert.equal(RULE_ENTRIES.length, 228);
+  assert.equal(artifactRules.size, 118);
+  assert.equal(RULE_ENTRIES.length, 236);
   assert.equal(pouv2Only.size, 2);
-  assert.equal(catalog.size, 116);
+  assert.equal(catalog.size, 120);
 });
 
 test('integration: POUV2-only branch coverage — AUT-000 global, AUT-000 workspace, LFC-012 (MODERATE-3)', () => {

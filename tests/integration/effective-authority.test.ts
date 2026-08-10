@@ -1137,7 +1137,7 @@ test('oracle: vector results route through common comparison (RULE entries)', ()
   }
   const summary = new ConformanceRunner().run();
   assert.equal(summary.passed, summary.total);
-  assert.equal(summary.total, 587);
+  assert.equal(summary.total, 628);
   assert.deepEqual(summary.mismatches, []);
 });
 
@@ -1176,9 +1176,9 @@ test('oracle: all 36 vector entries compare independent canonical output', () =>
   assert.equal(summary.mismatches.filter((m) => m.fixtureId.startsWith('CAN-')).length, 0);
 });
 
-test('dispatch: all 116 rule IDs have an implementation-owned classification', () => {
+test('dispatch: all 120 rule IDs have an implementation-owned classification', () => {
   const ids = ruleIds();
-  assert.equal(ids.length, 116);
+  assert.equal(ids.length, 120);
   const kinds = new Set<string>();
   for (const id of ids) {
     const def = ruleDef(id);
@@ -1202,7 +1202,7 @@ test('oracle: no fixture-ID branch exists in production runner code', () => {
 test('dispatch: graph rule coverage via runner (REG-008 after erratum)', () => {
   const summary = new ConformanceRunner().run();
   assert.equal(summary.passed, summary.total);
-  assert.equal(summary.total, 587);
+  assert.equal(summary.total, 628);
 });
 
 function computeDigest(model: Readonly<Record<string, unknown>>): string {

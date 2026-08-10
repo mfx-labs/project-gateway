@@ -161,10 +161,11 @@ decision (`docs/reports/wp-13-closure-durability-architecture-decision.md`;
 ADR-039, **Accepted**), which passed the focused contract rereview: the
 **WP-13 durability architecture/contract is ACCEPTED** (this baseline
 commit). **WP-13 remains NOT CLOSED**; the current implementation gate
-is **S1 — NOT STARTED, requires explicit human authorization**. WP-14
-and WP-15 remain **blocked** behind WP-13. This current-state note
-supersedes the earlier "WP-13 closure durability decision"
-current-state note; historical records are preserved.
+is **S1 — implementation ACCEPTED (focused rereview), baseline commit in
+preparation**; **S2 — NOT STARTED / NOT AUTHORIZED** (requires explicit
+human authorization). WP-14 and WP-15 remain **blocked** behind WP-13.
+This current-state note supersedes the earlier "WP-13 closure durability
+decision" current-state note; historical records are preserved.
 
 **WP-8-E (contract §29 phase 4 — audit, registry indexes, and recovery;
 read-only slice) is implemented**: WP-8-D is **closed** at commit

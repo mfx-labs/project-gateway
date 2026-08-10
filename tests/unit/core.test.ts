@@ -145,8 +145,8 @@ test('digest: artifact and registry domains differ', () => {
 });
 
 // ---------------------------------------------------------------- schema
-test('schema registry: all 51 resources compile offline', () => {
-  assert.equal(reg.schemaIdsList.length, 51);
+test('schema registry: all 52 resources compile offline', () => {
+  assert.equal(reg.schemaIdsList.length, 52);
 });
 
 test('schema registry: unknown schema rejected', () => {
@@ -316,9 +316,9 @@ test('security: independent library instances do not share state', () => {
 test('conformance: manifest totals after the WP-3 registry-digest erratum', () => {
   const runner = new ConformanceRunner();
   const summary = runner.run();
-  assert.equal(summary.total, 587);
-  assert.equal(summary.executed, 587);
-  assert.equal(summary.passed, 587);
+  assert.equal(summary.total, 628);
+  assert.equal(summary.executed, 628);
+  assert.equal(summary.passed, 628);
   assert.equal(summary.failed, 0);
   assert.deepEqual(summary.mismatches, []);
 });

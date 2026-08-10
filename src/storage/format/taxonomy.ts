@@ -1,7 +1,7 @@
 /**
  * WP-8 record taxonomy (contract 6.2; TAX-001…014).
  *
- * Represents the closed 18-class taxonomy with namespace, envelope profile,
+ * Represents the closed 19-class taxonomy with namespace, envelope profile,
  * fixed suffix or layout class, semantic-owner, producer, and
  * lifecycle-effect attributes. Representation never creates decision
  * authority (TAU-010, TAX-002).
@@ -57,7 +57,7 @@ const BASE: Omit<RecordClassProfile, 'id' | 'label' | 'segment' | 'producer'> = 
   retentionClass: 'indefinite',
 };
 
-/** The closed 18-class taxonomy table (contract 6.2). */
+/** The closed 19-class taxonomy table (contract 6.2). */
 export const RECORD_CLASS_PROFILES: readonly RecordClassProfile[] = [
   { ...BASE, id: 'validation-record', label: 'ValidationRecord', segment: 'validation', producer: 'trusted validator' },
   { ...BASE, id: 'approval-record', label: 'ApprovalRecord', segment: 'approval', producer: 'trusted approver' },
@@ -67,6 +67,7 @@ export const RECORD_CLASS_PROFILES: readonly RecordClassProfile[] = [
   { ...BASE, id: 'activation-record', label: 'ActivationRecord', segment: 'activation', producer: 'trusted activation authority' },
   { ...BASE, id: 'execution-occurrence-record', label: 'ExecutionOccurrenceRecord', segment: 'execution-occurrence', producer: 'trusted control plane' },
   { ...BASE, id: 'execution-attempt-record', label: 'ExecutionAttemptRecord', segment: 'execution-attempt', producer: 'trusted execution recorder' },
+  { ...BASE, id: 'execution-outcome-record', label: 'ExecutionOutcomeRecord', segment: 'execution-outcome', producer: 'trusted execution outcome recorder' },
   { ...BASE, id: 'trusted-receipt', label: 'TrustedReceipt', segment: 'trusted-receipt', producer: 'trusted receipt producer' },
   { ...BASE, id: 'result-publication-record', label: 'ResultPublicationRecord', segment: 'result-publication', producer: 'trusted result publisher' },
   { ...BASE, id: 'supersession-record', label: 'SupersessionRecord', segment: 'supersession', producer: 'trusted lifecycle authority' },
@@ -136,7 +137,7 @@ export function recordClassProfile(id: string): RecordClassProfile | undefined {
   return RECORD_CLASS_BY_ID.get(id as RecordClassId);
 }
 
-/** True only for the 18 accepted class identifiers (TAX-010 unknown → fail closed). */
+/** True only for the 19 accepted class identifiers (TAX-010 unknown → fail closed). */
 export function isAcceptedRecordClass(id: string): id is RecordClassId {
   return (RECORD_CLASS_IDS as readonly string[]).includes(id);
 }

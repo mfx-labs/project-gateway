@@ -1,7 +1,9 @@
 /**
- * Semantic rule catalog: all 114 approved rule IDs with stable phases,
+ * Semantic rule catalog: all approved rule IDs with stable phases,
  * categories, enforcement classification, and — where the rule has a real
  * evaluator — an implementation-owned evaluator emitting only its own rule ID.
+ * (The catalog is closed; the authoritative count is derived from the
+ * catalog itself rather than pinned here.)
  *
  * Enforcement classification (implementation-owned, never derived from the
  * conformance manifest):
@@ -348,6 +350,10 @@ def('EXE-006', 'Retry subject stability', 'trusted-lifecycle-verification', 'ACT
 def('EXE-007', 'Point-of-use revalidation', 'point-of-use-eligibility', 'POINT-OF-USE-FAILURE', 'Activation/retry', 'graph');
 def('EXE-008', 'Attempt receipt facts', 'trusted-lifecycle-verification', 'LIFECYCLE-FAILURE', 'Attempt/result', 'graph');
 def('EXE-009', 'Denied reservation has no result', 'trusted-lifecycle-verification', 'ACTIVATION-FAILURE', 'Denial/result publication', 'graph');
+def('EXE-010', 'Outcome cardinality/immutability', 'trusted-lifecycle-verification', 'LIFECYCLE-FAILURE', 'ExecutionOutcomeRecord', 'graph');
+def('EXE-011', 'Observation evidence trust', 'structural-schema-validation', 'STRUCTURAL-SCHEMA-FAILURE', 'ExecutionOutcomeRecord', 'structural');
+def('EXE-012', 'Terminal-unverifiable attempt', 'trusted-lifecycle-verification', 'RECEIPT-CORRELATION-FAILURE', 'Attempt/receipt', 'graph');
+def('EXE-013', 'Outcome/publication consistency', 'trusted-lifecycle-verification', 'RESULT-PUBLICATION-FAILURE', 'ResultPublicationRecord', 'graph');
 
 // --- result publication ----------------------------------------------------------
 def('PUB-001', 'First evaluator association', 'trusted-lifecycle-verification', 'RESULT-PUBLICATION-FAILURE', 'Result publication', 'graph');

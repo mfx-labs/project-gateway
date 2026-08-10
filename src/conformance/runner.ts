@@ -1335,7 +1335,7 @@ export function manifestStats(): { entries: number; inputs: number; schemas: num
   return {
     entries: (CONFORMANCE_MANIFEST as { fixtures: unknown[] }).fixtures.length,
     inputs: Object.keys(CORPUS_INPUTS as Record<string, string>).length,
-    schemas: 51,
+    schemas: 52,
   };
 }
 

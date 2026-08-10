@@ -28,6 +28,8 @@ export {
   isLevelAtLeast,
 } from './api/validate.js';
 export { SchemaRegistry, SchemaRegistryError } from './schema/registry.js';
+export { classifyRetrospectiveEligibility } from './lifecycle/retrospective-eligibility.js';
+export type { RetrospectiveEligibility } from './lifecycle/retrospective-eligibility.js';
 export { ConformanceRunner, manifestStats } from './conformance/runner.js';
 export type { ConformanceSummary, ConformanceMismatch, ConformanceManifestEntry } from './conformance/runner.js';
 export { MemoryIdentityState } from './api/types.js';

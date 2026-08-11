@@ -258,6 +258,52 @@ by this closure). **WP-15 implementation remains NOT AUTHORIZED.** This
 current-state note supersedes the WP-14C contract-baseline note above;
 historical records are preserved.
 
+**Current state (WP-15 contract baseline; recorded with the WP-15
+pre-implementation contract decision):** **WP-13: CLOSED. WP-14:
+CLOSED. WP-14C: CLOSED.** **WP-15 contract: ESTABLISHED** under the
+human-approved WP-15 Architecture + Execution Authorization Envelope
+(`docs/reports/wp-15-pre-implementation-contract-decision.md`):
+TrustedReceipt issuance (F-08 normative owner), receipt/
+publication-correlation authority domains, denied-activation receipt
+schema correction, F-R1 optional/nonblocking, release-readiness
+boundary (RELEASE READY ≠ published/deployed; supported Pi 0.83.0 lane;
+no push/tag/publication/install/deploy without separate human release
+authorization), final hardening/operations/release gate. **WP-15
+implementation: NOT STARTED / NOT AUTHORIZED until the contract
+baseline is committed**; the envelope then pre-authorizes
+implementation through local closure commit. **WP-15 is the final
+roadmap package.** This current-state note supersedes the WP-14C
+closure note above; historical records are preserved.
+
+**Current state (WP-15 contract baseline; recorded with the accepted
+focused rereview under Architecture Amendment A1):** the WP-15
+pre-implementation contract is **BASELINED / ACCEPTED** (docs-only
+contract baseline; `docs/reports/wp-15-pre-implementation-contract-decision.md`).
+**Architecture Amendment A1: HUMAN-APPROVED / ACCEPTED / BASELINED,
+normative** and incorporated (event-type-aware EXE-008 receipt-event verification;
+EXE-012 fail-closed outcome coverage for every attempt-correlated
+retrospective receipt; exactly one trustworthy `ExecutionOutcomeRecord`
+per retrospective-complete terminal attempt with optional
+`result_association` — result-less ≠ outcome-less; retrospective-only
+attempt-related receipts; TrustedReceipt disposition vocabulary
+extension with `incomplete`/`rejected`; denied-activation absent-only
+occurrence/attempt representation with `null` invalid; correlation-
+producer read allowlist and schema-const role attribution (schema role
+≠ capability identity, no WP-13C capability reuse); clean-clone
+authoritative regression excluding superseded untracked WP-13D debris;
+explicit release suite surface incl. `dist-test/tests/process/*`,
+pointofuse-v2, and `dist-test/tests/loading/*`). Review findings
+SCR-WP15-001…006 CLOSED within A1. **Remaining Architecture Decisions:
+NONE.** **At the instant before this baseline commit, WP-15
+implementation had NOT STARTED. WP-15 implementation: AUTHORIZED UNDER
+THE EXISTING EXECUTION ENVELOPE AFTER THIS BASELINE COMMIT.** Next phase:
+**WP-15 Phase 1 — TrustedReceipt schema/rule correction + receipt
+authority core.** The **WP-15 Architecture + Execution Authorization
+Envelope remains ACTIVE**. External release actions remain **NOT
+AUTHORIZED**: no push/tag/publication/install/deploy without separate
+human release authorization. This current-state note supersedes the
+WP-15 contract baseline note above; historical records are preserved.
+
 **WP-8-E (contract §29 phase 4 — audit, registry indexes, and recovery;
 read-only slice) is implemented**: WP-8-D is **closed** at commit
 `23a30b212dbe1f2ffa05e2b69314754730aeb222` (subject `docs: close WP-8-D

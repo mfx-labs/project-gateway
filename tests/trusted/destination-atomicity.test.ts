@@ -169,7 +169,7 @@ test('M: zero resolver calls for failures before the resolver stage', () => {
 
 test('M: conformance total tracks the committed package; schema count remains 52', () => {
   const stats = packageRoot.manifestStats();
-  assert.equal(stats.entries, 628);
+  assert.equal(stats.entries, 636);
   assert.equal(stats.schemas, 52);
 });
 

@@ -348,11 +348,11 @@ def('EXE-004', 'Attempts require accepted occurrence', 'trusted-lifecycle-verifi
 def('EXE-005', 'Ordered retry/allowance', 'trusted-lifecycle-verification', 'ACTIVATION-FAILURE', 'Attempt/retry', 'graph');
 def('EXE-006', 'Retry subject stability', 'trusted-lifecycle-verification', 'ACTIVATION-FAILURE', 'Retry', 'graph');
 def('EXE-007', 'Point-of-use revalidation', 'point-of-use-eligibility', 'POINT-OF-USE-FAILURE', 'Activation/retry', 'graph');
-def('EXE-008', 'Attempt receipt facts', 'trusted-lifecycle-verification', 'LIFECYCLE-FAILURE', 'Attempt/result', 'graph');
+def('EXE-008', 'Attempt receipt facts (event-aware source)', 'trusted-lifecycle-verification', 'LIFECYCLE-FAILURE', 'Attempt/receipt', 'graph');
 def('EXE-009', 'Denied reservation has no result', 'trusted-lifecycle-verification', 'ACTIVATION-FAILURE', 'Denial/result publication', 'graph');
 def('EXE-010', 'Outcome cardinality/immutability', 'trusted-lifecycle-verification', 'LIFECYCLE-FAILURE', 'ExecutionOutcomeRecord', 'graph');
 def('EXE-011', 'Observation evidence trust', 'structural-schema-validation', 'STRUCTURAL-SCHEMA-FAILURE', 'ExecutionOutcomeRecord', 'structural');
-def('EXE-012', 'Terminal-unverifiable attempt', 'trusted-lifecycle-verification', 'RECEIPT-CORRELATION-FAILURE', 'Attempt/receipt', 'graph');
+def('EXE-012', 'Terminal-unverifiable outcome coverage', 'trusted-lifecycle-verification', 'RECEIPT-CORRELATION-FAILURE', 'Attempt/receipt', 'graph');
 def('EXE-013', 'Outcome/publication consistency', 'trusted-lifecycle-verification', 'RESULT-PUBLICATION-FAILURE', 'ResultPublicationRecord', 'graph');
 
 // --- result publication ----------------------------------------------------------

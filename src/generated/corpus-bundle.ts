@@ -15858,36 +15858,6 @@ export const CONFORMANCE_MANIFEST = {
       "normative": true
     },
     {
-      "fixture_id": "LFC-V-62C64CBB",
-      "paths": [
-        "fixtures/lifecycle/valid/receipt-dup-1.json"
-      ],
-      "subject_type": "TrustedReceipt",
-      "validation_phase": "trusted-lifecycle-verification",
-      "expected_result": "pass",
-      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
-      "expected_semantic_rule_ids": [
-        "LFC-001"
-      ],
-      "expected_failure_category": null,
-      "dependencies": [
-        "REG-V-001"
-      ],
-      "registry_snapshot_reference": {
-        "registry_protocol_id": "project-gateway.registry",
-        "registry_snapshot_format_version": "1.0",
-        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
-        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
-        "protocol_compatibility": {
-          "mode": "exact-release",
-          "artifact_protocol_id": "project-gateway.artifact",
-          "artifact_protocol_version": "1.0"
-        }
-      },
-      "notes": "Valid receipt for the duplicate-vector attempt.",
-      "normative": true
-    },
-    {
       "fixture_id": "LFC-I-94A86614",
       "paths": [
         "fixtures/lifecycle/invalid/receipt-orphan-1.json"
@@ -15969,6 +15939,244 @@ export const CONFORMANCE_MANIFEST = {
         }
       },
       "notes": "Receipt eligibility claimed for a terminal-unverifiable attempt fails closed.",
+      "normative": true
+    },
+    {
+      "fixture_id": "1984E10E",
+      "paths": [
+        "fixtures/lifecycle/valid/receipt-denied-activation.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Denied-activation receipt with occurrence_id/attempt_id ABSENT (A1); event-type-aware EXE-008 resolves the ActivationRecord source.",
+      "normative": true
+    },
+    {
+      "fixture_id": "C7AEEA6B",
+      "paths": [
+        "fixtures/lifecycle/valid/receipt-disposition-incomplete.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Outcome-covered attempt-end receipt using the A1 disposition `incomplete` (schema acceptance; no lossy mapping).",
+      "normative": true
+    },
+    {
+      "fixture_id": "CC0A46EB",
+      "paths": [
+        "fixtures/lifecycle/valid/receipt-disposition-rejected.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Outcome-covered attempt-end receipt using the A1 disposition `rejected` (schema acceptance; no lossy mapping).",
+      "normative": true
+    },
+    {
+      "fixture_id": "4179E469",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-denied-null-occurrence.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Denied-activation receipt with occurrence_id: null — null is invalid (A1 absent-only).",
+      "normative": true
+    },
+    {
+      "fixture_id": "7A62D693",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-denied-null-attempt.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Denied-activation receipt with attempt_id: null — null is invalid (A1 absent-only).",
+      "normative": true
+    },
+    {
+      "fixture_id": "DFEFB96C",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-denied-fabricated-ids.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Denied-activation receipt supplying real-looking occurrence/attempt IDs — fabricated identities invalid (A1).",
+      "normative": true
+    },
+    {
+      "fixture_id": "D5021AA3",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-attempt-end-missing-attempt.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Non-denied branch (attempt-end) missing the required attempt context.",
+      "normative": true
+    },
+    {
+      "fixture_id": "E61041EC",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-unsupported-disposition.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Unsupported receipt disposition rejected by the committed vocabulary.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-D79D7043",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-dup-1.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [
+        "EXE-012"
+      ],
+      "expected_failure_category": "RECEIPT-CORRELATION-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Receipt for an attempt with conflicting durable outcome state (two outcome records for the exact attempt) — receipt-ineligible under exact outcome resolution (SIR-WP15-P1A-001).",
       "normative": true
     }
   ]
@@ -16134,7 +16342,13 @@ export const CORPUS_INPUTS: Record<string, string> = {
   "fixtures/lifecycle/invalid/publication-orphan-attempt.json": "ewogICJyZWNvcmRfdHlwZSI6ICJSZXN1bHRQdWJsaWNhdGlvblJlY29yZCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDowYjEwYjEwYjEwYjEwYjEwYjEwYjEwYjEwYjEwYjEwYiIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlc3VsdC1wdWJsaXNoZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJyZXN1bHRfc3ViamVjdCI6IHsKICAgICJwcm90b2NvbF92ZXJzaW9uIjogIjEuMCIsCiAgICAia2luZCI6IHsKICAgICAgImlkIjogIkV4ZWN1dGlvblJlc3VsdCIsCiAgICAgICJ2ZXJzaW9uIjogIjEuMCIKICAgIH0sCiAgICAiaW5zdGFuY2VfaWQiOiAicGd3Omk6OGIxM2ZmMTZlNWUyYWI1NWY5NTQ1Y2UxNzFmZGZiN2MiLAogICAgInJldmlzaW9uX2lkIjogInBndzpyOjY2ZjFjODUzZGVkMGUwZjY3ZDQzOTJkNmM4Yjc5MmZhIiwKICAgICJkaWdlc3QiOiAic2hhLTI1Njo1NTFhMzdhY2IxNTYxMGNlNDlmNGFkMGQyMzc0MzcxMGY1ZjljMWEyOWZlYzQyM2NmNWIwYTQxNGM0NjExNTAwIiwKICAgICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6Y2Y0MzM5YjFmNTY0NDE5MzY0NjdkZWExMzU3ZGMzMGUiCiAgfSwKICAiZXZhbHVhdG9yX3Byb3ZlbmFuY2UiOiB7CiAgICAiZXZhbHVhdG9yX2lkIjogInBndzpldjpmNjZmZTYyNGU0YWU0MDU3Y2E4OWNhZWRmOGRhYWQ0MSIsCiAgICAiY2FwYWJpbGl0eV9wcm9maWxlX2lkIjogInBndzpjcDpjY2JkOGVmZmQ4MzE5MjE0M2NmZTljMzYyY2E3MTU4NCIKICB9LAogICJhc3NvY2lhdGlvbl9tb2RlIjogImFkb3B0ZWQiLAogICJ2YWxpZGF0aW9uX3JlY29yZF9pZCI6ICJwZ3c6bDo1OTVmY2QyOGY5M2IwMzQzN2IyZDhlZmY0ODczYjA2YyIsCiAgImJ1bmRsZSI6IHsKICAgICJ0YXJnZXRfcHJvdG9jb2xfdmVyc2lvbiI6ICIxLjAiLAogICAgInRhcmdldF9raW5kIjogewogICAgICAiaWQiOiAiRXhlY3V0aW9uQnVuZGxlIiwKICAgICAgInZlcnNpb24iOiAiMS4wIgogICAgfSwKICAgICJ0YXJnZXRfaW5zdGFuY2VfaWQiOiAicGd3Omk6MDY0ZWUwY2UyYmRlZWUwMDczYzZkNjRlOTNiOWZiNjAiLAogICAgInRhcmdldF9yZXZpc2lvbl9pZCI6ICJwZ3c6cjpjNTVlNmUyNjAxMzBkYzU4ZDk1YzYwMGVlNTFkYjY1ZCIsCiAgICAidGFyZ2V0X2RpZ2VzdCI6ICJzaGEtMjU2OjlhNTlhNDIwYTA2ZjVlMDBmOTUyOTcwODkxOGEyYjkyODliY2I4MzJhYThhNGM5ODM4ODQ1MjBmNWQ2YmUzZDciLAogICAgInRhcmdldF93b3Jrc3BhY2VfYmluZGluZyI6IHsKICAgICAgIm1vZGUiOiAiYm91bmQiLAogICAgICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIgogICAgfQogIH0sCiAgIndvcmtzcGFjZV9pZCI6ICJwZ3c6dzpjZjQzMzliMWY1NjQ0MTkzNjQ2N2RlYTEzNTdkYzMwZSIsCiAgIm9jY3VycmVuY2VfaWQiOiAicGd3Om86MGIxMGIxMGIxMGIxMGIxMGIxMGIxMGIxMGIxMGIxMGIiLAogICJhdHRlbXB0X2lkIjogInBndzphOjBiMTBiMTBiMTBiMTBiMTBiMTBiMTBiMTBiMTBiMTBiIiwKICAicHVibGljYXRpb25fc2NvcGVzIjogWwogICAgIm9yZGluYXJ5LXJldmlldyIKICBdLAogICJyZWNlaXB0X2NvcnJlbGF0aW9ucyI6IFtdCn0K",
   "fixtures/lifecycle/invalid/publication-privileged-without-receipt.json": "ewogICJyZWNvcmRfdHlwZSI6ICJSZXN1bHRQdWJsaWNhdGlvblJlY29yZCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDo1OGJjZTk4NWQ1MjI4NzM3MzdiNzdmMGVmMDUyZWRlNiIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlc3VsdC1wdWJsaXNoZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJyZXN1bHRfc3ViamVjdCI6IHsKICAgICJwcm90b2NvbF92ZXJzaW9uIjogIjEuMCIsCiAgICAia2luZCI6IHsKICAgICAgImlkIjogIkV4ZWN1dGlvblJlc3VsdCIsCiAgICAgICJ2ZXJzaW9uIjogIjEuMCIKICAgIH0sCiAgICAiaW5zdGFuY2VfaWQiOiAicGd3Omk6OGIxM2ZmMTZlNWUyYWI1NWY5NTQ1Y2UxNzFmZGZiN2MiLAogICAgInJldmlzaW9uX2lkIjogInBndzpyOjY2ZjFjODUzZGVkMGUwZjY3ZDQzOTJkNmM4Yjc5MmZhIiwKICAgICJkaWdlc3QiOiAic2hhLTI1Njo1NTFhMzdhY2IxNTYxMGNlNDlmNGFkMGQyMzc0MzcxMGY1ZjljMWEyOWZlYzQyM2NmNWIwYTQxNGM0NjExNTAwIiwKICAgICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6Y2Y0MzM5YjFmNTY0NDE5MzY0NjdkZWExMzU3ZGMzMGUiCiAgfSwKICAiZXZhbHVhdG9yX3Byb3ZlbmFuY2UiOiB7CiAgICAiZXZhbHVhdG9yX2lkIjogInBndzpldjpmNjZmZTYyNGU0YWU0MDU3Y2E4OWNhZWRmOGRhYWQ0MSIsCiAgICAiY2FwYWJpbGl0eV9wcm9maWxlX2lkIjogInBndzpjcDpjY2JkOGVmZmQ4MzE5MjE0M2NmZTljMzYyY2E3MTU4NCIKICB9LAogICJhc3NvY2lhdGlvbl9tb2RlIjogImFkb3B0ZWQiLAogICJ2YWxpZGF0aW9uX3JlY29yZF9pZCI6ICJwZ3c6bDo1OTVmY2QyOGY5M2IwMzQzN2IyZDhlZmY0ODczYjA2YyIsCiAgImJ1bmRsZSI6IHsKICAgICJ0YXJnZXRfcHJvdG9jb2xfdmVyc2lvbiI6ICIxLjAiLAogICAgInRhcmdldF9raW5kIjogewogICAgICAiaWQiOiAiRXhlY3V0aW9uQnVuZGxlIiwKICAgICAgInZlcnNpb24iOiAiMS4wIgogICAgfSwKICAgICJ0YXJnZXRfaW5zdGFuY2VfaWQiOiAicGd3Omk6MDY0ZWUwY2UyYmRlZWUwMDczYzZkNjRlOTNiOWZiNjAiLAogICAgInRhcmdldF9yZXZpc2lvbl9pZCI6ICJwZ3c6cjpjNTVlNmUyNjAxMzBkYzU4ZDk1YzYwMGVlNTFkYjY1ZCIsCiAgICAidGFyZ2V0X2RpZ2VzdCI6ICJzaGEtMjU2OjlhNTlhNDIwYTA2ZjVlMDBmOTUyOTcwODkxOGEyYjkyODliY2I4MzJhYThhNGM5ODM4ODQ1MjBmNWQ2YmUzZDciLAogICAgInRhcmdldF93b3Jrc3BhY2VfYmluZGluZyI6IHsKICAgICAgIm1vZGUiOiAiYm91bmQiLAogICAgICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIgogICAgfQogIH0sCiAgIndvcmtzcGFjZV9pZCI6ICJwZ3c6dzpjZjQzMzliMWY1NjQ0MTkzNjQ2N2RlYTEzNTdkYzMwZSIsCiAgIm9jY3VycmVuY2VfaWQiOiAicGd3Om86MDdhZmMyMTdkMDk2Y2E1NmJhYThmZTc0NDE2NjdhN2EiLAogICJhdHRlbXB0X2lkIjogInBndzphOmIxNzQ2NmNjMzU5ZDQ1MTIwY2Y5NzdiMWM1MDZhYjgxIiwKICAicHVibGljYXRpb25fc2NvcGVzIjogWwogICAgImF1dGhvcml0YXRpdmUtcmVwb3J0aW5nIiwKICAgICJjb21wbGV0aW9uLXN0YXR1cyIsCiAgICAiZG93bnN0cmVhbS1hdXRvbWF0aW9uIiwKICAgICJvcmRpbmFyeS1yZXZpZXciCiAgXSwKICAicmVjZWlwdF9jb3JyZWxhdGlvbnMiOiBbXQp9Cg==",
   "fixtures/lifecycle/invalid/publication-without-evaluator-provenance.json": "ewogICJyZWNvcmRfdHlwZSI6ICJSZXN1bHRQdWJsaWNhdGlvblJlY29yZCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDo4YWY3YWI0NTc4NTJiMDIwZTBhYWQ2MzUxMzU2YjIzZCIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlc3VsdC1wdWJsaXNoZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJyZXN1bHRfc3ViamVjdCI6IHsKICAgICJwcm90b2NvbF92ZXJzaW9uIjogIjEuMCIsCiAgICAia2luZCI6IHsKICAgICAgImlkIjogIkV4ZWN1dGlvblJlc3VsdCIsCiAgICAgICJ2ZXJzaW9uIjogIjEuMCIKICAgIH0sCiAgICAiaW5zdGFuY2VfaWQiOiAicGd3Omk6OGIxM2ZmMTZlNWUyYWI1NWY5NTQ1Y2UxNzFmZGZiN2MiLAogICAgInJldmlzaW9uX2lkIjogInBndzpyOjY2ZjFjODUzZGVkMGUwZjY3ZDQzOTJkNmM4Yjc5MmZhIiwKICAgICJkaWdlc3QiOiAic2hhLTI1Njo1NTFhMzdhY2IxNTYxMGNlNDlmNGFkMGQyMzc0MzcxMGY1ZjljMWEyOWZlYzQyM2NmNWIwYTQxNGM0NjExNTAwIiwKICAgICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6Y2Y0MzM5YjFmNTY0NDE5MzY0NjdkZWExMzU3ZGMzMGUiCiAgfSwKICAiZXZhbHVhdG9yX3Byb3ZlbmFuY2UiOiB7CiAgICAiZXZhbHVhdG9yX2lkIjogInBndzpldjpmYjhlN2I4MjIwYzA3ZDc4ZDdmYzEzYmZiOTJlNzNlMCIsCiAgICAiY2FwYWJpbGl0eV9wcm9maWxlX2lkIjogInBndzpjcDpjY2JkOGVmZmQ4MzE5MjE0M2NmZTljMzYyY2E3MTU4NCIKICB9LAogICJhc3NvY2lhdGlvbl9tb2RlIjogImFkb3B0ZWQiLAogICJ2YWxpZGF0aW9uX3JlY29yZF9pZCI6ICJwZ3c6bDo1OTVmY2QyOGY5M2IwMzQzN2IyZDhlZmY0ODczYjA2YyIsCiAgImJ1bmRsZSI6IHsKICAgICJ0YXJnZXRfcHJvdG9jb2xfdmVyc2lvbiI6ICIxLjAiLAogICAgInRhcmdldF9raW5kIjogewogICAgICAiaWQiOiAiRXhlY3V0aW9uQnVuZGxlIiwKICAgICAgInZlcnNpb24iOiAiMS4wIgogICAgfSwKICAgICJ0YXJnZXRfaW5zdGFuY2VfaWQiOiAicGd3Omk6MDY0ZWUwY2UyYmRlZWUwMDczYzZkNjRlOTNiOWZiNjAiLAogICAgInRhcmdldF9yZXZpc2lvbl9pZCI6ICJwZ3c6cjpjNTVlNmUyNjAxMzBkYzU4ZDk1YzYwMGVlNTFkYjY1ZCIsCiAgICAidGFyZ2V0X2RpZ2VzdCI6ICJzaGEtMjU2OjlhNTlhNDIwYTA2ZjVlMDBmOTUyOTcwODkxOGEyYjkyODliY2I4MzJhYThhNGM5ODM4ODQ1MjBmNWQ2YmUzZDciLAogICAgInRhcmdldF93b3Jrc3BhY2VfYmluZGluZyI6IHsKICAgICAgIm1vZGUiOiAiYm91bmQiLAogICAgICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIgogICAgfQogIH0sCiAgIndvcmtzcGFjZV9pZCI6ICJwZ3c6dzpjZjQzMzliMWY1NjQ0MTkzNjQ2N2RlYTEzNTdkYzMwZSIsCiAgIm9jY3VycmVuY2VfaWQiOiAicGd3Om86MDdhZmMyMTdkMDk2Y2E1NmJhYThmZTc0NDE2NjdhN2EiLAogICJhdHRlbXB0X2lkIjogInBndzphOmIxNzQ2NmNjMzU5ZDQ1MTIwY2Y5NzdiMWM1MDZhYjgxIiwKICAicHVibGljYXRpb25fc2NvcGVzIjogWwogICAgImF1dGhvcml0YXRpdmUtcmVwb3J0aW5nIiwKICAgICJjb21wbGV0aW9uLXN0YXR1cyIsCiAgICAiZG93bnN0cmVhbS1hdXRvbWF0aW9uIiwKICAgICJvcmRpbmFyeS1yZXZpZXciCiAgXSwKICAicmVjZWlwdF9jb3JyZWxhdGlvbnMiOiBbCiAgICAicGd3Omw6ZDk4ODc5NzM1YWUwZWJlNzA3MjEyM2Y1NWUyY2IwNmEiCiAgXQp9Cg==",
+  "fixtures/lifecycle/invalid/receipt-attempt-end-missing-attempt.json": "ewogICJyZWNvcmRfdHlwZSI6ICJUcnVzdGVkUmVjZWlwdCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDo3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3NyIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlY2VpcHQtcHJvZHVjZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJldmVudF90eXBlIjogImF0dGVtcHQtZW5kIiwKICAiZXZlbnRfcmVjb3JkX2lkIjogInBndzpsOjE4OTM4MDQzM2JlMjc2OWUxNTYyMzY4Mjg5NWE1YWNkIiwKICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIiwKICAiZGlzcG9zaXRpb24iOiAiY29tcGxldGVkIiwKICAib2NjdXJyZW5jZV9pZCI6ICJwZ3c6bzowN2FmYzIxN2QwOTZjYTU2YmFhOGZlNzQ0MTY2N2E3YSIKfQo=",
+  "fixtures/lifecycle/invalid/receipt-denied-fabricated-ids.json": "ewogICJyZWNvcmRfdHlwZSI6ICJUcnVzdGVkUmVjZWlwdCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDo2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NiIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlY2VpcHQtcHJvZHVjZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJldmVudF90eXBlIjogImFjdGl2YXRpb24tZGVjaXNpb24iLAogICJldmVudF9yZWNvcmRfaWQiOiAicGd3Omw6OGIwOWY5MTk0Y2IxNDYzMjJkMWM3NWUzYmVjMGU5MDgiLAogICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6Y2Y0MzM5YjFmNTY0NDE5MzY0NjdkZWExMzU3ZGMzMGUiLAogICJkaXNwb3NpdGlvbiI6ICJkZW5pZWQiLAogICJvY2N1cnJlbmNlX2lkIjogInBndzpvOjA3YWZjMjE3ZDA5NmNhNTZiYWE4ZmU3NDQxNjY3YTdhIiwKICAiYXR0ZW1wdF9pZCI6ICJwZ3c6YTpiMTc0NjZjYzM1OWQ0NTEyMGNmOTc3YjFjNTA2YWI4MSIKfQo=",
+  "fixtures/lifecycle/invalid/receipt-denied-null-attempt.json": "ewogICJyZWNvcmRfdHlwZSI6ICJUcnVzdGVkUmVjZWlwdCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDo1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NSIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlY2VpcHQtcHJvZHVjZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJldmVudF90eXBlIjogImFjdGl2YXRpb24tZGVjaXNpb24iLAogICJldmVudF9yZWNvcmRfaWQiOiAicGd3Omw6OGIwOWY5MTk0Y2IxNDYzMjJkMWM3NWUzYmVjMGU5MDgiLAogICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6Y2Y0MzM5YjFmNTY0NDE5MzY0NjdkZWExMzU3ZGMzMGUiLAogICJkaXNwb3NpdGlvbiI6ICJkZW5pZWQiLAogICJhdHRlbXB0X2lkIjogbnVsbAp9Cg==",
+  "fixtures/lifecycle/invalid/receipt-denied-null-occurrence.json": "ewogICJyZWNvcmRfdHlwZSI6ICJUcnVzdGVkUmVjZWlwdCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDo0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NCIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlY2VpcHQtcHJvZHVjZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJldmVudF90eXBlIjogImFjdGl2YXRpb24tZGVjaXNpb24iLAogICJldmVudF9yZWNvcmRfaWQiOiAicGd3Omw6OGIwOWY5MTk0Y2IxNDYzMjJkMWM3NWUzYmVjMGU5MDgiLAogICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6Y2Y0MzM5YjFmNTY0NDE5MzY0NjdkZWExMzU3ZGMzMGUiLAogICJkaXNwb3NpdGlvbiI6ICJkZW5pZWQiLAogICJvY2N1cnJlbmNlX2lkIjogbnVsbAp9Cg==",
+  "fixtures/lifecycle/invalid/receipt-dup-1.json": "ewogICJyZWNvcmRfdHlwZSI6ICJUcnVzdGVkUmVjZWlwdCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDowZTkwZTkwZTkwZTkwZTkwZTkwZTkwZTkwZTkwZTkwZSIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlY2VpcHQtcHJvZHVjZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJldmVudF90eXBlIjogImF0dGVtcHQtZW5kIiwKICAiZXZlbnRfcmVjb3JkX2lkIjogInBndzpsOjBlODBlODBlODBlODBlODBlODBlODBlODBlODBlODBlIiwKICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIiwKICAib2NjdXJyZW5jZV9pZCI6ICJwZ3c6bzowZTUwZTUwZTUwZTUwZTUwZTUwZTUwZTUwZTUwZTUwZSIsCiAgImF0dGVtcHRfaWQiOiAicGd3OmE6MGU4MGU4MGU4MGU4MGU4MGU4MGU4MGU4MGU4MGU4MGUiLAogICJkaXNwb3NpdGlvbiI6ICJjb21wbGV0ZWQiCn0K",
   "fixtures/lifecycle/invalid/receipt-orphan-1.json": "ewogICJyZWNvcmRfdHlwZSI6ICJUcnVzdGVkUmVjZWlwdCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDowZWEwZWEwZWEwZWEwZWEwZWEwZWEwZWEwZWEwZWEwZSIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlY2VpcHQtcHJvZHVjZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJldmVudF90eXBlIjogImF0dGVtcHQtZW5kIiwKICAiZXZlbnRfcmVjb3JkX2lkIjogInBndzpsOjBlMTBlMTBlMTBlMTBlMTBlMTBlMTBlMTBlMTBlMTBlIiwKICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIiwKICAib2NjdXJyZW5jZV9pZCI6ICJwZ3c6bzowZTUwZTUwZTUwZTUwZTUwZTUwZTUwZTUwZTUwZTUwZSIsCiAgImF0dGVtcHRfaWQiOiAicGd3OmE6MGUxMGUxMGUxMGUxMGUxMGUxMGUxMGUxMGUxMGUxMGUiLAogICJkaXNwb3NpdGlvbiI6ICJjb21wbGV0ZWQiCn0K",
+  "fixtures/lifecycle/invalid/receipt-unsupported-disposition.json": "ewogICJyZWNvcmRfdHlwZSI6ICJUcnVzdGVkUmVjZWlwdCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDo4ODg4ODg4ODg4ODg4ODg4ODg4ODg4ODg4ODg4ODg4OCIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlY2VpcHQtcHJvZHVjZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJldmVudF90eXBlIjogImF0dGVtcHQtZW5kIiwKICAiZXZlbnRfcmVjb3JkX2lkIjogInBndzpsOjE4OTM4MDQzM2JlMjc2OWUxNTYyMzY4Mjg5NWE1YWNkIiwKICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIiwKICAiZGlzcG9zaXRpb24iOiAiZXhwaXJlZCIsCiAgIm9jY3VycmVuY2VfaWQiOiAicGd3Om86MDdhZmMyMTdkMDk2Y2E1NmJhYThmZTc0NDE2NjdhN2EiLAogICJhdHRlbXB0X2lkIjogInBndzphOmIxNzQ2NmNjMzU5ZDQ1MTIwY2Y5NzdiMWM1MDZhYjgxIgp9Cg==",
   "fixtures/lifecycle/invalid/retry-beyond-grant-allowance.json": "ewogICJyZWNvcmRfdHlwZSI6ICJFeGVjdXRpb25BdHRlbXB0UmVjb3JkIiwKICAicmVjb3JkX2lkIjogInBndzpsOmZkOWM0MmQ1NzZmODliNWExYTMxNGJhZGRiMjY0ZTczIiwKICAiY3JlYXRlZF9hdCI6ICIyMDI2LTA4LTA0VDA2OjAxOjAwLjAwMFoiLAogICJyZXNwb25zaWJsZV9yb2xlIjogInRydXN0ZWQtZXhlY3V0aW9uLXJlY29yZGVyIiwKICAicmVnaXN0cnlfc25hcHNob3RfcmVmZXJlbmNlIjogewogICAgInJlZ2lzdHJ5X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5yZWdpc3RyeSIsCiAgICAicmVnaXN0cnlfc25hcHNob3RfZm9ybWF0X3ZlcnNpb24iOiAiMS4wIiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9pZCI6ICJwZ3c6ZzozZmI1MWExMWYyYjIzYmE4YzE3MTMyNmNiYmE3ZWI2NCIsCiAgICAicmVnaXN0cnlfc25hcHNob3RfZGlnZXN0IjogInNoYS0yNTY6NjEzMTEyNjEyZWU3ODAzZGIwMGM2ZTUxODI2YjNhNjNlZTZjZTY3MzJiMTdjOWIwOWFlOGFmZjAwZGI0N2MwNSIsCiAgICAicHJvdG9jb2xfY29tcGF0aWJpbGl0eSI6IHsKICAgICAgIm1vZGUiOiAiZXhhY3QtcmVsZWFzZSIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF9pZCI6ICJwcm9qZWN0LWdhdGV3YXkuYXJ0aWZhY3QiLAogICAgICAiYXJ0aWZhY3RfcHJvdG9jb2xfdmVyc2lvbiI6ICIxLjAiCiAgICB9CiAgfSwKICAiYWN0aXZhdGlvbl9yZWNvcmRfaWQiOiAicGd3Omw6MjJmYzA0ODE4YzMyNjQyOTkzY2JhNTFkYjgxNDZiMjYiLAogICJvY2N1cnJlbmNlX2lkIjogInBndzpvOjA3YWZjMjE3ZDA5NmNhNTZiYWE4ZmU3NDQxNjY3YTdhIiwKICAiYXR0ZW1wdF9pZCI6ICJwZ3c6YTo4YjRiMmZmMmRiYWExZGUzZTMzMTRhOTY0YmZiMDRjMCIsCiAgIm9yZGluYWwiOiAzLAogICJidW5kbGUiOiB7CiAgICAidGFyZ2V0X3Byb3RvY29sX3ZlcnNpb24iOiAiMS4wIiwKICAgICJ0YXJnZXRfa2luZCI6IHsKICAgICAgImlkIjogIkV4ZWN1dGlvbkJ1bmRsZSIsCiAgICAgICJ2ZXJzaW9uIjogIjEuMCIKICAgIH0sCiAgICAidGFyZ2V0X2luc3RhbmNlX2lkIjogInBndzppOjA2NGVlMGNlMmJkZWVlMDA3M2M2ZDY0ZTkzYjlmYjYwIiwKICAgICJ0YXJnZXRfcmV2aXNpb25faWQiOiAicGd3OnI6YzU1ZTZlMjYwMTMwZGM1OGQ5NWM2MDBlZTUxZGI2NWQiLAogICAgInRhcmdldF9kaWdlc3QiOiAic2hhLTI1Njo5YTU5YTQyMGEwNmY1ZTAwZjk1Mjk3MDg5MThhMmI5Mjg5YmNiODMyYWE4YTRjOTgzODg0NTIwZjVkNmJlM2Q3IiwKICAgICJ0YXJnZXRfd29ya3NwYWNlX2JpbmRpbmciOiB7CiAgICAgICJtb2RlIjogImJvdW5kIiwKICAgICAgIndvcmtzcGFjZV9pZCI6ICJwZ3c6dzpjZjQzMzliMWY1NjQ0MTkzNjQ2N2RlYTEzNTdkYzMwZSIKICAgIH0KICB9LAogICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6Y2Y0MzM5YjFmNTY0NDE5MzY0NjdkZWExMzU3ZGMzMGUiLAogICJydW50aW1lX2dyYW50X2lkIjogInBndzpsOmU4ODViMzZjZjFkMGM0MTYyMjFlNDdkZDRhZDcxZDBlIgp9Cg==",
   "fixtures/lifecycle/invalid/retry-changing-bundle.json": "ewogICJyZWNvcmRfdHlwZSI6ICJFeGVjdXRpb25BdHRlbXB0UmVjb3JkIiwKICAicmVjb3JkX2lkIjogInBndzpsOjYzZjg4ODlmOTNhMDlmZGNkYjMwZGY1OTU1Y2E3ODBmIiwKICAiY3JlYXRlZF9hdCI6ICIyMDI2LTA4LTA0VDA2OjAxOjAwLjAwMFoiLAogICJyZXNwb25zaWJsZV9yb2xlIjogInRydXN0ZWQtZXhlY3V0aW9uLXJlY29yZGVyIiwKICAicmVnaXN0cnlfc25hcHNob3RfcmVmZXJlbmNlIjogewogICAgInJlZ2lzdHJ5X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5yZWdpc3RyeSIsCiAgICAicmVnaXN0cnlfc25hcHNob3RfZm9ybWF0X3ZlcnNpb24iOiAiMS4wIiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9pZCI6ICJwZ3c6ZzozZmI1MWExMWYyYjIzYmE4YzE3MTMyNmNiYmE3ZWI2NCIsCiAgICAicmVnaXN0cnlfc25hcHNob3RfZGlnZXN0IjogInNoYS0yNTY6NjEzMTEyNjEyZWU3ODAzZGIwMGM2ZTUxODI2YjNhNjNlZTZjZTY3MzJiMTdjOWIwOWFlOGFmZjAwZGI0N2MwNSIsCiAgICAicHJvdG9jb2xfY29tcGF0aWJpbGl0eSI6IHsKICAgICAgIm1vZGUiOiAiZXhhY3QtcmVsZWFzZSIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF9pZCI6ICJwcm9qZWN0LWdhdGV3YXkuYXJ0aWZhY3QiLAogICAgICAiYXJ0aWZhY3RfcHJvdG9jb2xfdmVyc2lvbiI6ICIxLjAiCiAgICB9CiAgfSwKICAiYWN0aXZhdGlvbl9yZWNvcmRfaWQiOiAicGd3Omw6MjJmYzA0ODE4YzMyNjQyOTkzY2JhNTFkYjgxNDZiMjYiLAogICJvY2N1cnJlbmNlX2lkIjogInBndzpvOjA3YWZjMjE3ZDA5NmNhNTZiYWE4ZmU3NDQxNjY3YTdhIiwKICAiYXR0ZW1wdF9pZCI6ICJwZ3c6YTo4MDNlMDBlYzMxOTg1YzU1NDkxMjJhYWQ2ZWE5MjJkYyIsCiAgIm9yZGluYWwiOiAyLAogICJidW5kbGUiOiB7CiAgICAidGFyZ2V0X3Byb3RvY29sX3ZlcnNpb24iOiAiMS4wIiwKICAgICJ0YXJnZXRfa2luZCI6IHsKICAgICAgImlkIjogIkV4ZWN1dGlvbkJ1bmRsZSIsCiAgICAgICJ2ZXJzaW9uIjogIjEuMCIKICAgIH0sCiAgICAidGFyZ2V0X2luc3RhbmNlX2lkIjogInBndzppOjA2NGVlMGNlMmJkZWVlMDA3M2M2ZDY0ZTkzYjlmYjYwIiwKICAgICJ0YXJnZXRfcmV2aXNpb25faWQiOiAicGd3OnI6MDllOWM2YWJhZWMwNzcxOTM3ZjM3ZDg5YjZiZjU5MmYiLAogICAgInRhcmdldF9kaWdlc3QiOiAic2hhLTI1NjpiOGY4ZmJiOWU3ZjIwMmFkMzM4MWEwYzllZDJiMzU3MDM3ZTdjMGIzY2VjMWYzYzA3ZWUyMzRkNmMyMjQ2MmFmIiwKICAgICJ0YXJnZXRfd29ya3NwYWNlX2JpbmRpbmciOiB7CiAgICAgICJtb2RlIjogImJvdW5kIiwKICAgICAgIndvcmtzcGFjZV9pZCI6ICJwZ3c6dzpjZjQzMzliMWY1NjQ0MTkzNjQ2N2RlYTEzNTdkYzMwZSIKICAgIH0KICB9LAogICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6Y2Y0MzM5YjFmNTY0NDE5MzY0NjdkZWExMzU3ZGMzMGUiLAogICJydW50aW1lX2dyYW50X2lkIjogInBndzpsOmU4ODViMzZjZjFkMGM0MTYyMjFlNDdkZDRhZDcxZDBlIgp9Cg==",
   "fixtures/lifecycle/invalid/retry-changing-workspace.json": "ewogICJyZWNvcmRfdHlwZSI6ICJFeGVjdXRpb25BdHRlbXB0UmVjb3JkIiwKICAicmVjb3JkX2lkIjogInBndzpsOmRmZjcxOGQ4NWZlNDFlZWVhYWE2MzE0NWQ1NTgxZjRmIiwKICAiY3JlYXRlZF9hdCI6ICIyMDI2LTA4LTA0VDA2OjAxOjAwLjAwMFoiLAogICJyZXNwb25zaWJsZV9yb2xlIjogInRydXN0ZWQtZXhlY3V0aW9uLXJlY29yZGVyIiwKICAicmVnaXN0cnlfc25hcHNob3RfcmVmZXJlbmNlIjogewogICAgInJlZ2lzdHJ5X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5yZWdpc3RyeSIsCiAgICAicmVnaXN0cnlfc25hcHNob3RfZm9ybWF0X3ZlcnNpb24iOiAiMS4wIiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9pZCI6ICJwZ3c6ZzozZmI1MWExMWYyYjIzYmE4YzE3MTMyNmNiYmE3ZWI2NCIsCiAgICAicmVnaXN0cnlfc25hcHNob3RfZGlnZXN0IjogInNoYS0yNTY6NjEzMTEyNjEyZWU3ODAzZGIwMGM2ZTUxODI2YjNhNjNlZTZjZTY3MzJiMTdjOWIwOWFlOGFmZjAwZGI0N2MwNSIsCiAgICAicHJvdG9jb2xfY29tcGF0aWJpbGl0eSI6IHsKICAgICAgIm1vZGUiOiAiZXhhY3QtcmVsZWFzZSIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF9pZCI6ICJwcm9qZWN0LWdhdGV3YXkuYXJ0aWZhY3QiLAogICAgICAiYXJ0aWZhY3RfcHJvdG9jb2xfdmVyc2lvbiI6ICIxLjAiCiAgICB9CiAgfSwKICAiYWN0aXZhdGlvbl9yZWNvcmRfaWQiOiAicGd3Omw6MjJmYzA0ODE4YzMyNjQyOTkzY2JhNTFkYjgxNDZiMjYiLAogICJvY2N1cnJlbmNlX2lkIjogInBndzpvOjA3YWZjMjE3ZDA5NmNhNTZiYWE4ZmU3NDQxNjY3YTdhIiwKICAiYXR0ZW1wdF9pZCI6ICJwZ3c6YTo4MDNlMDBlYzMxOTg1YzU1NDkxMjJhYWQ2ZWE5MjJkYyIsCiAgIm9yZGluYWwiOiAyLAogICJidW5kbGUiOiB7CiAgICAidGFyZ2V0X3Byb3RvY29sX3ZlcnNpb24iOiAiMS4wIiwKICAgICJ0YXJnZXRfa2luZCI6IHsKICAgICAgImlkIjogIkV4ZWN1dGlvbkJ1bmRsZSIsCiAgICAgICJ2ZXJzaW9uIjogIjEuMCIKICAgIH0sCiAgICAidGFyZ2V0X2luc3RhbmNlX2lkIjogInBndzppOjA2NGVlMGNlMmJkZWVlMDA3M2M2ZDY0ZTkzYjlmYjYwIiwKICAgICJ0YXJnZXRfcmV2aXNpb25faWQiOiAicGd3OnI6YzU1ZTZlMjYwMTMwZGM1OGQ5NWM2MDBlZTUxZGI2NWQiLAogICAgInRhcmdldF9kaWdlc3QiOiAic2hhLTI1Njo5YTU5YTQyMGEwNmY1ZTAwZjk1Mjk3MDg5MThhMmI5Mjg5YmNiODMyYWE4YTRjOTgzODg0NTIwZjVkNmJlM2Q3IiwKICAgICJ0YXJnZXRfd29ya3NwYWNlX2JpbmRpbmciOiB7CiAgICAgICJtb2RlIjogImJvdW5kIiwKICAgICAgIndvcmtzcGFjZV9pZCI6ICJwZ3c6dzpjZjQzMzliMWY1NjQ0MTkzNjQ2N2RlYTEzNTdkYzMwZSIKICAgIH0KICB9LAogICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6NWQ3MjY5MTU2NmE1M2UzZTNiYTU1NjQ3NmZiNGY3NzIiLAogICJydW50aW1lX2dyYW50X2lkIjogInBndzpsOmU4ODViMzZjZjFkMGM0MTYyMjFlNDdkZDRhZDcxZDBlIgp9Cg==",
@@ -16166,7 +16380,9 @@ export const CORPUS_INPUTS: Record<string, string> = {
   "fixtures/lifecycle/valid/outcome-main-2.json": "ewogICJyZWNvcmRfdHlwZSI6ICJFeGVjdXRpb25PdXRjb21lUmVjb3JkIiwKICAicmVjb3JkX2lkIjogInBndzpsOjBhMmIyYzNkNGU1ZjYwNzE4MjkzYTRiNWM2ZDdlOGY5IiwKICAiY3JlYXRlZF9hdCI6ICIyMDI2LTA4LTA0VDA2OjAxOjAwLjAwMFoiLAogICJyZXNwb25zaWJsZV9yb2xlIjogInRydXN0ZWQtZXhlY3V0aW9uLW91dGNvbWUtcmVjb3JkZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6Y2Y0MzM5YjFmNTY0NDE5MzY0NjdkZWExMzU3ZGMzMGUiLAogICJidW5kbGUiOiB7CiAgICAidGFyZ2V0X3Byb3RvY29sX3ZlcnNpb24iOiAiMS4wIiwKICAgICJ0YXJnZXRfa2luZCI6IHsKICAgICAgImlkIjogIkV4ZWN1dGlvbkJ1bmRsZSIsCiAgICAgICJ2ZXJzaW9uIjogIjEuMCIKICAgIH0sCiAgICAidGFyZ2V0X2luc3RhbmNlX2lkIjogInBndzppOjA2NGVlMGNlMmJkZWVlMDA3M2M2ZDY0ZTkzYjlmYjYwIiwKICAgICJ0YXJnZXRfcmV2aXNpb25faWQiOiAicGd3OnI6YzU1ZTZlMjYwMTMwZGM1OGQ5NWM2MDBlZTUxZGI2NWQiLAogICAgInRhcmdldF9kaWdlc3QiOiAic2hhLTI1Njo5YTU5YTQyMGEwNmY1ZTAwZjk1Mjk3MDg5MThhMmI5Mjg5YmNiODMyYWE4YTRjOTgzODg0NTIwZjVkNmJlM2Q3IiwKICAgICJ0YXJnZXRfd29ya3NwYWNlX2JpbmRpbmciOiB7CiAgICAgICJtb2RlIjogImJvdW5kIiwKICAgICAgIndvcmtzcGFjZV9pZCI6ICJwZ3c6dzpjZjQzMzliMWY1NjQ0MTkzNjQ2N2RlYTEzNTdkYzMwZSIKICAgIH0KICB9LAogICJvY2N1cnJlbmNlX2lkIjogInBndzpvOjA3YWZjMjE3ZDA5NmNhNTZiYWE4ZmU3NDQxNjY3YTdhIiwKICAiYXR0ZW1wdF9pZCI6ICJwZ3c6YTo4MDNlMDBlYzMxOTg1YzU1NDkxMjJhYWQ2ZWE5MjJkYyIsCiAgIm9yZGluYWwiOiAyLAogICJleGVjdXRpb25fYXR0ZW1wdF9yZWNvcmRfaWQiOiAicGd3Omw6MmExNTlmMWE1YjMwMGYwN2RkNGY4ZmI0ZWU3YzllYjciLAogICJkaXNwb3NpdGlvbiI6ICJjb21wbGV0ZWQiLAogICJvYnNlcnZhdGlvbl9ldmlkZW5jZSI6IHsKICAgICJraW5kIjogImV4dGVybmFsLWV2aWRlbmNlIiwKICAgICJldmlkZW5jZV9pZCI6ICJwZ3c6ZTowMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsCiAgICAiY29udGVudF9kaWdlc3QiOiAic2hhLTI1NjozMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzIiwKICAgICJkZWNsYXJlZF9tZWRpYV90eXBlIjogImFwcGxpY2F0aW9uL2pzb24iLAogICAgIm9ic2VydmF0aW9uX3JvbGUiOiAiZXZhbHVhdGlvbi1ldmlkZW5jZSIKICB9Cn0K",
   "fixtures/lifecycle/valid/receipt-attempt-1.json": "ewogICJyZWNvcmRfdHlwZSI6ICJUcnVzdGVkUmVjZWlwdCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDpkOTg4Nzk3MzVhZTBlYmU3MDcyMTIzZjU1ZTJjYjA2YSIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlY2VpcHQtcHJvZHVjZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJldmVudF90eXBlIjogImF0dGVtcHQtZW5kIiwKICAiZXZlbnRfcmVjb3JkX2lkIjogInBndzpsOjE4OTM4MDQzM2JlMjc2OWUxNTYyMzY4Mjg5NWE1YWNkIiwKICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIiwKICAib2NjdXJyZW5jZV9pZCI6ICJwZ3c6bzowN2FmYzIxN2QwOTZjYTU2YmFhOGZlNzQ0MTY2N2E3YSIsCiAgImF0dGVtcHRfaWQiOiAicGd3OmE6YjE3NDY2Y2MzNTlkNDUxMjBjZjk3N2IxYzUwNmFiODEiLAogICJkaXNwb3NpdGlvbiI6ICJjb21wbGV0ZWQiCn0K",
   "fixtures/lifecycle/valid/receipt-attempt-2.json": "ewogICJyZWNvcmRfdHlwZSI6ICJUcnVzdGVkUmVjZWlwdCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDo5YTM5ODUzNmVjNDdjZWZiNzViODcyMTdlMjk4MTcwNSIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlY2VpcHQtcHJvZHVjZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJldmVudF90eXBlIjogImF0dGVtcHQtZW5kIiwKICAiZXZlbnRfcmVjb3JkX2lkIjogInBndzpsOjJhMTU5ZjFhNWIzMDBmMDdkZDRmOGZiNGVlN2M5ZWI3IiwKICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIiwKICAib2NjdXJyZW5jZV9pZCI6ICJwZ3c6bzowN2FmYzIxN2QwOTZjYTU2YmFhOGZlNzQ0MTY2N2E3YSIsCiAgImF0dGVtcHRfaWQiOiAicGd3OmE6ODAzZTAwZWMzMTk4NWM1NTQ5MTIyYWFkNmVhOTIyZGMiLAogICJkaXNwb3NpdGlvbiI6ICJjb21wbGV0ZWQiCn0K",
-  "fixtures/lifecycle/valid/receipt-dup-1.json": "ewogICJyZWNvcmRfdHlwZSI6ICJUcnVzdGVkUmVjZWlwdCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDowZTkwZTkwZTkwZTkwZTkwZTkwZTkwZTkwZTkwZTkwZSIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlY2VpcHQtcHJvZHVjZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJldmVudF90eXBlIjogImF0dGVtcHQtZW5kIiwKICAiZXZlbnRfcmVjb3JkX2lkIjogInBndzpsOjBlODBlODBlODBlODBlODBlODBlODBlODBlODBlODBlIiwKICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIiwKICAib2NjdXJyZW5jZV9pZCI6ICJwZ3c6bzowZTUwZTUwZTUwZTUwZTUwZTUwZTUwZTUwZTUwZTUwZSIsCiAgImF0dGVtcHRfaWQiOiAicGd3OmE6MGU4MGU4MGU4MGU4MGU4MGU4MGU4MGU4MGU4MGU4MGUiLAogICJkaXNwb3NpdGlvbiI6ICJjb21wbGV0ZWQiCn0K",
+  "fixtures/lifecycle/valid/receipt-denied-activation.json": "ewogICJyZWNvcmRfdHlwZSI6ICJUcnVzdGVkUmVjZWlwdCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDoxMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMSIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlY2VpcHQtcHJvZHVjZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJldmVudF90eXBlIjogImFjdGl2YXRpb24tZGVjaXNpb24iLAogICJldmVudF9yZWNvcmRfaWQiOiAicGd3Omw6OGIwOWY5MTk0Y2IxNDYzMjJkMWM3NWUzYmVjMGU5MDgiLAogICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6Y2Y0MzM5YjFmNTY0NDE5MzY0NjdkZWExMzU3ZGMzMGUiLAogICJkaXNwb3NpdGlvbiI6ICJkZW5pZWQiCn0K",
+  "fixtures/lifecycle/valid/receipt-disposition-incomplete.json": "ewogICJyZWNvcmRfdHlwZSI6ICJUcnVzdGVkUmVjZWlwdCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDoyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMiIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlY2VpcHQtcHJvZHVjZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJldmVudF90eXBlIjogImF0dGVtcHQtZW5kIiwKICAiZXZlbnRfcmVjb3JkX2lkIjogInBndzpsOjE4OTM4MDQzM2JlMjc2OWUxNTYyMzY4Mjg5NWE1YWNkIiwKICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIiwKICAiZGlzcG9zaXRpb24iOiAiaW5jb21wbGV0ZSIsCiAgIm9jY3VycmVuY2VfaWQiOiAicGd3Om86MDdhZmMyMTdkMDk2Y2E1NmJhYThmZTc0NDE2NjdhN2EiLAogICJhdHRlbXB0X2lkIjogInBndzphOmIxNzQ2NmNjMzU5ZDQ1MTIwY2Y5NzdiMWM1MDZhYjgxIgp9Cg==",
+  "fixtures/lifecycle/valid/receipt-disposition-rejected.json": "ewogICJyZWNvcmRfdHlwZSI6ICJUcnVzdGVkUmVjZWlwdCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDozMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMyIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlY2VpcHQtcHJvZHVjZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJldmVudF90eXBlIjogImF0dGVtcHQtZW5kIiwKICAiZXZlbnRfcmVjb3JkX2lkIjogInBndzpsOjE4OTM4MDQzM2JlMjc2OWUxNTYyMzY4Mjg5NWE1YWNkIiwKICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIiwKICAiZGlzcG9zaXRpb24iOiAicmVqZWN0ZWQiLAogICJvY2N1cnJlbmNlX2lkIjogInBndzpvOjA3YWZjMjE3ZDA5NmNhNTZiYWE4ZmU3NDQxNjY3YTdhIiwKICAiYXR0ZW1wdF9pZCI6ICJwZ3c6YTpiMTc0NjZjYzM1OWQ0NTEyMGNmOTc3YjFjNTA2YWI4MSIKfQo=",
   "fixtures/lifecycle/valid/result-publication-main.json": "ewogICJyZWNvcmRfdHlwZSI6ICJSZXN1bHRQdWJsaWNhdGlvblJlY29yZCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDowZjg2NTYxOTQ1ZmQ3ODhjYjcxOWYyZDViOGU4MWNjZCIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlc3VsdC1wdWJsaXNoZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJyZXN1bHRfc3ViamVjdCI6IHsKICAgICJwcm90b2NvbF92ZXJzaW9uIjogIjEuMCIsCiAgICAia2luZCI6IHsKICAgICAgImlkIjogIkV4ZWN1dGlvblJlc3VsdCIsCiAgICAgICJ2ZXJzaW9uIjogIjEuMCIKICAgIH0sCiAgICAiaW5zdGFuY2VfaWQiOiAicGd3Omk6OGIxM2ZmMTZlNWUyYWI1NWY5NTQ1Y2UxNzFmZGZiN2MiLAogICAgInJldmlzaW9uX2lkIjogInBndzpyOjY2ZjFjODUzZGVkMGUwZjY3ZDQzOTJkNmM4Yjc5MmZhIiwKICAgICJkaWdlc3QiOiAic2hhLTI1Njo1NTFhMzdhY2IxNTYxMGNlNDlmNGFkMGQyMzc0MzcxMGY1ZjljMWEyOWZlYzQyM2NmNWIwYTQxNGM0NjExNTAwIiwKICAgICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6Y2Y0MzM5YjFmNTY0NDE5MzY0NjdkZWExMzU3ZGMzMGUiCiAgfSwKICAiZXZhbHVhdG9yX3Byb3ZlbmFuY2UiOiB7CiAgICAiZXZhbHVhdG9yX2lkIjogInBndzpldjpmNjZmZTYyNGU0YWU0MDU3Y2E4OWNhZWRmOGRhYWQ0MSIsCiAgICAiY2FwYWJpbGl0eV9wcm9maWxlX2lkIjogInBndzpjcDpjY2JkOGVmZmQ4MzE5MjE0M2NmZTljMzYyY2E3MTU4NCIKICB9LAogICJhc3NvY2lhdGlvbl9tb2RlIjogImFkb3B0ZWQiLAogICJ2YWxpZGF0aW9uX3JlY29yZF9pZCI6ICJwZ3c6bDo1OTVmY2QyOGY5M2IwMzQzN2IyZDhlZmY0ODczYjA2YyIsCiAgImJ1bmRsZSI6IHsKICAgICJ0YXJnZXRfcHJvdG9jb2xfdmVyc2lvbiI6ICIxLjAiLAogICAgInRhcmdldF9raW5kIjogewogICAgICAiaWQiOiAiRXhlY3V0aW9uQnVuZGxlIiwKICAgICAgInZlcnNpb24iOiAiMS4wIgogICAgfSwKICAgICJ0YXJnZXRfaW5zdGFuY2VfaWQiOiAicGd3Omk6MDY0ZWUwY2UyYmRlZWUwMDczYzZkNjRlOTNiOWZiNjAiLAogICAgInRhcmdldF9yZXZpc2lvbl9pZCI6ICJwZ3c6cjpjNTVlNmUyNjAxMzBkYzU4ZDk1YzYwMGVlNTFkYjY1ZCIsCiAgICAidGFyZ2V0X2RpZ2VzdCI6ICJzaGEtMjU2OjlhNTlhNDIwYTA2ZjVlMDBmOTUyOTcwODkxOGEyYjkyODliY2I4MzJhYThhNGM5ODM4ODQ1MjBmNWQ2YmUzZDciLAogICAgInRhcmdldF93b3Jrc3BhY2VfYmluZGluZyI6IHsKICAgICAgIm1vZGUiOiAiYm91bmQiLAogICAgICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIgogICAgfQogIH0sCiAgIndvcmtzcGFjZV9pZCI6ICJwZ3c6dzpjZjQzMzliMWY1NjQ0MTkzNjQ2N2RlYTEzNTdkYzMwZSIsCiAgIm9jY3VycmVuY2VfaWQiOiAicGd3Om86MDdhZmMyMTdkMDk2Y2E1NmJhYThmZTc0NDE2NjdhN2EiLAogICJhdHRlbXB0X2lkIjogInBndzphOmIxNzQ2NmNjMzU5ZDQ1MTIwY2Y5NzdiMWM1MDZhYjgxIiwKICAicHVibGljYXRpb25fc2NvcGVzIjogWwogICAgImF1dGhvcml0YXRpdmUtcmVwb3J0aW5nIiwKICAgICJjb21wbGV0aW9uLXN0YXR1cyIsCiAgICAiZG93bnN0cmVhbS1hdXRvbWF0aW9uIiwKICAgICJvcmRpbmFyeS1yZXZpZXciCiAgXSwKICAicmVjZWlwdF9jb3JyZWxhdGlvbnMiOiBbCiAgICAicGd3Omw6ZDk4ODc5NzM1YWUwZWJlNzA3MjEyM2Y1NWUyY2IwNmEiCiAgXQp9Cg==",
   "fixtures/lifecycle/valid/result-publication-replay.json": "ewogICJyZWNvcmRfdHlwZSI6ICJSZXN1bHRQdWJsaWNhdGlvblJlY29yZCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDowYTNiMmMzZDRlNWY2MDcxODI5M2E0YjVjNmQ3ZThmOSIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlc3VsdC1wdWJsaXNoZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJyZXN1bHRfc3ViamVjdCI6IHsKICAgICJwcm90b2NvbF92ZXJzaW9uIjogIjEuMCIsCiAgICAia2luZCI6IHsKICAgICAgImlkIjogIkV4ZWN1dGlvblJlc3VsdCIsCiAgICAgICJ2ZXJzaW9uIjogIjEuMCIKICAgIH0sCiAgICAiaW5zdGFuY2VfaWQiOiAicGd3Omk6OGIxM2ZmMTZlNWUyYWI1NWY5NTQ1Y2UxNzFmZGZiN2MiLAogICAgInJldmlzaW9uX2lkIjogInBndzpyOjY2ZjFjODUzZGVkMGUwZjY3ZDQzOTJkNmM4Yjc5MmZhIiwKICAgICJkaWdlc3QiOiAic2hhLTI1Njo1NTFhMzdhY2IxNTYxMGNlNDlmNGFkMGQyMzc0MzcxMGY1ZjljMWEyOWZlYzQyM2NmNWIwYTQxNGM0NjExNTAwIiwKICAgICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6Y2Y0MzM5YjFmNTY0NDE5MzY0NjdkZWExMzU3ZGMzMGUiCiAgfSwKICAiZXZhbHVhdG9yX3Byb3ZlbmFuY2UiOiB7CiAgICAiZXZhbHVhdG9yX2lkIjogInBndzpldjpmNjZmZTYyNGU0YWU0MDU3Y2E4OWNhZWRmOGRhYWQ0MSIsCiAgICAiY2FwYWJpbGl0eV9wcm9maWxlX2lkIjogInBndzpjcDpjY2JkOGVmZmQ4MzE5MjE0M2NmZTljMzYyY2E3MTU4NCIKICB9LAogICJhc3NvY2lhdGlvbl9tb2RlIjogImFkb3B0ZWQiLAogICJ2YWxpZGF0aW9uX3JlY29yZF9pZCI6ICJwZ3c6bDo1OTVmY2QyOGY5M2IwMzQzN2IyZDhlZmY0ODczYjA2YyIsCiAgImJ1bmRsZSI6IHsKICAgICJ0YXJnZXRfcHJvdG9jb2xfdmVyc2lvbiI6ICIxLjAiLAogICAgInRhcmdldF9raW5kIjogewogICAgICAiaWQiOiAiRXhlY3V0aW9uQnVuZGxlIiwKICAgICAgInZlcnNpb24iOiAiMS4wIgogICAgfSwKICAgICJ0YXJnZXRfaW5zdGFuY2VfaWQiOiAicGd3Omk6MDY0ZWUwY2UyYmRlZWUwMDczYzZkNjRlOTNiOWZiNjAiLAogICAgInRhcmdldF9yZXZpc2lvbl9pZCI6ICJwZ3c6cjpjNTVlNmUyNjAxMzBkYzU4ZDk1YzYwMGVlNTFkYjY1ZCIsCiAgICAidGFyZ2V0X2RpZ2VzdCI6ICJzaGEtMjU2OjlhNTlhNDIwYTA2ZjVlMDBmOTUyOTcwODkxOGEyYjkyODliY2I4MzJhYThhNGM5ODM4ODQ1MjBmNWQ2YmUzZDciLAogICAgInRhcmdldF93b3Jrc3BhY2VfYmluZGluZyI6IHsKICAgICAgIm1vZGUiOiAiYm91bmQiLAogICAgICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIgogICAgfQogIH0sCiAgIndvcmtzcGFjZV9pZCI6ICJwZ3c6dzpjZjQzMzliMWY1NjQ0MTkzNjQ2N2RlYTEzNTdkYzMwZSIsCiAgIm9jY3VycmVuY2VfaWQiOiAicGd3Om86MDdhZmMyMTdkMDk2Y2E1NmJhYThmZTc0NDE2NjdhN2EiLAogICJhdHRlbXB0X2lkIjogInBndzphOmIxNzQ2NmNjMzU5ZDQ1MTIwY2Y5NzdiMWM1MDZhYjgxIiwKICAicHVibGljYXRpb25fc2NvcGVzIjogWwogICAgIm9yZGluYXJ5LXJldmlldyIKICBdLAogICJyZWNlaXB0X2NvcnJlbGF0aW9ucyI6IFtdCn0K",
   "fixtures/lifecycle/valid/result-publication-successor.json": "ewogICJyZWNvcmRfdHlwZSI6ICJSZXN1bHRQdWJsaWNhdGlvblJlY29yZCIsCiAgInJlY29yZF9pZCI6ICJwZ3c6bDpiYmU3YTQ2YWNlNzVkMzkxOTdjODNiNjgzZjc2N2EwZiIsCiAgImNyZWF0ZWRfYXQiOiAiMjAyNi0wOC0wNFQwNjowMTowMC4wMDBaIiwKICAicmVzcG9uc2libGVfcm9sZSI6ICJ0cnVzdGVkLXJlc3VsdC1wdWJsaXNoZXIiLAogICJyZWdpc3RyeV9zbmFwc2hvdF9yZWZlcmVuY2UiOiB7CiAgICAicmVnaXN0cnlfcHJvdG9jb2xfaWQiOiAicHJvamVjdC1nYXRld2F5LnJlZ2lzdHJ5IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9mb3JtYXRfdmVyc2lvbiI6ICIxLjAiLAogICAgInJlZ2lzdHJ5X3NuYXBzaG90X2lkIjogInBndzpnOjNmYjUxYTExZjJiMjNiYThjMTcxMzI2Y2JiYTdlYjY0IiwKICAgICJyZWdpc3RyeV9zbmFwc2hvdF9kaWdlc3QiOiAic2hhLTI1Njo2MTMxMTI2MTJlZTc4MDNkYjAwYzZlNTE4MjZiM2E2M2VlNmNlNjczMmIxN2M5YjA5YWU4YWZmMDBkYjQ3YzA1IiwKICAgICJwcm90b2NvbF9jb21wYXRpYmlsaXR5IjogewogICAgICAibW9kZSI6ICJleGFjdC1yZWxlYXNlIiwKICAgICAgImFydGlmYWN0X3Byb3RvY29sX2lkIjogInByb2plY3QtZ2F0ZXdheS5hcnRpZmFjdCIsCiAgICAgICJhcnRpZmFjdF9wcm90b2NvbF92ZXJzaW9uIjogIjEuMCIKICAgIH0KICB9LAogICJyZXN1bHRfc3ViamVjdCI6IHsKICAgICJwcm90b2NvbF92ZXJzaW9uIjogIjEuMCIsCiAgICAia2luZCI6IHsKICAgICAgImlkIjogIkV4ZWN1dGlvblJlc3VsdCIsCiAgICAgICJ2ZXJzaW9uIjogIjEuMCIKICAgIH0sCiAgICAiaW5zdGFuY2VfaWQiOiAicGd3Omk6OGIxM2ZmMTZlNWUyYWI1NWY5NTQ1Y2UxNzFmZGZiN2MiLAogICAgInJldmlzaW9uX2lkIjogInBndzpyOjU1MjI3Yjk1ZWE1YWY1ZDYzMzg5MGI1NjFmNDEwMTkyIiwKICAgICJkaWdlc3QiOiAic2hhLTI1NjphZTBiMjAyYzk2YzBkOGIwODJjNjlmYzU5MjdiMWRlYzhiYjFhZjM0NGYxMzc4NTgwNmZhOWVkNzgzNzQwMGY4IiwKICAgICJ3b3Jrc3BhY2VfaWQiOiAicGd3Onc6Y2Y0MzM5YjFmNTY0NDE5MzY0NjdkZWExMzU3ZGMzMGUiCiAgfSwKICAiZXZhbHVhdG9yX3Byb3ZlbmFuY2UiOiB7CiAgICAiZXZhbHVhdG9yX2lkIjogInBndzpldjpmNjZmZTYyNGU0YWU0MDU3Y2E4OWNhZWRmOGRhYWQ0MSIsCiAgICAiY2FwYWJpbGl0eV9wcm9maWxlX2lkIjogInBndzpjcDpjY2JkOGVmZmQ4MzE5MjE0M2NmZTljMzYyY2E3MTU4NCIKICB9LAogICJhc3NvY2lhdGlvbl9tb2RlIjogImFkb3B0ZWQiLAogICJ2YWxpZGF0aW9uX3JlY29yZF9pZCI6ICJwZ3c6bDo1ZDkwZWQ4Y2YwMTJlNzM1YjRhOTU4NmY5ZjBiOGRhNCIsCiAgImJ1bmRsZSI6IHsKICAgICJ0YXJnZXRfcHJvdG9jb2xfdmVyc2lvbiI6ICIxLjAiLAogICAgInRhcmdldF9raW5kIjogewogICAgICAiaWQiOiAiRXhlY3V0aW9uQnVuZGxlIiwKICAgICAgInZlcnNpb24iOiAiMS4wIgogICAgfSwKICAgICJ0YXJnZXRfaW5zdGFuY2VfaWQiOiAicGd3Omk6MDY0ZWUwY2UyYmRlZWUwMDczYzZkNjRlOTNiOWZiNjAiLAogICAgInRhcmdldF9yZXZpc2lvbl9pZCI6ICJwZ3c6cjpjNTVlNmUyNjAxMzBkYzU4ZDk1YzYwMGVlNTFkYjY1ZCIsCiAgICAidGFyZ2V0X2RpZ2VzdCI6ICJzaGEtMjU2OjlhNTlhNDIwYTA2ZjVlMDBmOTUyOTcwODkxOGEyYjkyODliY2I4MzJhYThhNGM5ODM4ODQ1MjBmNWQ2YmUzZDciLAogICAgInRhcmdldF93b3Jrc3BhY2VfYmluZGluZyI6IHsKICAgICAgIm1vZGUiOiAiYm91bmQiLAogICAgICAid29ya3NwYWNlX2lkIjogInBndzp3OmNmNDMzOWIxZjU2NDQxOTM2NDY3ZGVhMTM1N2RjMzBlIgogICAgfQogIH0sCiAgIndvcmtzcGFjZV9pZCI6ICJwZ3c6dzpjZjQzMzliMWY1NjQ0MTkzNjQ2N2RlYTEzNTdkYzMwZSIsCiAgIm9jY3VycmVuY2VfaWQiOiAicGd3Om86MDdhZmMyMTdkMDk2Y2E1NmJhYThmZTc0NDE2NjdhN2EiLAogICJhdHRlbXB0X2lkIjogInBndzphOmIxNzQ2NmNjMzU5ZDQ1MTIwY2Y5NzdiMWM1MDZhYjgxIiwKICAicHVibGljYXRpb25fc2NvcGVzIjogWwogICAgIm9yZGluYXJ5LXJldmlldyIKICBdLAogICJyZWNlaXB0X2NvcnJlbGF0aW9ucyI6IFtdCn0K",

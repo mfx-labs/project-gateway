@@ -3996,8 +3996,6 @@ export const SCHEMA_DOCUMENTS: Record<string, unknown> = {
       "event_type",
       "event_record_id",
       "workspace_id",
-      "occurrence_id",
-      "attempt_id",
       "disposition"
     ],
     "properties": {
@@ -4064,9 +4062,47 @@ export const SCHEMA_DOCUMENTS: Record<string, unknown> = {
           "failed",
           "cancelled",
           "timed-out",
-          "crashed"
+          "crashed",
+          "incomplete",
+          "rejected"
         ]
       }
+    },
+    "if": {
+      "properties": {
+        "event_type": {
+          "const": "activation-decision"
+        },
+        "disposition": {
+          "const": "denied"
+        }
+      },
+      "required": [
+        "event_type",
+        "disposition"
+      ]
+    },
+    "then": {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "occurrence_id"
+            ]
+          },
+          {
+            "required": [
+              "attempt_id"
+            ]
+          }
+        ]
+      }
+    },
+    "else": {
+      "required": [
+        "occurrence_id",
+        "attempt_id"
+      ]
     },
     "unevaluatedProperties": false
   },

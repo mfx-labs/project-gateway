@@ -21,6 +21,15 @@
  * S3 does NOT derive ExecutionRetrospectiveFacts (S4), does NOT issue
  * receipts (WP-15), does NOT publish results (WP-13C), and implements NO
  * recovery/resume protocol.
+ *
+ * A1 (WP-15 Phase 1A) eligibility: the validated-result handoff is OPTIONAL
+ * — a retrospectively trustworthy terminal attempt receives exactly one
+ * `ExecutionOutcomeRecord` even when no `ExecutionResult` exists (legitimate
+ * result-less terminal attempt): `result_association` stays absent, no
+ * result is ever fabricated, and every committed disposition (completed,
+ * failed, cancelled, timed-out, crashed, incomplete, rejected) is durable
+ * without lossy mapping. No new authority domain; the existing
+ * `trusted-execution-outcome-recorder` capability/provenance is unchanged.
  */
 import { jcsSerialize } from '../canonical/jcs.js';
 import { validateCanonicalInput } from '../canonical/input.js';

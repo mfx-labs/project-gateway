@@ -7,6 +7,12 @@
 import { mk, type Finding } from '../internal/report.js';
 import type { AcceptedRegistryContext } from '../api/types.js';
 import { bundleReferencesEqual } from '../internal/protocol-equality.js';
+import {
+  ATTEMPT_CORRELATED_RECEIPT_EVENTS,
+  qualifyReceiptForAttempt,
+  receiptEventDispositionOk,
+  resolveExactOutcome,
+} from './retrospective-eligibility.js';
 
 export interface LifecycleGraphInput {
   /** All records available to the graph (entry records plus caller state). */
@@ -83,6 +89,99 @@ function at(phase: string, category: string, ruleIds: string[], key: string, msg
     subjectIdentity: subjectId,
     location,
   });
+}
+
+// ─── WP-15 Phase 1A — event-type-aware receipt verification (A1) ───────────
+
+/**
+ * The exact trusted source class defined for each receipt event type
+ * (contract §3.2). `cancellation` has the two pinned branches
+ * (occurrence-level and attempt-level); every other event type has exactly
+ * one source class. Unknown event types return `undefined` (fail closed).
+ * The attempt-correlated set and the event/disposition mapping live in
+ * `retrospective-eligibility.ts` (single authoritative definitions).
+ */
+function receiptEventSourceClass(eventType: string): string | 'occurrence-or-attempt' | undefined {
+  switch (eventType) {
+    case 'activation-decision':
+      return 'ActivationRecord';
+    case 'occurrence-start':
+      return 'ExecutionOccurrenceRecord';
+    case 'attempt-start':
+    case 'attempt-end':
+    case 'enforcement-denial':
+    case 'timeout':
+    case 'crash':
+      return 'ExecutionAttemptRecord';
+    case 'cancellation':
+      return 'occurrence-or-attempt';
+    case 'result-publication-correlation':
+      return 'ResultPublicationRecord';
+    default:
+      return undefined;
+  }
+}
+
+function receiptSourceClassMatches(required: string | 'occurrence-or-attempt' | undefined, eventClass: string): boolean {
+  if (required === undefined) return false;
+  if (required === 'occurrence-or-attempt') {
+    return eventClass === 'ExecutionOccurrenceRecord' || eventClass === 'ExecutionAttemptRecord';
+  }
+  return required === eventClass;
+}
+
+/**
+ * Exact receipt ↔ source-record binding per event type (contract §3.2/§3.3).
+ * Event-source validity (class + bindings) and retrospective eligibility
+ * (outcome coverage) stay separate checks; this helper is the former.
+ */
+function receiptSourceBindingOk(
+  r: Readonly<Record<string, unknown>>,
+  event: Readonly<Record<string, unknown>>,
+): { readonly ok: true } | { readonly ok: false; readonly message: string } {
+  const eventType = str(r, 'event_type');
+  const eventClass = str(event, 'record_type');
+  if (str(r, 'workspace_id') !== str(event, 'workspace_id')) {
+    return { ok: false, message: 'receipt workspace does not match its event source record' };
+  }
+  const hasOccurrence = r['occurrence_id'] !== undefined && r['occurrence_id'] !== null && str(r, 'occurrence_id') !== '';
+  const hasAttempt = r['attempt_id'] !== undefined && r['attempt_id'] !== null && str(r, 'attempt_id') !== '';
+  if (eventType === 'activation-decision') {
+    if (str(event, 'decision') === 'denied') {
+      // A1: occurrence_id/attempt_id MUST be ABSENT on a denied-activation
+      // receipt — any presence (null, empty string, fabricated ID) is invalid.
+      if (r['occurrence_id'] !== undefined) return { ok: false, message: 'a denied-activation receipt must not carry an occurrence' };
+      if (r['attempt_id'] !== undefined) return { ok: false, message: 'a denied-activation receipt must not carry an attempt' };
+      return { ok: true };
+    }
+    // accepted: the exact reserved/created occurrence identity per committed
+    // lifecycle semantics; an attempt is never bound (activation acceptance
+    // precedes attempt creation).
+    if (str(r, 'occurrence_id') !== str(event, 'reserved_occurrence_id')) {
+      return { ok: false, message: 'an accepted-activation receipt must bind the exact reserved occurrence' };
+    }
+    if (hasAttempt) return { ok: false, message: 'an activation-decision receipt must not bind an attempt' };
+    return { ok: true };
+  }
+  if (eventClass === 'ExecutionOccurrenceRecord') {
+    // occurrence-level branch (occurrence-start; occurrence-level cancellation)
+    if (str(r, 'occurrence_id') !== str(event, 'occurrence_id')) {
+      return { ok: false, message: 'an occurrence-level receipt must bind the exact occurrence of its source record' };
+    }
+    if (hasAttempt) return { ok: false, message: 'an occurrence-level receipt must not bind an attempt' };
+    return { ok: true };
+  }
+  // attempt-level branch (attempt events; attempt-level cancellation) and
+  // result-publication-correlation (the publication binds the exact attempt
+  // context): the receipt must bind the exact occurrence/attempt of its
+  // source record.
+  if (str(r, 'occurrence_id') !== str(event, 'occurrence_id')) {
+    return { ok: false, message: 'an attempt receipt must bind the exact occurrence of its source record' };
+  }
+  if (str(r, 'attempt_id') !== str(event, 'attempt_id')) {
+    return { ok: false, message: 'an attempt receipt must bind the exact attempt of its source record' };
+  }
+  return { ok: true };
 }
 
 /**
@@ -274,11 +373,21 @@ export function evaluateLifecycleGraph(input: LifecycleGraphInput): Finding[] {
         emitFor(r, ['EXE-006'], 'lifecycle.retry-substitution', 'a retry substitutes bundle, workspace, occurrence, or grant', 'ACTIVATION-FAILURE', '/bundle');
       }
     }
-    // receipt facts (EXE-008): receipts for the attempt must exist when attempts are evaluated
+    // receipt facts (EXE-008, A1): the obligation applies ONLY to
+    // retrospective-complete attempts (exactly one exact-bound trustworthy
+    // ExecutionOutcomeRecord — shared resolver), and is satisfied ONLY by a
+    // semantically qualifying receipt for the exact attempt
+    // (SIR-WP15-P1A-002: qualification is a pure predicate independent of
+    // finding emission/entry filtering; receipt presence by attempt_id alone
+    // is never sufficient). A terminal-unverifiable attempt carries NO
+    // receipt obligation; conflicting/malformed outcome state fails closed
+    // and never demands a receipt.
     const receipts = index.byType.get('TrustedReceipt') ?? [];
-    const hasReceipt = receipts.some((t) => str(t, 'attempt_id') === str(r, 'attempt_id'));
-    if (!hasReceipt) {
-      emitFor(r, ['EXE-008'], 'lifecycle.attempt-receipt-facts', 'attempt has no trusted receipt facts', 'LIFECYCLE-FAILURE', '/attempt_id');
+    if (resolveExactOutcome(r, outcomes).kind === 'exactly-one-valid') {
+      const qualifying = receipts.some((t) => qualifyReceiptForAttempt(t, r, outcomes));
+      if (!qualifying) {
+        emitFor(r, ['EXE-008'], 'lifecycle.attempt-receipt-facts', 'retrospective-complete attempt has no qualifying trusted receipt facts', 'LIFECYCLE-FAILURE', '/attempt_id');
+      }
     }
   }
 
@@ -314,27 +423,100 @@ export function evaluateLifecycleGraph(input: LifecycleGraphInput): Finding[] {
     }
   }
 
-  // ---- receipts
+  // ---- receipts (EXE-008 event-type-aware source validity + event/disposition
+  //      consistency; EXE-012 exact outcome coverage; A1 + SIR-WP15-P1A-001/003)
   for (const r of index.byType.get('TrustedReceipt') ?? []) {
-    const event = index.byId.get(str(r, 'event_record_id'));
-    if (!event || str(event, 'record_type') !== 'ExecutionAttemptRecord') {
-      emitFor(r, ['EXE-008'], 'lifecycle.receipt-event', 'receipt does not correlate to an attempt record', 'LIFECYCLE-FAILURE', '/event_record_id');
+    const eventType = str(r, 'event_type');
+    const requiredClass = receiptEventSourceClass(eventType);
+    if (requiredClass === undefined) {
+      emitFor(r, ['EXE-008'], 'lifecycle.receipt-event', 'receipt event type is not in the committed vocabulary', 'LIFECYCLE-FAILURE', '/event_type');
       continue;
     }
-    // EXE-012 (retrospective eligibility): a receipt correlated to an attempt
-    // with no trustworthy outcome record claims retrospective facts for a
-    // `terminal-unverifiable` attempt. Absence of an outcome record is a
-    // VALID durable lifecycle state (execution in progress, crash, or
-    // post-recording failure); only the receipt claim is invalid.
-    const covered = outcomes.some(
-      (o) =>
-        str(o, 'workspace_id') === str(r, 'workspace_id') &&
-        str(o, 'occurrence_id') === str(r, 'occurrence_id') &&
-        str(o, 'attempt_id') === str(r, 'attempt_id') &&
-        bundleReferencesEqual(o['bundle'], event['bundle']),
-    );
-    if (!covered) {
-      emitFor(r, ['EXE-012'], 'lifecycle.receipt-orphan', 'receipt correlates to an attempt without a trustworthy outcome record (terminal-unverifiable)', 'RECEIPT-CORRELATION-FAILURE', '/attempt_id');
+    // Event-source validity (A1): event_record_id MUST resolve to the exact
+    // trusted source class defined for the receipt event type. There is no
+    // hidden universal "event_record_id must be an ExecutionAttemptRecord"
+    // assumption; source-class mismatch fails closed.
+    const event = index.byId.get(str(r, 'event_record_id'));
+    if (!event || !receiptSourceClassMatches(requiredClass, str(event, 'record_type'))) {
+      emitFor(r, ['EXE-008'], 'lifecycle.receipt-event', 'receipt event source does not match the class defined for its event type', 'LIFECYCLE-FAILURE', '/event_record_id');
+      continue;
+    }
+    const binding = receiptSourceBindingOk(r, event);
+    if (!binding.ok) {
+      emitFor(r, ['EXE-008'], 'lifecycle.receipt-event-bindings', binding.message, 'LIFECYCLE-FAILURE', '/event_record_id');
+      continue;
+    }
+    // Retrospective eligibility (EXE-012): attempt-correlated retrospective
+    // receipts require EXACTLY ONE exact-bound trustworthy
+    // ExecutionOutcomeRecord (shared resolver: workspace, occurrence,
+    // attempt, bundle identity, execution_attempt_record_id anchor, ordinal
+    // binding). Zero → terminal-unverifiable/receipt-ineligible; more than
+    // one → conflicting durable state; one misanchored candidate → malformed
+    // state — all fail closed. Absence of an outcome record is a VALID
+    // durable lifecycle state; only the receipt claim is invalid.
+    const attemptCorrelated =
+      ATTEMPT_CORRELATED_RECEIPT_EVENTS.has(eventType) ||
+      (eventType === 'cancellation' && str(event, 'record_type') === 'ExecutionAttemptRecord');
+    if (attemptCorrelated) {
+      const resolution = resolveExactOutcome(event, outcomes);
+      if (resolution.kind === 'none') {
+        emitFor(r, ['EXE-012'], 'lifecycle.receipt-orphan', 'receipt correlates to an attempt without a trustworthy outcome record (terminal-unverifiable)', 'RECEIPT-CORRELATION-FAILURE', '/attempt_id');
+        continue;
+      }
+      if (resolution.kind !== 'exactly-one-valid') {
+        emitFor(r, ['EXE-012'], 'lifecycle.receipt-outcome-invalid', 'receipt correlates to an attempt with conflicting or malformed outcome state', 'RECEIPT-CORRELATION-FAILURE', '/attempt_id');
+        continue;
+      }
+      // event/disposition consistency (SIR-WP15-P1A-003): source state and the
+      // exact resolved outcome disposition must agree with the receipt
+      // disposition; enforcement-denial requires rejected + enforcement
+      // evidence; attempt-end must equal the outcome disposition exactly.
+      if (!receiptEventDispositionOk(eventType, str(r, 'disposition'), event, resolution.outcome)) {
+        emitFor(r, ['EXE-008'], 'lifecycle.receipt-event-disposition', 'receipt disposition does not match the event/outcome semantics for its event type', 'LIFECYCLE-FAILURE', '/disposition');
+      }
+    } else if (eventType === 'result-publication-correlation') {
+      // result-publication-correlation (SIR-WP15-P1A-001 §13): the exact
+      // attempt anchor for the publication context must resolve uniquely and
+      // carry exactly one exact anchor-bound outcome; the outcome's
+      // result_association must then match the publication's result subject
+      // exactly. Duplicate or misanchored outcomes fail closed. The receipt's
+      // event source is the ResultPublicationRecord itself (no circular
+      // receipt proof — successor correlation is Phase 2).
+      const publication = event;
+      const publicationContext = attempts.filter(
+        (a) =>
+          str(a, 'workspace_id') === str(publication, 'workspace_id') &&
+          str(a, 'occurrence_id') === str(publication, 'occurrence_id') &&
+          str(a, 'attempt_id') === str(publication, 'attempt_id') &&
+          bundleReferencesEqual(a['bundle'], publication['bundle']),
+      );
+      let correlationExact = false;
+      if (publicationContext.length === 1) {
+        const resolution = resolveExactOutcome(publicationContext[0]!, outcomes);
+        if (resolution.kind === 'exactly-one-valid') {
+          const association = resolution.outcome['result_association'] as Record<string, unknown> | undefined;
+          const resultSubject = publication['result_subject'] as Record<string, unknown> | undefined;
+          correlationExact =
+            association !== undefined &&
+            resultSubject !== undefined &&
+            str(association, 'instance_id') === str(resultSubject, 'instance_id') &&
+            str(association, 'revision_digest') === str(resultSubject, 'digest') &&
+            str(association, 'association_mode') === str(publication, 'association_mode') &&
+            str(association, 'validation_record_id') === str(publication, 'validation_record_id');
+        }
+      }
+      if (!correlationExact) {
+        emitFor(r, ['EXE-012'], 'lifecycle.receipt-publication-invalid', 'receipt correlates to a publication without an exact trustworthy outcome result association', 'RECEIPT-CORRELATION-FAILURE', '/event_record_id');
+        continue;
+      }
+      if (!receiptEventDispositionOk(eventType, str(r, 'disposition'), publication, undefined)) {
+        emitFor(r, ['EXE-008'], 'lifecycle.receipt-event-disposition', 'receipt disposition does not match the event/outcome semantics for its event type', 'LIFECYCLE-FAILURE', '/disposition');
+      }
+    } else if (!receiptEventDispositionOk(eventType, str(r, 'disposition'), event, undefined)) {
+      // occurrence-level receipts (activation-decision, occurrence-start,
+      // occurrence-level cancellation): event/disposition consistency against
+      // the source record's authoritative state.
+      emitFor(r, ['EXE-008'], 'lifecycle.receipt-event-disposition', 'receipt disposition does not match the event/outcome semantics for its event type', 'LIFECYCLE-FAILURE', '/disposition');
     }
   }
 

@@ -203,9 +203,10 @@ test('s1: EXE-012 — attempt without outcome is VALID lifecycle state; eligibil
   assert.equal(classifyRetrospectiveEligibility(GRAPH_ATTEMPT, []), 'terminal-unverifiable');
   // with a correlated outcome record the attempt is a retrospective-complete candidate
   assert.equal(classifyRetrospectiveEligibility(GRAPH_ATTEMPT, [validOutcome()]), 'retrospective-complete');
-  // an outcome bound to a different attempt never classifies this attempt
+  // An anchor-linked outcome with a divergent tuple is malformed durable
+  // state, not an unrelated no-outcome attempt.
   const other = validOutcome({ attempt_id: 'pgw:a:0f10f10f10f10f10f10f10f10f10f10f' });
-  assert.equal(classifyRetrospectiveEligibility(GRAPH_ATTEMPT, [other]), 'terminal-unverifiable');
+  assert.equal(classifyRetrospectiveEligibility(GRAPH_ATTEMPT, [other]), 'conflict');
 });
 
 test('s1: EXE-012 — receipt claiming eligibility for a terminal-unverifiable attempt fails closed', () => {

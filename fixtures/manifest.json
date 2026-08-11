@@ -15856,36 +15856,6 @@
       "normative": true
     },
     {
-      "fixture_id": "LFC-V-62C64CBB",
-      "paths": [
-        "fixtures/lifecycle/valid/receipt-dup-1.json"
-      ],
-      "subject_type": "TrustedReceipt",
-      "validation_phase": "trusted-lifecycle-verification",
-      "expected_result": "pass",
-      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
-      "expected_semantic_rule_ids": [
-        "LFC-001"
-      ],
-      "expected_failure_category": null,
-      "dependencies": [
-        "REG-V-001"
-      ],
-      "registry_snapshot_reference": {
-        "registry_protocol_id": "project-gateway.registry",
-        "registry_snapshot_format_version": "1.0",
-        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
-        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
-        "protocol_compatibility": {
-          "mode": "exact-release",
-          "artifact_protocol_id": "project-gateway.artifact",
-          "artifact_protocol_version": "1.0"
-        }
-      },
-      "notes": "Valid receipt for the duplicate-vector attempt.",
-      "normative": true
-    },
-    {
       "fixture_id": "LFC-I-94A86614",
       "paths": [
         "fixtures/lifecycle/invalid/receipt-orphan-1.json"
@@ -15967,6 +15937,244 @@
         }
       },
       "notes": "Receipt eligibility claimed for a terminal-unverifiable attempt fails closed.",
+      "normative": true
+    },
+    {
+      "fixture_id": "1984E10E",
+      "paths": [
+        "fixtures/lifecycle/valid/receipt-denied-activation.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Denied-activation receipt with occurrence_id/attempt_id ABSENT (A1); event-type-aware EXE-008 resolves the ActivationRecord source.",
+      "normative": true
+    },
+    {
+      "fixture_id": "C7AEEA6B",
+      "paths": [
+        "fixtures/lifecycle/valid/receipt-disposition-incomplete.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Outcome-covered attempt-end receipt using the A1 disposition `incomplete` (schema acceptance; no lossy mapping).",
+      "normative": true
+    },
+    {
+      "fixture_id": "CC0A46EB",
+      "paths": [
+        "fixtures/lifecycle/valid/receipt-disposition-rejected.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Outcome-covered attempt-end receipt using the A1 disposition `rejected` (schema acceptance; no lossy mapping).",
+      "normative": true
+    },
+    {
+      "fixture_id": "4179E469",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-denied-null-occurrence.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Denied-activation receipt with occurrence_id: null \u2014 null is invalid (A1 absent-only).",
+      "normative": true
+    },
+    {
+      "fixture_id": "7A62D693",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-denied-null-attempt.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Denied-activation receipt with attempt_id: null \u2014 null is invalid (A1 absent-only).",
+      "normative": true
+    },
+    {
+      "fixture_id": "DFEFB96C",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-denied-fabricated-ids.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Denied-activation receipt supplying real-looking occurrence/attempt IDs \u2014 fabricated identities invalid (A1).",
+      "normative": true
+    },
+    {
+      "fixture_id": "D5021AA3",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-attempt-end-missing-attempt.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Non-denied branch (attempt-end) missing the required attempt context.",
+      "normative": true
+    },
+    {
+      "fixture_id": "E61041EC",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-unsupported-disposition.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "structural-schema-validation",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": "STRUCTURAL-SCHEMA-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Unsupported receipt disposition rejected by the committed vocabulary.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-I-D79D7043",
+      "paths": [
+        "fixtures/lifecycle/invalid/receipt-dup-1.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "fail",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [
+        "EXE-012"
+      ],
+      "expected_failure_category": "RECEIPT-CORRELATION-FAILURE",
+      "dependencies": [],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Receipt for an attempt with conflicting durable outcome state (two outcome records for the exact attempt) \u2014 receipt-ineligible under exact outcome resolution (SIR-WP15-P1A-001).",
       "normative": true
     }
   ]

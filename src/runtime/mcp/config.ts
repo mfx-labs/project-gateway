@@ -55,6 +55,24 @@ export interface SurfaceConfig {
   readonly configurationVersion: string;
   /** Optional limit-profile overrides merged onto the repository defaults. */
   readonly limitProfile: Readonly<Record<string, number>>;
+  /**
+   * Optional WP-14A workspace lanes (controlled proposal persistence +
+   * changed-context inspection). Absent/empty → the WP-14A tools exist but
+   * return the typed `unsupported` outcome for this surface.
+   */
+  readonly workspaces?: readonly SurfaceWorkspaceConfig[];
+  /** Optional Git binary path for the changed-context lane (default `/usr/bin/git`). */
+  readonly gitPath?: string;
+}
+
+/** One operator-configured workspace lane entry (WP-14A). */
+export interface SurfaceWorkspaceConfig {
+  /** Opaque workspace identifier (e.g. `pgw:w:<32-hex>`). */
+  readonly workspaceId: string;
+  /** Absolute workspace root path. */
+  readonly root: string;
+  /** Optional absolute artifact-location directory (version-2 configuration only). */
+  readonly artifactLocation?: string;
 }
 
 /** The closed startup-config document. */
@@ -76,7 +94,7 @@ function validateSurface(raw: unknown, index: number): { readonly ok: true; read
   if (!isRecord(raw)) return { ok: false, message: `${label} must be an object` };
   const keys = Object.keys(raw);
   for (const key of keys) {
-    if (!['surfaceId', 'locator', 'serviceUid', 'forbiddenRoots', 'configurationIdentity', 'configurationVersion', 'limitProfile'].includes(key)) {
+    if (!['surfaceId', 'locator', 'serviceUid', 'forbiddenRoots', 'configurationIdentity', 'configurationVersion', 'limitProfile', 'workspaces', 'gitPath'].includes(key)) {
       return { ok: false, message: `${label} has an unknown field: ${key}` };
     }
   }
@@ -135,7 +153,54 @@ function validateSurface(raw: unknown, index: number): { readonly ok: true; read
     }
     limitProfile = rawProfile as Readonly<Record<string, number>>;
   }
-  return { ok: true, surface: { surfaceId, locator, serviceUid, forbiddenRoots, configurationIdentity, configurationVersion, limitProfile } };
+  let workspaces: readonly SurfaceWorkspaceConfig[] | undefined;
+  if (raw['workspaces'] !== undefined) {
+    const rawWorkspaces = raw['workspaces'];
+    if (!Array.isArray(rawWorkspaces)) return { ok: false, message: `${label}.workspaces must be an array` };
+    const parsed: SurfaceWorkspaceConfig[] = [];
+    const seenWorkspaces = new Set<string>();
+    for (let i = 0; i < rawWorkspaces.length; i++) {
+      const wLabel = `${label}.workspaces[${i}]`;
+      const rawWs = rawWorkspaces[i];
+      if (!isRecord(rawWs)) return { ok: false, message: `${wLabel} must be an object` };
+      for (const key of Object.keys(rawWs)) {
+        if (!['workspaceId', 'root', 'artifactLocation'].includes(key)) {
+          return { ok: false, message: `${wLabel} has an unknown field: ${key}` };
+        }
+      }
+      const workspaceId = rawWs['workspaceId'];
+      if (typeof workspaceId !== 'string' || workspaceId.length === 0 || workspaceId.length > 128) {
+        return { ok: false, message: `${wLabel}.workspaceId must be a bounded non-empty string` };
+      }
+      const root = rawWs['root'];
+      if (typeof root !== 'string' || !root.startsWith('/')) {
+        return { ok: false, message: `${wLabel}.root must be an absolute path string` };
+      }
+      let artifactLocation: string | undefined;
+      if (rawWs['artifactLocation'] !== undefined) {
+        const rawLocation = rawWs['artifactLocation'];
+        if (typeof rawLocation !== 'string' || !rawLocation.startsWith('/')) {
+          return { ok: false, message: `${wLabel}.artifactLocation must be an absolute path string` };
+        }
+        artifactLocation = rawLocation;
+      }
+      if (seenWorkspaces.has(workspaceId)) {
+        return { ok: false, message: `${label}.workspaces contains a duplicate workspaceId: ${workspaceId}` };
+      }
+      seenWorkspaces.add(workspaceId);
+      parsed.push({ workspaceId, root, ...(artifactLocation !== undefined ? { artifactLocation } : {}) });
+    }
+    workspaces = parsed;
+  }
+  let gitPath: string | undefined;
+  if (raw['gitPath'] !== undefined) {
+    const rawGit = raw['gitPath'];
+    if (typeof rawGit !== 'string' || !rawGit.startsWith('/')) {
+      return { ok: false, message: `${label}.gitPath must be an absolute path string` };
+    }
+    gitPath = rawGit;
+  }
+  return { ok: true, surface: { surfaceId, locator, serviceUid, forbiddenRoots, configurationIdentity, configurationVersion, limitProfile, ...(workspaces !== undefined ? { workspaces } : {}), ...(gitPath !== undefined ? { gitPath } : {}) } };
 }
 
 /**

@@ -151,7 +151,7 @@ function assertNoListeningSockets(pid: number): void {
   }
 }
 
-test('stdio: modern 2026-07-28 path — pinned negotiation, discover, seven tools, surface routing', async () => {
+test('stdio: modern 2026-07-28 path — pinned negotiation, discover, nine tools, surface routing', async () => {
   const env = makeStore();
   try {
     const configPath = writeConfig(env.dir, [surfaceConfig(env, 'alpha')]);
@@ -169,10 +169,11 @@ test('stdio: modern 2026-07-28 path — pinned negotiation, discover, seven tool
       if (serverVersion !== undefined) {
         assert.equal(serverVersion.name, '@project-gateway/artifact-core');
       }
-      // Exactly seven tools: six WP-9 inspection + one WP-10 drafting.
+      // Exactly nine tools: six WP-9 inspection + one WP-10 drafting
+      // + two WP-14A controlled producer tools.
       const { tools } = await client.listTools();
-      assert.deepEqual(tools.map((t) => t.name).sort(), ['draft-artifact', 'enumerate-class', 'inspect-audit-history', 'inspect-registry', 'inspect-stored-record', 'validate-artifact', 'verify-record']);
-      assert.equal(tools.length, 7);
+      assert.deepEqual(tools.map((t) => t.name).sort(), ['draft-artifact', 'enumerate-class', 'inspect-audit-history', 'inspect-changes', 'inspect-registry', 'inspect-stored-record', 'persist-artifact', 'validate-artifact', 'verify-record']);
+      assert.equal(tools.length, 9);
       // The draft-artifact schema is shape/type only (plain strings), with no
       // requestId and no destination/authority operand.
       const draft = tools.find((t) => t.name === 'draft-artifact');
@@ -254,13 +255,24 @@ test('stdio: auto negotiation also selects the modern era; store is never mutate
     try {
       assert.equal(client.getProtocolEra(), 'modern', 'auto negotiation must select the modern era against serveStdio');
       const { tools } = await client.listTools();
-      assert.equal(tools.length, 7, 'overall inventory is exactly seven');
+      assert.equal(tools.length, 9, 'overall inventory is exactly nine');
       for (const tool of ['validate-artifact', 'inspect-stored-record', 'inspect-registry', 'inspect-audit-history', 'verify-record', 'enumerate-class', 'draft-artifact']) {
         const args = tool === 'validate-artifact' ? { surfaceId: 'alpha', content: VALID_TASKSPEC } : tool === 'draft-artifact' ? { surfaceId: 'alpha', kind: 'TaskSpec', content: DRAFT_TASKSPEC } : tool === 'inspect-registry' ? { surfaceId: 'alpha' } : tool === 'enumerate-class' ? { surfaceId: 'alpha', recordClass: 'approval-record' } : { surfaceId: 'alpha', recordClass: 'approval-record', recordId: RECORD_ID };
         const r = await client.callTool({ name: tool, arguments: args });
         assert.equal(r.isError, undefined, `${tool} must succeed`);
         assert.equal((r.structuredContent as { ok: boolean }).ok, true, `${tool} must return ok`);
       }
+      // The WP-14A tools exist on every surface but fail closed with the
+      // typed `unsupported` outcome when the surface has no configured
+      // workspace lanes (no lane is ever invented).
+      const persistR = await client.callTool({ name: 'persist-artifact', arguments: { surfaceId: 'alpha', workspaceId: 'pgw:w:aaaaaaaaaaaaaaaa', kind: 'TaskSpec', content: DRAFT_TASKSPEC } });
+      assert.equal(persistR.isError, undefined);
+      assert.equal((persistR.structuredContent as { ok: boolean; error?: { code: string } }).ok, false);
+      assert.equal((persistR.structuredContent as { ok: boolean; error?: { code: string } }).error?.code, 'unsupported');
+      const changesR = await client.callTool({ name: 'inspect-changes', arguments: { surfaceId: 'alpha', workspaceId: 'pgw:w:aaaaaaaaaaaaaaaa' } });
+      assert.equal(changesR.isError, undefined);
+      assert.equal((changesR.structuredContent as { ok: boolean; error?: { code: string } }).ok, false);
+      assert.equal((changesR.structuredContent as { ok: boolean; error?: { code: string } }).error?.code, 'unsupported');
       // Drafting through the real CLI does not mutate the store (valid draft,
       // invalid draft, unsupported kind, malformed JSON, unknown surface).
       const bad = await client.callTool({ name: 'draft-artifact', arguments: { surfaceId: 'alpha', kind: 'TaskSpec', content: '{bad' } });

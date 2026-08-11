@@ -1,14 +1,20 @@
 /**
- * WP-9 Slice 5 / WP-10 Slice 3 — trusted startup composition root for the
- * local stdio MCP runtime.
+ * WP-9 Slice 5 / WP-10 Slice 3 / WP-14A — trusted startup composition
+ * root for the local stdio MCP runtime.
  *
  * The CLI is an in-package trusted composition root: it uses the exact
  * PRIVATE/TRUSTED repository composition APIs (genuine validated trusted
  * workspace configuration, genuine storage bootstrap action provenance,
  * genuine branded `TrustedStorageBootstrapInput`) to reconstruct existing
- * trusted registrations from the operator-owned startup configuration, then
- * builds the committed host-owned inspection registry AND the WP-10
- * host-owned drafting registry.
+ * trusted registrations from the operator-owned startup configuration,
+ * then builds the committed host-owned inspection registry, the WP-10
+ * host-owned drafting registry, and the two WP-14A host-owned registries
+ * (controlled proposal persistence + stateless changed-context
+ * inspection). WP-14A lanes (genuine workspace configuration, real
+ * resolvers, the committed WP-11 executor, the committed WP-7 services)
+ * are built in `lanes.ts` for surfaces with configured workspaces; a
+ * surface without workspaces keeps the tools but serves the typed
+ * `unsupported` outcome (fail closed).
  *
  * SAME-INSTANCE COMPOSITION (WP-10 Slice 3): for each configured logical
  * surface, exactly ONE `SchemaRegistry` is created and that SAME object is
@@ -38,14 +44,24 @@ import type { SchemaRegistry } from '../../schema/registry.js';
 import {
   createMcpDraftingRegistry,
   createMcpInspectionRegistry,
+  createMcpPersistRegistry,
+  createMcpChangesRegistry,
   type McpDraftingRegistration,
   type McpDraftingRegistry,
   type McpInspectionRegistry,
   type McpStoreRegistrationInput,
+  type McpPersistRegistration,
+  type McpPersistRegistry,
+  type McpChangesRegistration,
+  type McpChangesRegistry,
 } from '../../adapters/mcp/index.js';
+import { buildWorkspaceLanes } from './lanes.js';
 import type { RuntimeConfig } from './config.js';
 
 const BOOTSTRAP_ACTION_IDENTITY = 'project-gateway-mcp-bootstrap';
+
+/** Default Git binary path for the WP-14A changed-context lane (operator-overridable). */
+const DEFAULT_GIT_PATH = '/usr/bin/git';
 
 /**
  * Pure composition dependencies (optional). The schema-registry factory is
@@ -58,14 +74,16 @@ export interface ComposeDependencies {
 }
 
 export type ComposeResult =
-  | { readonly ok: true; readonly registry: McpInspectionRegistry; readonly draftingRegistry: McpDraftingRegistry }
+  | { readonly ok: true; readonly registry: McpInspectionRegistry; readonly draftingRegistry: McpDraftingRegistry; readonly persistRegistry: McpPersistRegistry; readonly changesRegistry: McpChangesRegistry }
   | { readonly ok: false; readonly code: string; readonly message: string };
 
-/** Build the trusted registries (inspection + drafting) from the validated operator startup configuration. */
-export function composeTrustedRegistry(config: RuntimeConfig, deps: ComposeDependencies = {}): ComposeResult {
+/** Build the trusted registries (inspection + drafting + WP-14A persist/changes) from the validated operator startup configuration. */
+export async function composeTrustedRegistry(config: RuntimeConfig, deps: ComposeDependencies = {}): Promise<ComposeResult> {
   const createRegistry = deps.createSchemaRegistry ?? createSchemaRegistry;
   const inspectionRegistrations: McpStoreRegistrationInput[] = [];
   const draftingRegistrations: McpDraftingRegistration[] = [];
+  const persistRegistrations: McpPersistRegistration[] = [];
+  const changesRegistrations: McpChangesRegistration[] = [];
   for (const surface of config.surfaces) {
     const limitProfile: SelectedLimitProfile = { ...defaultLimitProfile(), ...surface.limitProfile };
     // The trusted configuration object carries the standard repository facts;
@@ -132,6 +150,29 @@ export function composeTrustedRegistry(config: RuntimeConfig, deps: ComposeDepen
     const schemaRegistry = createRegistry();
     inspectionRegistrations.push({ surfaceId: surface.surfaceId, trustedConfiguration, trustedInput: inputResult.input, schemaRegistry });
     draftingRegistrations.push({ surfaceId: surface.surfaceId, schemaRegistry });
+    // WP-14A lanes: genuine validated workspace configuration + WP-11
+    // executor/resolver (persistence) and WP-7 controlled services
+    // (changed context). Surfaces without configured workspaces register
+    // WITHOUT a lane: the WP-14A tools exist but return the typed
+    // `unsupported` outcome for that surface (fail closed, never invented).
+    persistRegistrations.push({ surfaceId: surface.surfaceId, schemaRegistry });
+    changesRegistrations.push({ surfaceId: surface.surfaceId });
+    if (surface.workspaces !== undefined && surface.workspaces.length > 0) {
+      const lanesResult = await buildWorkspaceLanes({
+        configurationVersion: surface.configurationVersion,
+        workspaces: surface.workspaces,
+        gitPath: surface.gitPath ?? DEFAULT_GIT_PATH,
+        home: process.env.HOME ?? '',
+        tmpdir: process.env.TMPDIR ?? '',
+      });
+      if (!lanesResult.ok) {
+        return { ok: false, code: 'ERR-LANE-COMPOSITION', message: `surface ${surface.surfaceId} workspace lanes failed: ${lanesResult.message}` };
+      }
+      persistRegistrations.pop();
+      persistRegistrations.push({ surfaceId: surface.surfaceId, schemaRegistry, lane: lanesResult.lanes.persistLane });
+      changesRegistrations.pop();
+      changesRegistrations.push({ surfaceId: surface.surfaceId, lane: lanesResult.lanes.changesLane });
+    }
   }
   const registryResult = createMcpInspectionRegistry({
     registrations: inspectionRegistrations,
@@ -145,5 +186,17 @@ export function composeTrustedRegistry(config: RuntimeConfig, deps: ComposeDepen
   if (!draftingResult.ok || draftingResult.registry === undefined) {
     return { ok: false, code: draftingResult.code ?? 'ERR-DRAFT-REQ-INVALID', message: draftingResult.message ?? 'drafting registry composition failed' };
   }
-  return { ok: true, registry: registryResult.registry, draftingRegistry: draftingResult.registry };
+  const persistResult = createMcpPersistRegistry({
+    registrations: persistRegistrations,
+  });
+  if (!persistResult.ok || persistResult.registry === undefined) {
+    return { ok: false, code: persistResult.code ?? 'ERR-PERSIST-REQ-INVALID', message: persistResult.message ?? 'persistence registry composition failed' };
+  }
+  const changesResult = createMcpChangesRegistry({
+    registrations: changesRegistrations,
+  });
+  if (!changesResult.ok || changesResult.registry === undefined) {
+    return { ok: false, code: changesResult.code ?? 'ERR-CHANGES-REQ-INVALID', message: changesResult.message ?? 'changed-context registry composition failed' };
+  }
+  return { ok: true, registry: registryResult.registry, draftingRegistry: draftingResult.registry, persistRegistry: persistResult.registry, changesRegistry: changesResult.registry };
 }

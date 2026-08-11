@@ -18,7 +18,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { MCP_INSPECTION_TOOLS, MCP_DRAFT_TOOLS } from '../../src/adapters/mcp/index.js';
+import { MCP_INSPECTION_TOOLS, MCP_DRAFT_TOOLS, MCP_PERSIST_TOOLS, MCP_CHANGES_TOOLS } from '../../src/adapters/mcp/index.js';
 
 const REPO = join(import.meta.dirname, '..', '..', '..');
 const RUNTIME_SRC = join(REPO, 'src', 'runtime', 'mcp');
@@ -101,7 +101,7 @@ test('runtime static guard: no storage mutation vocabulary in the runtime', () =
   }
 });
 
-test('runtime static guard: exactly seven tools are registered — six WP-9 inspection plus one WP-10 drafting', () => {
+test('runtime static guard: exactly nine tools are registered — six WP-9 inspection plus one WP-10 drafting plus two WP-14A controlled producer tools', () => {
   const serverSrc = readFileSync(join(RUNTIME_SRC, 'server.ts'), 'utf8');
   const types = readFileSync(join(REPO, 'src', 'adapters', 'mcp', 'types.ts'), 'utf8');
   // The committed WP-9 inspection vocabulary remains exactly six — never widened.
@@ -112,21 +112,32 @@ test('runtime static guard: exactly seven tools are registered — six WP-9 insp
   // The WP-10 drafting vocabulary is exactly one tool, registered once.
   assert.deepEqual([...MCP_DRAFT_TOOLS], ['draft-artifact']);
   assert.equal(serverSrc.includes("registerTool(\n    'draft-artifact'"), true, 'server.ts must register draft-artifact');
-  // Distinct classes: inspection registrations = 6, drafting registrations = 1, overall = 7.
+  // The WP-14A controlled-producer vocabulary is exactly two tools.
+  assert.deepEqual([...MCP_PERSIST_TOOLS], ['persist-artifact']);
+  assert.deepEqual([...MCP_CHANGES_TOOLS], ['inspect-changes']);
+  assert.equal(serverSrc.includes("registerTool(\n    'persist-artifact'"), true, 'server.ts must register persist-artifact');
+  assert.equal(serverSrc.includes("registerTool(\n    'inspect-changes'"), true, 'server.ts must register inspect-changes');
+  // Distinct classes: inspection = 6, drafting = 1, persist = 1, changes = 1, overall = 9.
   const registered = [...serverSrc.matchAll(/registerTool\(\n\s*'([^']+)'/g)].map((m) => m[1]);
-  assert.equal(registered.length, 7, `exactly seven registerTool calls, got ${registered.length}`);
+  assert.equal(registered.length, 9, `exactly nine registerTool calls, got ${registered.length}`);
   const inspection = registered.filter((t): t is string => typeof t === 'string' && (MCP_INSPECTION_TOOLS as readonly string[]).includes(t));
   const drafting = registered.filter((t): t is string => typeof t === 'string' && (MCP_DRAFT_TOOLS as readonly string[]).includes(t));
+  const persist = registered.filter((t): t is string => typeof t === 'string' && (MCP_PERSIST_TOOLS as readonly string[]).includes(t));
+  const changes = registered.filter((t): t is string => typeof t === 'string' && (MCP_CHANGES_TOOLS as readonly string[]).includes(t));
   assert.equal(inspection.length, 6, 'exactly six inspection registrations');
   assert.equal(drafting.length, 1, 'exactly one drafting registration');
-  assert.deepEqual(registered.sort(), [...MCP_INSPECTION_TOOLS, ...MCP_DRAFT_TOOLS].sort(), 'no eighth tool');
+  assert.equal(persist.length, 1, 'exactly one persistence registration');
+  assert.equal(changes.length, 1, 'exactly one changed-context registration');
+  assert.deepEqual(registered.sort(), [...MCP_INSPECTION_TOOLS, ...MCP_DRAFT_TOOLS, ...MCP_PERSIST_TOOLS, ...MCP_CHANGES_TOOLS].sort(), 'no tenth tool');
   // No admin/registration/health/list-stores tool names anywhere in the runtime.
   for (const forbidden of ['list-stores', 'register-store', 'select-store', 'unregister-store', 'health']) {
     assert.equal(serverSrc.includes(`'${forbidden}'`), false, `no ${forbidden} tool`);
   }
-  // No tool name implying save/write/persist/publish/approve/issue/execute:
-  // drafting creates in-memory proposals only (WP-11/WP-12 boundaries).
-  for (const forbidden of ['save-artifact', 'write-artifact', 'persist-artifact', 'publish-artifact', 'approve-artifact', 'issue-artifact', 'execute-artifact', 'activate-artifact', 'revoke-artifact']) {
+  // No tool name implying approval/issue/execute/activate/revoke or a
+  // generic file-write: the ONLY write surface is the WP-14A controlled
+  // proposal persistence tool (`persist-artifact`), which routes through
+  // the WP-11 boundary and is not a generic write.
+  for (const forbidden of ['save-artifact', 'write-artifact', 'publish-artifact', 'approve-artifact', 'issue-artifact', 'execute-artifact', 'activate-artifact', 'revoke-artifact']) {
     assert.equal(serverSrc.includes(`'${forbidden}'`), false, `no ${forbidden} tool`);
   }
   // The drafting input schema is shape/type only: no kind enum, no byte

@@ -53,11 +53,17 @@ test('mcp static guard: imports stay inside the exact read-only/pure domain allo
     './inspect.js',
     './registry.js',
     './drafting.js',
+    './persist.js',
+    './changes.js',
     './index.js',
     'node:buffer',
     '../../api/validate.js',
     '../../drafting/proposal.js',
     '../../schema/registry.js',
+    '../../trusted/index.js',
+    '../../writing/controlled-write.js',
+    '../../writing/types.js',
+    '../../reader/index.js',
     '../../storage/read/index.js',
     '../../storage/read/read-record.js',
     '../../storage/read/history.js',
@@ -92,6 +98,12 @@ test('mcp static guard: imports stay inside the exact read-only/pure domain allo
     if (content.includes('inspectAuditHistory')) {
       assert.equal(content.includes("from '../../storage/read/index.js'"), true, `${rel(file)} must import inspectAuditHistory only from the read composition`);
     }
+    // WP-14A persistence adapter: the ONLY write-capable adapter. It must
+    // not contain any generic write primitive vocabulary.
+    if (file.endsWith('persist.ts')) {
+      assert.equal(content.includes('writeFileSync'), false, 'persist.ts must not use generic write vocabulary');
+      assert.equal(content.includes('openSync'), false, 'persist.ts must not open files');
+    }
   }
 });
 
@@ -113,6 +125,29 @@ test('mcp static guard: package export maps ./mcp to the adapter entry point onl
 test('mcp static guard: the closed tool inventory includes exactly the six committed tools', () => {
   const types = readFileSync(join(MCP_SRC, 'types.ts'), 'utf8');
   assert.equal(/MCP_INSPECTION_TOOLS = \['validate-artifact', 'inspect-stored-record', 'inspect-registry', 'inspect-audit-history', 'verify-record', 'enumerate-class'\]/.test(types), true, 'the closed tool inventory must be exactly the six-tool vocabulary');
+});
+
+test('mcp static guard: WP-14A controlled-producer vocabularies are exactly one tool each and stay separate', () => {
+  const persist = readFileSync(join(MCP_SRC, 'persist.ts'), 'utf8');
+  assert.equal(/MCP_PERSIST_TOOLS = \['persist-artifact'\]/.test(persist), true, 'the persistence vocabulary must be exactly the one-tool vocabulary');
+  const changes = readFileSync(join(MCP_SRC, 'changes.ts'), 'utf8');
+  assert.equal(/MCP_CHANGES_TOOLS = \['inspect-changes'\]/.test(changes), true, 'the changed-context vocabulary must be exactly the one-tool vocabulary');
+  // The WP-14A adapters never extend the WP-9 inspection vocabulary.
+  assert.equal(persist.includes('MCP_INSPECTION_TOOLS ='), false, 'persist.ts must not redefine the inspection vocabulary');
+  assert.equal(changes.includes('MCP_INSPECTION_TOOLS ='), false, 'changes.ts must not redefine the inspection vocabulary');
+  // The persistence adapter is Model B: it must reference the trusted
+  // validation composition and the WP-11 core, and its closed request
+  // envelope must NEVER admit caller validation provenance fields.
+  assert.equal(persist.includes('createDraftProposalWithSchemaRegistry'), true, 'persist.ts must reuse the accepted validation composition');
+  assert.equal(persist.includes('persistValidatedArtifactDraft'), true, 'persist.ts must route through the committed WP-11 core');
+  const persistKeys = persist.match(/PERSIST_REQUEST_KEYS: ReadonlySet<string> = new Set\(\[([^\]]*)\]\)/);
+  assert.ok(persistKeys !== null, 'the closed persist envelope must be declared');
+  for (const forbidden of ['draft', 'ok', 'valid', 'canonicalUtf8', 'digest', 'validation', 'destination', 'overwrite']) {
+    assert.equal(persistKeys[1]!.includes(`'${forbidden}'`), false, `the persist envelope must never admit caller ${forbidden} provenance`);
+  }
+  // The changed-context adapter composes the WP-7 boundaries only.
+  assert.equal(changes.includes('git-status'), true, 'changes.ts must derive the changed set from fresh Git inspection');
+  assert.equal(changes.includes('read-text'), true, 'changes.ts must route content reads through the WP-7 read boundary');
 });
 
 test('mcp static guard: multi-store registration is host composition, not a tool, and exposes no authority (WP-9 Slice 4)', () => {

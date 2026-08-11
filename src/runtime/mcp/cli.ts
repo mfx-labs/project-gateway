@@ -6,12 +6,13 @@
  * Trusted composition root: loads the operator-owned startup configuration
  * (--config), reconstructs genuine trusted registrations through the
  * private/trusted composition pipeline, builds the committed host-owned
- * inspection AND drafting registries (one shared SchemaRegistry instance
- * per logical surface), and serves the six WP-9 read-only inspection tools
- * plus the one WP-10 `draft-artifact` tool over stdio MCP through the
- * official SDK's `serveStdio` entry (which owns protocol
- * negotiation/framing for the modern 2026-07-28 protocol generation and
- * SDK-managed legacy compatibility).
+ * inspection, drafting, persistence, and changed-context registries (one
+ * shared SchemaRegistry instance per logical surface), and serves the six
+ * WP-9 read-only inspection tools, the one WP-10 `draft-artifact` tool,
+ * and the two WP-14A tools (`persist-artifact`, `inspect-changes`) over
+ * stdio MCP through the official SDK's `serveStdio` entry (which owns
+ * protocol negotiation/framing for the modern 2026-07-28 protocol
+ * generation and SDK-managed legacy compatibility).
  *
  * STDOUT IS MCP PROTOCOL ONLY — no banners, no stdout logging. All operational
  * diagnostics go to bounded stderr.
@@ -55,7 +56,7 @@ function packageIdentity(): { readonly name: string; readonly version: string } 
   }
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   if (!parsed.ok) {
     process.stderr.write(parsed.message);
@@ -66,13 +67,13 @@ function main(): void {
     writeDiagnostic(loaded.message);
     process.exit(1);
   }
-  const composed = composeTrustedRegistry(loaded.config);
+  const composed = await composeTrustedRegistry(loaded.config);
   if (!composed.ok) {
     writeDiagnostic(composed.message);
     process.exit(1);
   }
   const identity = packageIdentity();
-  const server = createMcpServer(composed.registry, composed.draftingRegistry, identity);
+  const server = createMcpServer(composed.registry, composed.draftingRegistry, composed.persistRegistry, composed.changesRegistry, identity);
   // The SDK owns the stdio transport, the era decision (modern 2026-07-28
   // opening plus SDK-managed legacy compatibility), framing, and shutdown on
   // EOF. No manual JSON-RPC parsing/writing; no session state; no listener.

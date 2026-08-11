@@ -1,6 +1,6 @@
 /**
- * WP-9 Slice 5 / WP-10 Slice 3 — MCP server factory tests (in-process, SDK
- * client over paired in-memory transports).
+ * WP-9 Slice 5 / WP-10 Slice 3 / WP-14A — MCP server factory tests
+ * (in-process, SDK client over paired in-memory transports).
  *
  * NOTE ON PROTOCOL ERA: `server.connect(transport)` is the SDK's 2025-era
  * direct pattern; the MODERN 2026-07-28 path is owned by `serveStdio` and is
@@ -18,8 +18,8 @@ import { createRequire } from 'node:module';
 const fs = createRequire(import.meta.url)('node:fs');
 import { McpServer, InMemoryTransport } from '@modelcontextprotocol/server';
 import { Client } from '@modelcontextprotocol/client';
-import { createInspectionContext, createMcpInspectionRegistry, createMcpInspectionSurface, createMcpDraftingRegistry, MCP_INSPECTION_TOOLS } from '../../src/adapters/mcp/index.js';
-import type { McpDraftingRegistry, DraftingResponse } from '../../src/adapters/mcp/index.js';
+import { createInspectionContext, createMcpInspectionRegistry, createMcpInspectionSurface, createMcpDraftingRegistry, createMcpPersistRegistry, createMcpChangesRegistry, MCP_INSPECTION_TOOLS, MCP_PERSIST_TOOLS, MCP_CHANGES_TOOLS } from '../../src/adapters/mcp/index.js';
+import type { McpDraftingRegistry, DraftingResponse, McpPersistRegistry, McpChangesRegistry } from '../../src/adapters/mcp/index.js';
 import { createMcpServer } from '../../src/runtime/mcp/server.js';
 import { composeTrustedRegistry } from '../../src/runtime/mcp/compose.js';
 import type { RuntimeConfig } from '../../src/runtime/mcp/config.js';
@@ -119,9 +119,27 @@ function draftingFor(envs: { surfaceId: string }[]): McpDraftingRegistry {
   return built.registry as McpDraftingRegistry;
 }
 
-/** Server bound to inspection + drafting registries for the same surface set. */
+/** WP-14A persist registry for the same surfaces (no lanes: typed unsupported outcomes). */
+function persistFor(envs: { surfaceId: string }[]): McpPersistRegistry {
+  const built = createMcpPersistRegistry({
+    registrations: envs.map(({ surfaceId }) => ({ surfaceId, schemaRegistry: createSchemaRegistry() })),
+  });
+  assert.equal(built.ok, true, built.message ?? '');
+  return built.registry as McpPersistRegistry;
+}
+
+/** WP-14A changed-context registry for the same surfaces (no lanes). */
+function changesFor(envs: { surfaceId: string }[]): McpChangesRegistry {
+  const built = createMcpChangesRegistry({
+    registrations: envs.map(({ surfaceId }) => ({ surfaceId })),
+  });
+  assert.equal(built.ok, true, built.message ?? '');
+  return built.registry as McpChangesRegistry;
+}
+
+/** Server bound to inspection + drafting + WP-14A registries for the same surface set. */
 function serverFor(envs: { surfaceId: string; env: { dir: string; config: object; trustedInput: unknown } }[], identity: { name: string; version: string } = { name: 'test-server', version: '0.0.0' }): McpServer {
-  return createMcpServer(registryFor(envs), draftingFor(envs), identity);
+  return createMcpServer(registryFor(envs), draftingFor(envs), persistFor(envs), changesFor(envs), identity);
 }
 
 async function connectClient(server: McpServer): Promise<{ client: Client; close: () => Promise<void> }> {
@@ -136,27 +154,34 @@ function structured(result: { structuredContent?: unknown }): unknown {
   return result.structuredContent;
 }
 
-test('runtime: tools/list exposes exactly seven tools — six WP-9 inspection tools plus one WP-10 drafting tool', async () => {
+test('runtime: tools/list exposes exactly nine tools — six WP-9 inspection + one WP-10 drafting + two WP-14A controlled producer tools', async () => {
   const env = makeStore();
   try {
     const server = serverFor([{ surfaceId: 'alpha', env }]);
     const { client, close } = await connectClient(server);
     try {
       const { tools } = await client.listTools();
-      assert.deepEqual(tools.map((t) => t.name).sort(), ['draft-artifact', 'enumerate-class', 'inspect-audit-history', 'inspect-registry', 'inspect-stored-record', 'validate-artifact', 'verify-record'], 'overall inventory is exactly seven');
-      assert.equal(tools.length, 7);
+      assert.deepEqual(tools.map((t) => t.name).sort(), ['draft-artifact', 'enumerate-class', 'inspect-audit-history', 'inspect-changes', 'inspect-registry', 'inspect-stored-record', 'persist-artifact', 'validate-artifact', 'verify-record'], 'overall inventory is exactly nine');
+      assert.equal(tools.length, 9);
       // The accepted WP-9 inspection vocabulary remains exactly six — never widened.
       assert.deepEqual([...MCP_INSPECTION_TOOLS], ['validate-artifact', 'inspect-stored-record', 'inspect-registry', 'inspect-audit-history', 'verify-record', 'enumerate-class']);
+      assert.deepEqual([...MCP_PERSIST_TOOLS], ['persist-artifact']);
+      assert.deepEqual([...MCP_CHANGES_TOOLS], ['inspect-changes']);
       for (const tool of tools) {
         const schema = tool.inputSchema as { type: string; properties?: Record<string, unknown>; required?: string[]; additionalProperties?: boolean };
         assert.equal(schema.type, 'object');
         assert.ok(schema.properties?.['surfaceId'], `${tool.name} must require surfaceId`);
         assert.ok((schema.required ?? []).includes('surfaceId'), `${tool.name} surfaceId must be required`);
         assert.equal(schema.additionalProperties, false, `${tool.name} schema must be closed`);
-        assert.equal(tool.annotations?.readOnlyHint, true, `${tool.name} must advertise readOnlyHint`);
         assert.equal('requestId' in (schema.properties ?? {}), false, 'no requestId in tool schemas');
         for (const forbidden of ['root', 'locator', 'path', 'projectPath', 'workspacePath']) {
           assert.equal(forbidden in (schema.properties ?? {}), false, `no ${forbidden} parameter in ${tool.name}`);
+        }
+        if (tool.name !== 'persist-artifact') {
+          // Every surface except the write tool advertises read-only.
+          assert.equal(tool.annotations?.readOnlyHint, true, `${tool.name} must advertise readOnlyHint`);
+        } else {
+          assert.equal(tool.annotations?.readOnlyHint, undefined, 'persist-artifact must NOT advertise readOnlyHint');
         }
       }
       // The draft-artifact input schema is shape/type only: plain strings for
@@ -172,6 +197,18 @@ test('runtime: tools/list exposes exactly seven tools — six WP-9 inspection to
       const contentSchema = dSchema.properties?.['content'] as { type?: string; maxLength?: unknown };
       assert.equal(contentSchema.type, 'string');
       assert.equal(contentSchema.maxLength, undefined, 'no byte ceiling at the SDK layer — the core owns limit-exceeded');
+      // The persist-artifact input schema is shape/type only: workspaceId +
+      // kind + content as plain strings; no destination, no validation
+      // flags, no digest, no path, no authority operand.
+      const persist = tools.find((t) => t.name === 'persist-artifact')!;
+      const pSchema = persist.inputSchema as { properties?: Record<string, unknown>; required?: string[] };
+      assert.deepEqual(Object.keys(pSchema.properties ?? {}).sort(), ['content', 'kind', 'surfaceId', 'workspaceId']);
+      assert.deepEqual((pSchema.required ?? []).sort(), ['content', 'kind', 'surfaceId', 'workspaceId']);
+      // The inspect-changes input schema: workspaceId + optional diff/paths.
+      const changes = tools.find((t) => t.name === 'inspect-changes')!;
+      const cSchema = changes.inputSchema as { properties?: Record<string, unknown>; required?: string[] };
+      assert.deepEqual(Object.keys(cSchema.properties ?? {}).sort(), ['diff', 'paths', 'surfaceId', 'workspaceId']);
+      assert.deepEqual((cSchema.required ?? []).sort(), ['surfaceId', 'workspaceId']);
     } finally {
       await close();
     }
@@ -192,7 +229,7 @@ test('runtime: tool definitions are stable across different registered surface s
       const t2 = (await c2.client.listTools()).tools;
       assert.deepEqual(t1.map((t) => t.name), t2.map((t) => t.name));
       assert.deepEqual(t1.map((t) => JSON.stringify(t.inputSchema)).sort(), t2.map((t) => JSON.stringify(t.inputSchema)).sort());
-      assert.equal(t1.length, 7);
+      assert.equal(t1.length, 9);
     } finally {
       await c1.close();
       await c2.close();
@@ -209,7 +246,7 @@ test('runtime: surface routing — MCP results equal the committed registry resu
     publish(envA, { marker: 'A' });
     publish(envB, { marker: 'B' });
     const registry = registryFor([{ surfaceId: 'alpha', env: envA }, { surfaceId: 'beta', env: envB }]);
-    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }, { surfaceId: 'beta' }]), { name: 'test-server', version: '0.0.0' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }, { surfaceId: 'beta' }]), persistFor([{ surfaceId: 'alpha' }, { surfaceId: 'beta' }]), changesFor([{ surfaceId: 'alpha' }, { surfaceId: 'beta' }]), { name: 'test-server', version: '0.0.0' });
     const { client, close } = await connectClient(server);
     try {
       const cases: { tool: string; args: Record<string, unknown> }[] = [
@@ -245,7 +282,7 @@ test('runtime: unknown surface is a committed not-found tool outcome, never a pr
   const env = makeStore();
   try {
     const registry = registryFor([{ surfaceId: 'alpha', env }]);
-    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), persistFor([{ surfaceId: 'alpha' }]), changesFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     try {
       const r = await client.callTool({ name: 'validate-artifact', arguments: { surfaceId: 'not-registered', content: '{}' } });
@@ -265,7 +302,7 @@ test('runtime: malformed surfaceId reaches the committed registry invalid-reques
   const env = makeStore();
   try {
     const registry = registryFor([{ surfaceId: 'alpha', env }]);
-    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), persistFor([{ surfaceId: 'alpha' }]), changesFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     try {
       // A malformed surfaceId is semantically invalid: the SDK schema only
@@ -286,7 +323,7 @@ test('runtime: outer schema rejects wrong primitive types, missing fields, and u
   const env = makeStore();
   try {
     const registry = registryFor([{ surfaceId: 'alpha', env }]);
-    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), persistFor([{ surfaceId: 'alpha' }]), changesFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     try {
       // Wrong primitive type.
@@ -348,7 +385,7 @@ test('runtime: cursor round-trips and multi-page walks through MCP', async () =>
       fs.chmodSync(`${env.storeRoot}/${dPath}`, 0o600);
     }
     const registry = registryFor([{ surfaceId: 'alpha', env }]);
-    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), persistFor([{ surfaceId: 'alpha' }]), changesFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     try {
       // History multi-page walk through MCP: continuation strings pass through unchanged.
@@ -391,7 +428,7 @@ test('runtime: results are deterministic and contain no host paths or internals'
   try {
     publish(env, { marker: 'A' });
     const registry = registryFor([{ surfaceId: 'alpha', env }]);
-    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }]), persistFor([{ surfaceId: 'alpha' }]), changesFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     try {
       const args = { surfaceId: 'alpha', recordClass: 'approval-record', recordId: RECORD_ID };
@@ -419,7 +456,7 @@ test('runtime: fs mutation watchdog — no tool invocation reaches project/store
     publish(envA, { marker: 'A' });
     publish(envB, { marker: 'B' });
     const registry = registryFor([{ surfaceId: 'alpha', env: envA }, { surfaceId: 'beta', env: envB }]);
-    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }, { surfaceId: 'beta' }]), { name: 't', version: '1' });
+    const server = createMcpServer(registry, draftingFor([{ surfaceId: 'alpha' }, { surfaceId: 'beta' }]), persistFor([{ surfaceId: 'alpha' }, { surfaceId: 'beta' }]), changesFor([{ surfaceId: 'alpha' }, { surfaceId: 'beta' }]), { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     for (const g of guards) {
       originals[g] = (fs as unknown as Record<string, unknown>)[g];
@@ -612,7 +649,7 @@ test('runtime: draft/validate surface consistency through MCP — same candidate
     assert.equal(built.ok, true, built.message ?? '');
     const drafting = createMcpDraftingRegistry({ registrations: [{ surfaceId: 'alpha', schemaRegistry }] });
     assert.equal(drafting.ok, true, drafting.message ?? '');
-    const server = createMcpServer(built.registry as McpInspectionRegistry, drafting.registry as McpDraftingRegistry, { name: 't', version: '1' });
+    const server = createMcpServer(built.registry as McpInspectionRegistry, drafting.registry as McpDraftingRegistry, persistFor([{ surfaceId: 'alpha' }]), changesFor([{ surfaceId: 'alpha' }]), { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     try {
       // Valid candidate: draft self-validation facts equal validate-artifact facts.
@@ -663,7 +700,7 @@ test('runtime: composition — inspection and drafting registries share the EXAC
         { surfaceId: 'beta', locator: envB.dir, serviceUid: UID, forbiddenRoots: [], configurationIdentity: CID, configurationVersion: '1', limitProfile: {} },
       ],
     };
-    const composed = composeTrustedRegistry(config, {
+    const composed = await composeTrustedRegistry(config, {
       createSchemaRegistry: () => {
         const counting = new CountingRegistry();
         created.push(counting);
@@ -674,7 +711,7 @@ test('runtime: composition — inspection and drafting registries share the EXAC
     if (!composed.ok) return;
     assert.equal(created.length, 2, 'exactly one registry instance per configured surface');
     const [alphaRegistry, betaRegistry] = created;
-    const server = createMcpServer(composed.registry, composed.draftingRegistry, { name: 't', version: '1' });
+    const server = createMcpServer(composed.registry, composed.draftingRegistry, composed.persistRegistry, composed.changesRegistry, { name: 't', version: '1' });
     const { client, close } = await connectClient(server);
     try {
       // Draft routing on alpha consults ALPHA's instance only.

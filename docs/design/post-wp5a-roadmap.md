@@ -170,6 +170,20 @@ WP-14). This current-state note supersedes earlier "current work package"
 statements in the historical chronology below; historical records are
 preserved.
 
+**Current state (WP-13 closure; recorded 2026-08-11):** WP-13 is
+**CLOSED** — the roadmap closure criterion *"End-to-end execution with
+enforcement and retrospective results"* is **SATISFIED** (final closure
+review: `WP-13 FINAL CLOSURE REVIEW ACCEPTED — READY FOR WP-13 CLOSURE
+COMMIT`; closure report
+`docs/reports/wp-13-closure-report.md`). WP-13A, WP-13B, WP-13C, durability
+S1/S2/S3/S4, and the retrospective simplification amendment are all
+**CLOSED**. **WP-14 becomes the next roadmap-eligible package** (human
+implementation authorization still required before work begins).
+**WP-15 remains blocked** by remaining roadmap prerequisites (roadmap
+order; WP-15 also requires WP-14). This current-state note supersedes the
+2026-08-10 note above and earlier "current work package" statements in the
+historical chronology; historical records are preserved.
+
 **WP-8-E (contract §29 phase 4 — audit, registry indexes, and recovery;
 read-only slice) is implemented**: WP-8-D is **closed** at commit
 `23a30b212dbe1f2ffa05e2b69314754730aeb222` (subject `docs: close WP-8-D

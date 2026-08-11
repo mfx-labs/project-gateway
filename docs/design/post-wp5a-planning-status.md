@@ -177,6 +177,45 @@ contract. This current-state note supersedes the earlier
 "WP-13 durability S2 baseline" current-state note; historical records are
 preserved.
 
+**Current state (WP-14 product UX alignment; recorded 2026-08-12 with the
+WP-14 contract amendment):** **WP-13 is CLOSED** (closure report
+`docs/reports/wp-13-closure-report.md`; roadmap criterion "End-to-end
+execution with enforcement and retrospective results" SATISFIED). The
+**WP-14 product UX alignment is approved** (human-approved product
+decisions: ChatGPT controlled proposal persistence; ChatGPT
+changed-context retrieval without routine copy/paste/upload/download; Pi
+zero-transfer artifact loading; WP-14C added after WP-14 and before
+WP-15; principles `Automate transfer, not authority` and `Zero-transfer,
+not necessarily zero-keystroke`). The **WP-14 contract amendment is
+established at documentation level** (ADR-040 — WP-14 zero-transfer
+product boundary; `docs/reports/wp-14-pre-implementation-contract-decision.md`;
+revised roadmap rows/attribute blocks for WP-14 and WP-14C; zero-transfer
+UX objective and principles in `project-gateway-scope-and-principles.md`;
+amendment report
+`docs/reports/wp-14-product-ux-alignment-amendment.md`). **WP-14A NOT
+STARTED / NOT AUTHORIZED; WP-14B NOT STARTED; WP-14C approved as a
+roadmap package but NOT STARTED / NOT AUTHORIZED** (each requires
+separate explicit human implementation authorization). **WP-15 remains
+blocked** until WP-14 and WP-14C are closed (roadmap order
+`WP-14 → WP-14C → WP-15`). Implementation authorization is NOT claimed
+by this amendment: no WP-14A/B/C implementation work has begun. The
+runtime's exactly-seven MCP tool inventory (six WP-9 inspection + one
+WP-10 drafting) will intentionally grow in WP-14A by one controlled
+proposal persistence operation and one changed-context inspection
+operation; historical seven-tool statements in closed-package reports
+and in superseded historical "current work package" bullets (e.g., the
+WP-10 Slice 3 bullet below) remain historical; the WP-14A closed
+inventory supersedes them at implementation time. The WP-14 focused
+contract review returned `WP-14 PRODUCT UX FOCUSED CONTRACT REVIEW
+CORRECTIONS REQUIRED`; the five findings SCR-WP14-UX-001…005 are CLOSED
+by the docs-only focused correction (ADR-040 correction record; WP-14
+pre-implementation contract decision §13; amendment report §14) — Model
+B validation-at-persistence, changed-context membership confinement,
+ADR-023 narrow tail amendment, secrets placement, and WP-14C "bundle"
+clarification. This current-state note supersedes the earlier
+"WP-13 durability S3 baseline" current-state note; historical records are
+preserved.
+
 **WP-8-E (contract §29 phase 4 — audit, registry indexes, and recovery;
 read-only slice) is implemented**: WP-8-D is **closed** at commit
 `23a30b212dbe1f2ffa05e2b69314754730aeb222` (subject `docs: close WP-8-D

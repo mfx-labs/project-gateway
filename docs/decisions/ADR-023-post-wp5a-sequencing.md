@@ -11,6 +11,12 @@ POST-WP-5A FINAL DOCUMENTATION SPOT CHECK: ACCEPTED; open findings at
 approval: zero). Acceptance derives from the external human decision, not
 from the documentation operator.
 
+**Amendment note (2026-08-12, WP-14 product UX alignment; narrow):**
+ADR-040 amends only the remaining roadmap tail by inserting WP-14C
+between WP-14 and WP-15. All other ADR-023 decisions remain accepted and
+unchanged. Current tail: **WP-14 → WP-14C → WP-15** (WP-15 remains
+blocked until WP-14 and WP-14C are closed).
+
 ## Context
 
 WP-5A is committed and closed. The repository defines no roadmap beyond

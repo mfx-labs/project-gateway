@@ -184,6 +184,28 @@ order; WP-15 also requires WP-14). This current-state note supersedes the
 2026-08-10 note above and earlier "current work package" statements in the
 historical chronology; historical records are preserved.
 
+**Current state (WP-14 product UX alignment; recorded 2026-08-12 with the
+WP-14 contract amendment):** the human-approved product UX baseline —
+zero-transfer context/artifact movement between ChatGPT, the project
+workspace, and Pi — is recorded in ADR-040 (WP-14 zero-transfer product
+boundary) and the WP-14 pre-implementation contract decision
+(`docs/reports/wp-14-pre-implementation-contract-decision.md`). The
+remaining execution order is pinned as **WP-14 → WP-14C → WP-15**: WP-14
+(ChatGPT Web connectivity, WP-11-backed controlled proposal persistence,
+and stateless changed-context retrieval) remains the next
+roadmap-eligible package; **WP-14C (Pi zero-transfer artifact loading) is
+approved as a new minimal roadmap package** executing after WP-14 and
+before WP-15; **WP-15 remains blocked** until WP-14 and WP-14C are
+closed. **WP-14A, WP-14B, and WP-14C are NOT STARTED and NOT AUTHORIZED**
+(human implementation authorization is still required before any
+implementation work begins). The focused contract review returned
+`WP-14 PRODUCT UX FOCUSED CONTRACT REVIEW CORRECTIONS REQUIRED`; the five
+findings SCR-WP14-UX-001…005 are CLOSED by the focused correction
+(ADR-040 correction record; WP-14 pre-implementation contract decision
+§13; amendment report). This current-state note supersedes the
+2026-08-11 note above and earlier "current work package" statements in the
+historical chronology; historical records are preserved.
+
 **WP-8-E (contract §29 phase 4 — audit, registry indexes, and recovery;
 read-only slice) is implemented**: WP-8-D is **closed** at commit
 `23a30b212dbe1f2ffa05e2b69314754730aeb222` (subject `docs: close WP-8-D
@@ -744,9 +766,10 @@ deployment action has occurred for WP-8.
 (WP-0), ADR-002, ADR-003, ADR-006, ADR-020, ADR-022, ADR-023 (sequencing
 decision), ADR-024 (trusted configuration ownership), ADR-025 (capability
 vocabulary), ADR-026 (pi-guard lane), ADR-027 (enforcement evidence),
+ADR-040 (WP-14 zero-transfer product boundary),
 `trusted-workspace-and-ceiling-configuration.md`,
 `capability-vocabulary.md`, `pi-guard-compatibility-and-authority-projection.md`,
-`post-wp5a-planning-status.md`.
+`post-wp5a-planning-status.md`, `docs/reports/wp-14-pre-implementation-contract-decision.md`.
 
 ## Work-Package Identifiers and Execution Order
 
@@ -767,8 +790,9 @@ must have real producers before enforcement can be implemented or tested.
 | 7 | WP-12 | Local approval and execution control plane | WP-4, WP-6, WP-8 | Approval, issuance, revocation, RuntimeGrant, activation decisions, authoritative records, execution orchestration decisions (ADR-002) | All lifecycle decisions external to repository content; fail closed on missing state |
 | 8 | WP-5B | pi-guard authority projection and enforcement integration | WP-5A, WP-6, WP-12, ADR-026, ADR-027 | Tool-inventory inspection (Pi 0.83.0 `getAllTools`/`getActiveTools` contract); authority projection into pi-guard; enforcement configuration output; pi-guard activation/restoration (single trusted owner; concurrent-activation and restart rules); enforcement evidence (projection/activation) | Effective authority enforced without inventing any authority operand; no partial activation on failure; inventory drift fails closed; unverified pi-guard versions fail closed; concurrent activations serialized/rejected; restart requires fresh activation decision and projection |
 | 9 | WP-13 | End-to-end Pi execution integration | WP-5B, WP-12, WP-7, WP-11 | Orchestrated execution consuming plan + enforcement + observations; completion evaluation producing ExecutionResult | End-to-end execution with enforcement and retrospective results |
-| 10 | WP-14 | Tunnel and ChatGPT Web connectivity | WP-13, WP-9 | ChatGPT Web draft/review connectivity per WP-1 ownership boundary | No lifecycle authority flows through connectivity |
-| 11 | WP-15 | Security hardening, release, and operational readiness | All prior | Hardening review, release packaging, operational runbooks, final audit | Release gate passed; no open security findings |
+| 10 | WP-14 | Tunnel and ChatGPT Web connectivity | WP-13, WP-9, WP-7, WP-10, WP-11 | ChatGPT Web draft/review connectivity, WP-11-backed controlled proposal persistence, stateless changed-context retrieval per the WP-1 producer boundary and the zero-transfer UX baseline (ADR-040) | ChatGPT Web reaches Gateway surfaces via tunnel; can inspect project state, create + validate + persist a supported proposal artifact through controlled write, and retrieve changed project context without manual paste/upload; no lifecycle authority flows through connectivity; fail-closed; no generic filesystem-write surface |
+| 11 | WP-14C | Pi zero-transfer artifact loading | WP-14, WP-6, WP-7, WP-10, WP-5A | Pi-side artifact resolution/load workflow; short invocation/command; validated context injection into Pi; visible success/failure feedback | Pi can load the intended valid artifact/bundle through a short user action without copy/paste, upload/download, manual path transcription, or a natural-language loading prompt, while gaining no lifecycle authority from the load itself |
+| 12 | WP-15 | Security hardening, release, and operational readiness | All prior (incl. WP-14, WP-14C) | Hardening review, release packaging, operational runbooks, final audit | Release gate passed; no open security findings |
 
 ## WP-5B Placement Decision
 
@@ -797,8 +821,20 @@ Rationale (each dependency edge):
   local storage and registry package.
 - **WP-7 → WP-9, WP-10 → WP-11:** reader/inspection first, then drafting,
   then controlled writing (writes confined by WP-6 containment).
-- **WP-13 → WP-14:** ChatGPT Web connectivity composes execution; drafts
-  remain producer-owned per WP-1.
+- **WP-13 → WP-14:** ChatGPT Web connectivity composes execution,
+  inspection (WP-9), drafting (WP-10), and controlled writing (WP-11);
+  drafts remain producer-owned per WP-1; the approved zero-transfer UX
+  baseline (ADR-040) requires controlled proposal persistence and
+  stateless changed-context retrieval in addition to draft/review
+  connectivity.
+- **WP-14 → WP-14C:** Pi zero-transfer artifact loading is a Pi-side
+  consumer/UX package, not ChatGPT connectivity: it resolves artifacts
+  from controlled project state (WP-6 configuration, WP-7 controlled
+  reads, WP-10 validation) and injects them through the existing WP-5A
+  host-bridge seam. It is NOT forced into WP-14 merely because hotkeys
+  share the same end-user journey.
+- **WP-14C → WP-15:** final hardening/release consumes every prior
+  package, including WP-14 and WP-14C.
 - **WP-15:** final hardening/release consumes every prior package.
 
 No circular dependencies exist: every edge points from an earlier execution
@@ -957,12 +993,52 @@ observation never proves authorization. Tests: end-to-end execution,
 result provenance. Non-goals: no receipt issuance, no authority creation.
 
 **WP-14 — Tunnel and ChatGPT Web connectivity.** Objective: ChatGPT Web
-draft/review connectivity per the WP-1 producer boundary. Inputs: WP-13
-execution results, WP-9 inspection surface. Outputs: connectivity for
-drafts/reviews. Owned: tunnel/ChatGPT Web connectivity. Prohibited:
-widening authority. Invariants: no lifecycle authority flows through
-connectivity. Tests: connectivity isolation. Non-goals: no governance,
-no execution.
+draft/review connectivity per the WP-1 producer boundary and the approved
+zero-transfer UX baseline (ADR-040): inspect → construct → validate →
+persist proposal artifacts through the committed WP-11 controlled-write
+boundary, plus stateless changed-context retrieval. Inputs: WP-13
+execution results, WP-9 inspection surface, WP-7 controlled reader/Git
+inspection, WP-10 drafting, WP-11 controlled writing. Outputs:
+tunnel-only ChatGPT connectivity; one WP-11-backed controlled proposal
+persistence surface; one stateless changed-context surface; connector/
+operator configuration. Owned: tunnel/ChatGPT Web connectivity,
+WP-11-backed persistence adapter with independent validation at the
+persistence boundary (Model B), changed-context composition,
+connector/operator configuration and secrets placement (tunnel/auth
+credentials are operator-local and owned by the external tunnel/
+platform; Gateway runtime configuration remains secret-free; credentials
+MUST NOT be stored in project-visible artifacts, committed to repository
+configuration, placed in trusted Gateway workspace/runtime
+configuration, accepted through Gateway MCP tool requests, or returned
+through Gateway MCP responses; WP-14 creates no secret-storage
+infrastructure). Prohibited:
+widening authority, generic filesystem writes, lifecycle-record writes,
+bypassing WP-11, Pi-side loading (WP-14C-owned). Invariants: no lifecycle
+authority flows through connectivity; schema limits WHAT ChatGPT may
+persist and WP-11 limits WHERE and HOW; persistence is not lifecycle
+authority. Tests: connectivity isolation; persistence containment,
+create-only, and ownership constraints; changed-context boundedness and
+redaction; fail-closed and disconnect behavior. Non-goals: no governance,
+no execution, no third implementation slice beyond WP-14A/WP-14B.
+
+**WP-14C — Pi zero-transfer artifact loading.** Objective: allow Pi to
+resolve, validate, and load the intended structured artifact/bundle
+through a short command/keyword/hotkey; eliminate routine artifact
+copy/paste and natural-language file-loading prompts. Inputs: committed
+project workspace/configuration, persisted proposal artifacts, existing
+WP-6 controlled workspace/configuration semantics, WP-7 controlled reads,
+WP-4/WP-10 artifact validation, existing Pi adapter/host-bridge injection
+seam. Outputs: Pi-side artifact resolution/load workflow; short
+invocation/command; validated context injection into Pi; visible
+success/failure feedback. Owned: Pi-side artifact resolution/load
+workflow; short invocation/command; validated context injection into Pi;
+visible success/failure feedback. Prohibited: approval, issuance, grant,
+activation, execution authorization, receipt issuance, lifecycle state
+mutation caused by loading. Invariants: artifact loading is context
+transfer, not authority. Tests: resolution/validation/load matrices;
+no-authority negative evidence; feedback behavior. Non-goals: no
+scheduler, no generic filesystem loader, no durable selection record, no
+execution redesign, no new authority domain.
 
 **WP-15 — Security hardening, release, and operational readiness.**
 Objective: hardening review, release packaging, operational runbooks,
@@ -999,6 +1075,9 @@ receipt trust checks. Non-goals: no execution, no authority.
 | Execution orchestration | WP-12 (decisions), WP-13 (execution) | Control-plane state + plan | Trusted lifecycle | No | Prospective |
 | Result evaluation (ExecutionResult) | WP-13 completion evaluator | Observed execution | Observational | No | Retrospective |
 | Trusted receipt issuance | **WP-15 (normative owner**; input provider: WP-13 retrospective facts) | Trusted receipts | Trusted-local | No | Retrospective |
+| ChatGPT proposal-artifact persistence | WP-14 (persistence adapter over the committed WP-11 controlled-write boundary) | Validated draft + WP-11 controlled write (schema limits WHAT; WP-11 limits WHERE/HOW) | Derived (schema-validated) | Only as validated proposal artifacts | Prospective |
+| Changed-context retrieval | WP-14 (composed from WP-7/WP-9 controlled inspection) | Controlled Git/file inspection at point of use | Observational | No | Present-state |
+| Pi artifact loading | WP-14C (Pi-side consumer/UX package) | Controlled project state + WP-10 validation | Derived (validated) | Only as validated proposal artifacts/context | Prospective |
 
 ## Prohibited Responsibilities (roadmap-wide)
 
@@ -1023,4 +1102,8 @@ trusted; unknown semantics are denied; unsupported required semantics fail
 closed; deny wins; no partial activation after projection failure; effective
 authority never exceeds any input operand; ChatGPT sees workspace
 identifiers, never trusted filesystem roots; FFF remains internal discovery,
-never a public MCP or security boundary.
+never a public MCP or security boundary; persistence is never lifecycle
+authority (a persisted proposal remains unapproved/untrusted until the
+trusted-local lifecycle separately acts); artifact loading is context
+transfer, not authority; connectivity, keyword invocation, hotkeys, and
+artifact loading never create authority.

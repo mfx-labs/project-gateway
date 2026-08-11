@@ -59,6 +59,60 @@ The intended MVP workflow is:
 
 The exact user interface, record format, and process topology for these steps are deferred.
 
+## Zero-Transfer Product UX Objective and Principles
+
+**Product-level UX objective (approved):** Routine structured
+context/artifact transfer between ChatGPT, the project workspace, and Pi
+should not require manual copy/paste, upload/download, or path
+transcription. Copy/paste, upload, and download remain intentional
+actions for sharing material in discussion — never routine transport
+between system components.
+
+**Approved principles:**
+
+- `Automate transfer, not authority.`
+- `Zero-transfer, not necessarily zero-keystroke.`
+
+**Extended target workflows (in addition to the steps above):**
+
+### ChatGPT → workspace
+
+1. ChatGPT inspects trusted/project state through authorized inspection
+   surfaces.
+2. ChatGPT constructs a structured proposal artifact.
+3. ChatGPT validates it.
+4. ChatGPT persists it through controlled write (schema-constrained,
+   workspace-contained, create-only).
+
+### workspace → Pi
+
+1. The user invokes a short command/keyword/hotkey.
+2. Pi resolves and validates the intended artifact/bundle from controlled
+   project state.
+3. Content enters Pi context without manual artifact transport (no
+   paste, no upload/download, no path transcription, no natural-language
+   loading prompt).
+
+### Pi/project changes → ChatGPT
+
+1. The user invokes a short ChatGPT workflow/keyword (e.g., conceptually
+   `@gateway changes`).
+2. Gateway retrieves the current changed state through controlled
+   Git/file inspection at point of use.
+3. No manual diff/file paste is required.
+
+**Visible feedback (UX requirement):** every zero-transfer action returns
+concise visible feedback — a successful persist/load/context retrieval
+reports what was acted on (e.g., persisted kind/revision, loaded bundle,
+changed-file count); incomplete or invalid state produces a typed visible
+failure; no silent partial success. Exact wording is implementation
+detail.
+
+Zero-transfer automation never creates authority: connectivity, keyword
+invocation, hotkeys, and artifact loading are context transfer only. See
+ADR-040 and the WP-14 pre-implementation contract decision for the
+package-level contract.
+
 ## Component Responsibility Matrix
 
 The components below may be separate processes or logical components; this matrix defines responsibilities rather than an implementation topology.
@@ -284,6 +338,9 @@ WP-0 does not define or authorize:
 11. **Discovery is not verification:** FFF discovery MUST NOT be represented as exhaustive completeness verification.
 12. **No gateway execution path:** ChatGPT Web MUST NOT directly start Pi or downstream execution through the MVP gateway.
 13. **Fail closed:** Unsupported required capabilities, extensions, or status checks MUST fail closed rather than silently downgrade.
+14. **Persistence is not lifecycle authority:** A persisted project-visible proposal artifact remains unapproved/untrusted content until the trusted-local lifecycle separately approves/issues it.
+15. **Loading is not authorization:** Loading validated artifacts into Pi as context grants no lifecycle authority.
+16. **Zero-transfer is not zero-keystroke:** Short user invocations remain intentional user actions; they merely eliminate manual artifact transport.
 
 ## Unresolved Questions
 

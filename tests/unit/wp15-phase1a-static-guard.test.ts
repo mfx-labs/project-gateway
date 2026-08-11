@@ -1,19 +1,21 @@
 /**
- * WP-15 Phase 1A — static authority-boundary guards.
+ * WP-15 Phase 1A — static authority-boundary guards (updated for Phase 1B).
  *
  * Proves the Phase 1A surface does NOT introduce:
- *   - a `trusted-receipt-producer` implementation (receipt issuance is
- *     NOT YET IMPLEMENTED — Phase 1B);
  *   - a `receipt-publication-correlation-producer` implementation
  *     (Phase 2 NOT STARTED);
  *   - a new generic lifecycle writer or a new outcome authority domain;
  *   - realtime receipt issuance or prospective authority.
  *
- * The lifecycle verifier stays a pure evaluation surface: `src/lifecycle/**`
- * remains filesystem-free, store-write-free, capability-free, and
- * authority-free. The WP-13 outcome families keep zero receipt vocabulary.
- * Superseded untracked WP-13D debris is NOT walked and is excluded by
- * construction (clean-clone evidence per the WP-15 contract §18).
+ * Phase 1B (authorized) adds the `trusted-receipt-producer` authority
+ * family under `src/receipt-production/**`; this guard now scopes the
+ * receipt-producer vocabulary to that family and keeps every other surface
+ * clean. The lifecycle verifier stays a pure evaluation surface:
+ * `src/lifecycle/**` remains filesystem-free, store-write-free,
+ * capability-free, and authority-free. The WP-13 outcome families keep
+ * zero receipt vocabulary. Superseded untracked WP-13D debris is NOT
+ * walked and is excluded by construction (clean-clone evidence per the
+ * WP-15 contract §18).
  *
  * Future files added under the guarded directories are automatically
  * covered (the directories are walked at guard runtime).
@@ -39,20 +41,22 @@ function rel(file: string): string {
   return file.slice(REPO.length + 1);
 }
 
-// ─── 1. no receipt-authority source family exists ───────────────────────────
-test('phase1a guard: no receipt-producer or correlation-producer source family exists', () => {
+// ─── 1. no correlation-producer source family exists; the Phase 1B
+//      receipt-production family is the ONLY receipt authority family ───────
+test('phase1a guard: no correlation-producer source family exists; receipt authority confined to src/receipt-production', () => {
   const src = join(REPO, 'src');
   const entries = readdirSync(src).sort();
   for (const name of entries) {
     const full = join(src, name);
     if (!statSync(full).isDirectory()) continue;
+    if (name === 'receipt-production') continue; // Phase 1B authorized family
     assert.ok(
       !/^(trusted-)?receipt|receipt-|correlation/.test(name),
-      `unexpected authority-family directory src/${name} — receipt/correlation producers are NOT implemented in Phase 1A`,
+      `unexpected authority-family directory src/${name} — correlation producers are NOT implemented; receipt authority lives ONLY in src/receipt-production`,
     );
   }
-  // no file anywhere under src/ implements receipt issuance vocabulary
-  const forbiddenProducers = ['trusted-receipt-producer', 'receipt-publication-correlation-producer'];
+  // the correlation producer is forbidden EVERYWHERE in src/**; the
+  // receipt-producer role vocabulary is confined to src/receipt-production/**
   const walk = (dir: string): void => {
     for (const name of readdirSync(dir).sort()) {
       const full = join(dir, name);
@@ -61,9 +65,13 @@ test('phase1a guard: no receipt-producer or correlation-producer source family e
         if (name === 'generated') continue; // schema/corpus bundle mirrors committed schema data, not implementation
         walk(full);
       } else if (name.endsWith('.ts')) {
-        const content = readFileSync(full, 'utf8');
-        for (const token of forbiddenProducers) {
-          assert.ok(!content.includes(token), `${rel(full)} carries ${token} — producer implementation forbidden in Phase 1A`);
+        const content = readFileSync(full, 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, ' ')
+          .replace(/\/\/[^\n]*/g, ' ');
+        assert.ok(!content.includes('receipt-publication-correlation-producer'), `${rel(full)} carries receipt-publication-correlation-producer — Phase 2 is NOT STARTED`);
+        const isReceiptFamily = full.startsWith(join(src, 'receipt-production'));
+        if (!isReceiptFamily) {
+          assert.ok(!content.includes('trusted-receipt-producer'), `${rel(full)} carries trusted-receipt-producer outside the Phase 1B receipt-production family`);
         }
       }
     }

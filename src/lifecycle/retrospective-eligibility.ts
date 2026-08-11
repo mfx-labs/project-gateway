@@ -154,6 +154,74 @@ function enforcementEvidencePresent(outcome: Readonly<Record<string, unknown>>):
 }
 
 /**
+ * THE one authoritative receipt-disposition derivation (SIR-WP15-P1B-005).
+ *
+ * The `trusted-receipt-producer` constructs every receipt disposition
+ * through THIS primitive; the receipt-production family carries no second
+ * event/disposition map. The derivation is the exact inverse of the
+ * committed `receiptEventDispositionOk` validator (same contract §3.2
+ * semantics):
+ *
+ *   activation accepted → accepted; denied → denied
+ *   occurrence-start / attempt-start → started
+ *   attempt-end → the exact seven-value outcome disposition (one-to-one)
+ *   enforcement-denial → denied ONLY when the exact outcome is `rejected`
+ *     WITH the committed enforcement-evidence group
+ *   cancellation → cancelled
+ *   timeout → timed-out; crash → crashed
+ *   result-publication-correlation → completed
+ *
+ * `exactOutcome` is the exact resolved outcome (present iff the event is
+ * attempt-correlated and eligibility resolved). Not-derivable (unknown
+ * event type, unknown activation decision, missing/incompatible outcome)
+ * returns `{ ok: false }` — never a guessed disposition.
+ */
+export type ReceiptDispositionDerivation =
+  | { readonly ok: true; readonly disposition: string }
+  | { readonly ok: false };
+
+export function deriveReceiptDisposition(
+  eventType: string,
+  eventSource: Readonly<Record<string, unknown>>,
+  exactOutcome: Readonly<Record<string, unknown>> | undefined,
+): ReceiptDispositionDerivation {
+  switch (eventType) {
+    case 'activation-decision': {
+      const decision = str(eventSource, 'decision');
+      if (decision === 'accepted') return { ok: true, disposition: 'accepted' };
+      if (decision === 'denied') return { ok: true, disposition: 'denied' };
+      return { ok: false };
+    }
+    case 'occurrence-start':
+    case 'attempt-start':
+      return { ok: true, disposition: 'started' };
+    case 'attempt-end':
+      return exactOutcome !== undefined
+        ? { ok: true, disposition: str(exactOutcome, 'disposition') }
+        : { ok: false };
+    case 'enforcement-denial':
+      // denied ONLY when the exact outcome is rejected WITH the committed
+      // enforcement-evidence group (contract §3.2; SIR-WP15-P1A-003 §12); a
+      // completed outcome or missing/partial evidence is NOT derivable.
+      return exactOutcome !== undefined &&
+        str(exactOutcome, 'disposition') === 'rejected' &&
+        enforcementEvidencePresent(exactOutcome)
+        ? { ok: true, disposition: 'denied' }
+        : { ok: false };
+    case 'cancellation':
+      return { ok: true, disposition: 'cancelled' };
+    case 'timeout':
+      return { ok: true, disposition: 'timed-out' };
+    case 'crash':
+      return { ok: true, disposition: 'crashed' };
+    case 'result-publication-correlation':
+      return { ok: true, disposition: 'completed' };
+    default:
+      return { ok: false };
+  }
+}
+
+/**
  * THE one authoritative event/disposition validator (SIR-WP15-P1A-003 §10).
  *
  * Implements the exact WP-15 contract mapping (§3.2) and requires source

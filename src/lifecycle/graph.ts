@@ -100,8 +100,13 @@ function at(phase: string, category: string, ruleIds: string[], key: string, msg
  * one source class. Unknown event types return `undefined` (fail closed).
  * The attempt-correlated set and the event/disposition mapping live in
  * `retrospective-eligibility.ts` (single authoritative definitions).
+ *
+ * Exported for WP-15 Phase 1B: the `trusted-receipt-producer` resolves
+ * `event_record_id` to the exact committed source class through this SAME
+ * authoritative primitive (no second mapping is duplicated in the
+ * receipt-production family).
  */
-function receiptEventSourceClass(eventType: string): string | 'occurrence-or-attempt' | undefined {
+export function receiptEventSourceClass(eventType: string): string | 'occurrence-or-attempt' | undefined {
   switch (eventType) {
     case 'activation-decision':
       return 'ActivationRecord';
@@ -122,7 +127,7 @@ function receiptEventSourceClass(eventType: string): string | 'occurrence-or-att
   }
 }
 
-function receiptSourceClassMatches(required: string | 'occurrence-or-attempt' | undefined, eventClass: string): boolean {
+export function receiptSourceClassMatches(required: string | 'occurrence-or-attempt' | undefined, eventClass: string): boolean {
   if (required === undefined) return false;
   if (required === 'occurrence-or-attempt') {
     return eventClass === 'ExecutionOccurrenceRecord' || eventClass === 'ExecutionAttemptRecord';
@@ -134,8 +139,10 @@ function receiptSourceClassMatches(required: string | 'occurrence-or-attempt' | 
  * Exact receipt ↔ source-record binding per event type (contract §3.2/§3.3).
  * Event-source validity (class + bindings) and retrospective eligibility
  * (outcome coverage) stay separate checks; this helper is the former.
+ * Exported for WP-15 Phase 1B: the receipt producer validates every
+ * constructed receipt through this same authoritative binding primitive.
  */
-function receiptSourceBindingOk(
+export function receiptSourceBindingOk(
   r: Readonly<Record<string, unknown>>,
   event: Readonly<Record<string, unknown>>,
 ): { readonly ok: true } | { readonly ok: false; readonly message: string } {

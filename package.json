@@ -15,6 +15,10 @@
       "types": "./dist/adapters/pi/index.d.ts",
       "import": "./dist/adapters/pi/index.js"
     },
+    "./loading": {
+      "types": "./dist/loading/index.d.ts",
+      "import": "./dist/loading/index.js"
+    },
     "./mcp": {
       "types": "./dist/adapters/mcp/index.d.ts",
       "import": "./dist/adapters/mcp/index.js"

@@ -243,6 +243,21 @@ BLOCKED** until WP-14C closes (roadmap order `WP-14 → WP-14C → WP-15`).
 This current-state note supersedes the WP-14 closure note above; historical
 records are preserved.
 
+**Current state (WP-14C closure; recorded with the WP-14C closure
+commit):** **WP-14: CLOSED. WP-14C: CLOSED** (closure report
+`docs/reports/wp-14c-closure-report.md`; `gateway-load` short Pi action
+satisfies the WP-14C product requirement — resolve, controlled-read,
+freshly validate, correlate, render, and inject the intended non-empty
+resolved proposal set without copy/paste, upload/download, manual path
+transcription, or a natural-language loading prompt — creating NO
+lifecycle or execution authority; senior review corrections closed;
+focused rereview and closure review accepted). **WP-15 is the next
+roadmap package: ELIGIBLE FOR HUMAN PRE-IMPLEMENTATION / AUTHORIZATION
+WORK** (roadmap order `WP-14 → WP-14C → WP-15`; prerequisite satisfied
+by this closure). **WP-15 implementation remains NOT AUTHORIZED.** This
+current-state note supersedes the WP-14C contract-baseline note above;
+historical records are preserved.
+
 **WP-8-E (contract §29 phase 4 — audit, registry indexes, and recovery;
 read-only slice) is implemented**: WP-8-D is **closed** at commit
 `23a30b212dbe1f2ffa05e2b69314754730aeb222` (subject `docs: close WP-8-D

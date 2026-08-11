@@ -63,6 +63,20 @@ export interface SurfaceConfig {
   readonly workspaces?: readonly SurfaceWorkspaceConfig[];
   /** Optional Git binary path for the changed-context lane (default `/usr/bin/git`). */
   readonly gitPath?: string;
+  /**
+   * Required (with `gitTmpdir`) when `workspaces` is configured: an EMPTY,
+   * operator-owned directory OUTSIDE every workspace root, used as the
+   * isolated HOME for the controlled Git child process (WP-7 lane
+   * requirement). Never the operator's real home directory.
+   */
+  readonly gitHome?: string;
+  /**
+   * Required (with `gitHome`) when `workspaces` is configured: an EMPTY,
+   * operator-owned directory OUTSIDE every workspace root, used as the
+   * isolated TMPDIR for the controlled Git child process (WP-7 lane
+   * requirement).
+   */
+  readonly gitTmpdir?: string;
 }
 
 /** One operator-configured workspace lane entry (WP-14A). */
@@ -94,7 +108,7 @@ function validateSurface(raw: unknown, index: number): { readonly ok: true; read
   if (!isRecord(raw)) return { ok: false, message: `${label} must be an object` };
   const keys = Object.keys(raw);
   for (const key of keys) {
-    if (!['surfaceId', 'locator', 'serviceUid', 'forbiddenRoots', 'configurationIdentity', 'configurationVersion', 'limitProfile', 'workspaces', 'gitPath'].includes(key)) {
+    if (!['surfaceId', 'locator', 'serviceUid', 'forbiddenRoots', 'configurationIdentity', 'configurationVersion', 'limitProfile', 'workspaces', 'gitPath', 'gitHome', 'gitTmpdir'].includes(key)) {
       return { ok: false, message: `${label} has an unknown field: ${key}` };
     }
   }
@@ -200,7 +214,23 @@ function validateSurface(raw: unknown, index: number): { readonly ok: true; read
     }
     gitPath = rawGit;
   }
-  return { ok: true, surface: { surfaceId, locator, serviceUid, forbiddenRoots, configurationIdentity, configurationVersion, limitProfile, ...(workspaces !== undefined ? { workspaces } : {}), ...(gitPath !== undefined ? { gitPath } : {}) } };
+  let gitHome: string | undefined;
+  if (raw['gitHome'] !== undefined) {
+    const rawHome = raw['gitHome'];
+    if (typeof rawHome !== 'string' || !rawHome.startsWith('/')) {
+      return { ok: false, message: `${label}.gitHome must be an absolute path string` };
+    }
+    gitHome = rawHome;
+  }
+  let gitTmpdir: string | undefined;
+  if (raw['gitTmpdir'] !== undefined) {
+    const rawTmp = raw['gitTmpdir'];
+    if (typeof rawTmp !== 'string' || !rawTmp.startsWith('/')) {
+      return { ok: false, message: `${label}.gitTmpdir must be an absolute path string` };
+    }
+    gitTmpdir = rawTmp;
+  }
+  return { ok: true, surface: { surfaceId, locator, serviceUid, forbiddenRoots, configurationIdentity, configurationVersion, limitProfile, ...(workspaces !== undefined ? { workspaces } : {}), ...(gitPath !== undefined ? { gitPath } : {}), ...(gitHome !== undefined ? { gitHome } : {}), ...(gitTmpdir !== undefined ? { gitTmpdir } : {}) } };
 }
 
 /**

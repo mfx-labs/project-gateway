@@ -20,6 +20,14 @@
  * `src/writing/executor.ts`; the WP-7 services own their descriptor-bound
  * read discipline).
  *
+ * WP-14B INTEGRATION CORRECTION (git lane environment): the controlled Git
+ * child process requires EMPTY operator-owned HOME/TMPDIR directories
+ * outside every workspace root (committed WP-7 `validateHostDirectory`
+ * contract). The operator's real HOME is never empty and can never be
+ * used; the operator supplies dedicated empty directories (`gitHome` /
+ * `gitTmpdir` surface config) — never the real home, never a workspace
+ * root. Absence fails composition closed with a typed message.
+ *
  * SECRETS: this module carries no credentials. Tunnel/auth credentials are
  * operator-local and owned by the external tunnel/platform; Gateway
  * runtime configuration remains secret-free (ADR-040 Decision D).

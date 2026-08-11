@@ -206,6 +206,26 @@ findings SCR-WP14-UX-001…005 are CLOSED by the focused correction
 2026-08-11 note above and earlier "current work package" statements in the
 historical chronology; historical records are preserved.
 
+**Current state (WP-14 closure; recorded 2026-08-12 with the WP-14
+closure commit):** **WP-14 is CLOSED** (closure report
+`docs/reports/wp-14-closure-report.md`; roadmap criterion "ChatGPT Web
+reaches Gateway surfaces via tunnel; can inspect project state, create +
+validate + persist a supported proposal artifact through controlled
+write, and retrieve changed project context without manual paste/upload;
+no lifecycle authority flows through connectivity; fail-closed; no
+generic filesystem-write surface" SATISFIED via scripted
+tunnel-conformance evidence; live ChatGPT/tunnel smoke unavailable and
+not fabricated). WP-14A CLOSED (baseline `d955394…`); WP-14B CLOSED
+(integration and end-user validation; E2E evidence). **WP-14C (Pi
+zero-transfer artifact loading) is now ELIGIBLE FOR HUMAN CONTRACT /
+IMPLEMENTATION AUTHORIZATION** according to its own gate (bundle-
+selection semantics deferred to its own contract decision; NOT STARTED /
+NOT AUTHORIZED here). **WP-15 remains BLOCKED** until WP-14 and WP-14C
+are closed (roadmap order `WP-14 → WP-14C → WP-15`). This current-state
+note supersedes the 2026-08-12 WP-14 product UX alignment note above and
+earlier "current work package" statements in the historical chronology;
+historical records are preserved.
+
 **WP-8-E (contract §29 phase 4 — audit, registry indexes, and recovery;
 read-only slice) is implemented**: WP-8-D is **closed** at commit
 `23a30b212dbe1f2ffa05e2b69314754730aeb222` (subject `docs: close WP-8-D

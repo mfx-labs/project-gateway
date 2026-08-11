@@ -158,12 +158,19 @@ export async function composeTrustedRegistry(config: RuntimeConfig, deps: Compos
     persistRegistrations.push({ surfaceId: surface.surfaceId, schemaRegistry });
     changesRegistrations.push({ surfaceId: surface.surfaceId });
     if (surface.workspaces !== undefined && surface.workspaces.length > 0) {
+      // WP-14B integration correction: the controlled Git lane requires
+      // EMPTY operator-owned HOME/TMPDIR directories (WP-7 lane contract);
+      // the operator's real HOME is never empty and can never be used.
+      // Fail closed with a clear typed composition error when omitted.
+      if (surface.gitHome === undefined || surface.gitTmpdir === undefined) {
+        return { ok: false, code: 'ERR-LANE-COMPOSITION', message: `surface ${surface.surfaceId} workspace lanes require gitHome and gitTmpdir (empty, operator-owned directories outside every workspace root)` };
+      }
       const lanesResult = await buildWorkspaceLanes({
         configurationVersion: surface.configurationVersion,
         workspaces: surface.workspaces,
         gitPath: surface.gitPath ?? DEFAULT_GIT_PATH,
-        home: process.env.HOME ?? '',
-        tmpdir: process.env.TMPDIR ?? '',
+        home: surface.gitHome,
+        tmpdir: surface.gitTmpdir,
       });
       if (!lanesResult.ok) {
         return { ok: false, code: 'ERR-LANE-COMPOSITION', message: `surface ${surface.surfaceId} workspace lanes failed: ${lanesResult.message}` };

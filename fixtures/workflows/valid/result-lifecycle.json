@@ -1,11 +1,16 @@
 {
-  "workflow_id": "WF-V-005",
-  "expected_result": "pass",
-  "record_paths": [
-    "fixtures/artifacts/valid/result-minimal-genesis.json",
-    "fixtures/lifecycle/valid/validation-result.json",
-    "fixtures/lifecycle/valid/result-publication-main.json",
-    "fixtures/lifecycle/valid/receipt-attempt-1.json"
-  ],
-  "notes": "Published result supports ordinary review and receipt-correlated privileged use."
+ "workflow_id": "WF-V-005",
+ "expected_result": "pass",
+ "record_paths": [
+  "fixtures/artifacts/valid/result-phase2.json",
+  "fixtures/lifecycle/valid/validation-phase2.json",
+  "fixtures/lifecycle/valid/outcome-phase2.json",
+  "fixtures/lifecycle/valid/attempt-phase2.json",
+  "fixtures/lifecycle/valid/receipt-attempt-phase2.json",
+  "fixtures/lifecycle/valid/publication-phase2-main.json",
+  "fixtures/lifecycle/valid/receipt-publication-correlation-phase2.json",
+  "fixtures/lifecycle/valid/publication-phase2-correlated.json",
+  "fixtures/lifecycle/valid/supersession-phase2.json"
+ ],
+ "notes": "Receipt-correlated successor publication supports privileged use (WP-15 Phase 2 exact correlation)."
 }

@@ -29,7 +29,7 @@ const manifest = CONFORMANCE_MANIFEST as { fixtures: { fixture_id: string; paths
 
 test('integration: manifest stats match the committed package', () => {
   const stats = manifestStats();
-  assert.equal(stats.entries, 636);
+  assert.equal(stats.entries, 648);
   assert.equal(stats.schemas, 52);
   assert.ok(stats.inputs >= 300);
 });
@@ -65,11 +65,11 @@ test('integration: all 36 digest vectors recompute', () => {
   }
 });
 
-test('integration: full conformance manifest executes 636/636 including the PointOfUse v2 context', () => {
+test('integration: full conformance manifest executes 648/648 including the PointOfUse v2 context', () => {
   const summary = new ConformanceRunner().run();
-  assert.equal(summary.total, 636);
-  assert.equal(summary.executed, 636);
-  assert.equal(summary.passed, 636);
+  assert.equal(summary.total, 648);
+  assert.equal(summary.executed, 648);
+  assert.equal(summary.passed, 648);
   assert.equal(summary.failed, 0);
   assert.deepEqual(summary.mismatches, []);
 });

@@ -1137,7 +1137,7 @@ test('oracle: vector results route through common comparison (RULE entries)', ()
   }
   const summary = new ConformanceRunner().run();
   assert.equal(summary.passed, summary.total);
-  assert.equal(summary.total, 636);
+  assert.equal(summary.total, 648);
   assert.deepEqual(summary.mismatches, []);
 });
 
@@ -1202,7 +1202,7 @@ test('oracle: no fixture-ID branch exists in production runner code', () => {
 test('dispatch: graph rule coverage via runner (REG-008 after erratum)', () => {
   const summary = new ConformanceRunner().run();
   assert.equal(summary.passed, summary.total);
-  assert.equal(summary.total, 636);
+  assert.equal(summary.total, 648);
 });
 
 function computeDigest(model: Readonly<Record<string, unknown>>): string {

@@ -1848,6 +1848,22 @@
       "normative": true
     },
     {
+      "fixture_id": "ART-V-EXERES-P2A01",
+      "paths": [
+        "fixtures/artifacts/valid/result-phase2.json"
+      ],
+      "subject_type": "ExecutionResult",
+      "validation_phase": "semantic-self-validation",
+      "expected_result": "pass",
+      "expected_schema_id": null,
+      "expected_semantic_rule_ids": [],
+      "expected_failure_category": null,
+      "dependencies": [],
+      "registry_snapshot_reference": null,
+      "notes": "Valid ExecutionResult fixture for the WP-15 Phase 2 correlation workflow.",
+      "normative": true
+    },
+    {
       "fixture_id": "ART-V-TSK-03CD5C",
       "paths": [
         "fixtures/artifacts/valid/task-successor.json"
@@ -4083,6 +4099,336 @@
         }
       },
       "notes": "Valid trusted lifecycle record fixture.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-1A2B3C4D",
+      "paths": [
+        "fixtures/lifecycle/valid/runtime-grant-phase2.json"
+      ],
+      "subject_type": "RuntimeGrant",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:runtime-grant",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid WP-15 Phase 2 correlation-chain fixture.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-2B3C4D5E",
+      "paths": [
+        "fixtures/lifecycle/valid/activation-phase2.json"
+      ],
+      "subject_type": "ActivationRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:activation-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid WP-15 Phase 2 correlation-chain fixture.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-3C4D5E6F",
+      "paths": [
+        "fixtures/lifecycle/valid/occurrence-phase2.json"
+      ],
+      "subject_type": "ExecutionOccurrenceRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-occurrence-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid WP-15 Phase 2 correlation-chain fixture.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-4D5E6F70",
+      "paths": [
+        "fixtures/lifecycle/valid/attempt-phase2.json"
+      ],
+      "subject_type": "ExecutionAttemptRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-attempt-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid WP-15 Phase 2 correlation-chain fixture.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-5E6F7081",
+      "paths": [
+        "fixtures/lifecycle/valid/validation-phase2.json"
+      ],
+      "subject_type": "ValidationRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:validation-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid WP-15 Phase 2 correlation-chain fixture.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-6F708192",
+      "paths": [
+        "fixtures/lifecycle/valid/outcome-phase2.json"
+      ],
+      "subject_type": "ExecutionOutcomeRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:execution-outcome-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid WP-15 Phase 2 correlation-chain fixture.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-708192A3",
+      "paths": [
+        "fixtures/lifecycle/valid/receipt-attempt-phase2.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid WP-15 Phase 2 correlation-chain fixture.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-8192A3B4",
+      "paths": [
+        "fixtures/lifecycle/valid/publication-phase2-main.json"
+      ],
+      "subject_type": "ResultPublicationRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:result-publication-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid WP-15 Phase 2 correlation-chain fixture.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-92A3B4C5",
+      "paths": [
+        "fixtures/lifecycle/valid/receipt-publication-correlation-phase2.json"
+      ],
+      "subject_type": "TrustedReceipt",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:trusted-receipt",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid WP-15 Phase 2 correlation-chain fixture.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-A3B4C5D6",
+      "paths": [
+        "fixtures/lifecycle/valid/publication-phase2-correlated.json"
+      ],
+      "subject_type": "ResultPublicationRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:result-publication-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid WP-15 Phase 2 correlation-chain fixture.",
+      "normative": true
+    },
+    {
+      "fixture_id": "LFC-V-B4C5D6E7",
+      "paths": [
+        "fixtures/lifecycle/valid/supersession-phase2.json"
+      ],
+      "subject_type": "SupersessionRecord",
+      "validation_phase": "trusted-lifecycle-verification",
+      "expected_result": "pass",
+      "expected_schema_id": "urn:project-gateway:schema:lifecycle:1.0:records:supersession-record",
+      "expected_semantic_rule_ids": [
+        "LFC-001"
+      ],
+      "expected_failure_category": null,
+      "dependencies": [
+        "REG-V-001"
+      ],
+      "registry_snapshot_reference": {
+        "registry_protocol_id": "project-gateway.registry",
+        "registry_snapshot_format_version": "1.0",
+        "registry_snapshot_id": "pgw:g:3fb51a11f2b23ba8c171326cbba7eb64",
+        "registry_snapshot_digest": "sha-256:613112612ee7803db00c6e51826b3a63ee6ce6732b17c9b09ae8aff00db47c05",
+        "protocol_compatibility": {
+          "mode": "exact-release",
+          "artifact_protocol_id": "project-gateway.artifact",
+          "artifact_protocol_version": "1.0"
+        }
+      },
+      "notes": "Valid WP-15 Phase 2 correlation-chain fixture.",
       "normative": true
     },
     {

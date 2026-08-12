@@ -32,6 +32,7 @@
  * and no execution is started.
  */
 import { mk, sortFindings, type Finding } from '../internal/report.js';
+import { jcsSerialize } from '../canonical/jcs.js';
 import type {
   AcceptedRegistryContext,
   ConsumerSupportDeclaration,
@@ -89,6 +90,22 @@ function str(v: unknown): string {
 function strArr(v: unknown): string[] {
   return Array.isArray(v) ? v.map((x) => str(x)) : [];
 }
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+const RECORD_ID_RE = /^pgw:l:[0-9a-f]{32}$/;
+const WORKSPACE_ID_RE = /^pgw:w:[0-9a-f]{32}$/;
+const OCCURRENCE_ID_RE = /^pgw:o:[0-9a-f]{32}$/;
+const ATTEMPT_ID_RE = /^pgw:a:[0-9a-f]{32}$/;
+const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const REASON_CODE_RE = /^[a-z][a-z0-9-]{0,63}$/;
+const PUBLICATION_SCOPE_VOCABULARY: ReadonlySet<string> = new Set([
+  'ordinary-review',
+  'completion-status',
+  'downstream-automation',
+  'authoritative-reporting',
+]);
 
 function collectPolicyRules(policy: ImmutableModel): RuleView[] {
   const body = policy['body'] as Record<string, unknown> | undefined;
@@ -643,17 +660,230 @@ export function evaluatePointOfUse(ctx: PointOfUseContext): Finding[] {
     }
   }
 
-  // PUB-005: privileged scopes require receipt correlation.
+  // ─── PUB-005 exact-correlation helpers (WP-15 Phase 2; SIR-WP15-P2-B-001/002) ─
+  /**
+   * Structural shape gate for a correlation TrustedReceipt at the pure
+   * point-of-use boundary (SIR-WP15-P2-B-001). Full JSON-schema validation
+   * is performed by the validated-record API boundary; this gate enforces
+   * the committed correlation-relevant shape (class, committed producer
+   * role, identity/time forms, event/disposition vocabulary, binding
+   * fields) so a malformed receipt never unlocks privileged consumption
+   * even in raw record views.
+   */
+  const receiptCorrelationShapeOk = (receipt: Readonly<Record<string, unknown>>): boolean => {
+    if (String(receipt['record_type']) !== 'TrustedReceipt') return false;
+    if (String(receipt['responsible_role']) !== 'trusted-receipt-producer') return false;
+    if (!RECORD_ID_RE.test(String(receipt['record_id'] ?? ''))) return false;
+    if (!TIMESTAMP_RE.test(String(receipt['created_at'] ?? ''))) return false;
+    if (String(receipt['event_type']) !== 'result-publication-correlation') return false;
+    if (String(receipt['disposition']) !== 'completed') return false;
+    if (!RECORD_ID_RE.test(String(receipt['event_record_id'] ?? ''))) return false;
+    if (!WORKSPACE_ID_RE.test(String(receipt['workspace_id'] ?? ''))) return false;
+    const occurrence = receipt['occurrence_id'];
+    const attempt = receipt['attempt_id'];
+    if (occurrence === undefined || (occurrence !== null && !OCCURRENCE_ID_RE.test(String(occurrence)))) return false;
+    if (attempt === undefined || (attempt !== null && !ATTEMPT_ID_RE.test(String(attempt)))) return false;
+    return true;
+  };
+
+  /**
+   * Structural shape gate for a SupersessionRecord claimant at the pure
+   * point-of-use boundary (SIR-WP15-P2-B-002). Full JSON-schema validation
+   * is performed by the validated-record API boundary; this gate enforces
+   * the committed supersession-relevant shape (class, committed
+   * lifecycle-authority role, prior/successor reference forms, scope
+   * vocabulary, reason-code pattern, identity/time forms) so a malformed
+   * claimant never silently removes its prior from competition.
+   */
+  const supersessionShapeOk = (s: Readonly<Record<string, unknown>>): boolean => {
+    if (String(s['record_type']) !== 'SupersessionRecord') return false;
+    if (String(s['responsible_role']) !== 'trusted-lifecycle-authority') return false;
+    if (!RECORD_ID_RE.test(String(s['record_id'] ?? ''))) return false;
+    if (!TIMESTAMP_RE.test(String(s['created_at'] ?? ''))) return false;
+    const prior = s['prior'];
+    const successor = s['successor'];
+    if (!isRecord(prior) || prior['subject_type'] !== 'result-publication' || !RECORD_ID_RE.test(String(prior['record_id'] ?? ''))) return false;
+    if (!isRecord(successor) || successor['subject_type'] !== 'result-publication' || !RECORD_ID_RE.test(String(successor['record_id'] ?? ''))) return false;
+    if (typeof s['scope'] !== 'string' || !PUBLICATION_SCOPE_VOCABULARY.has(s['scope'])) return false;
+    if (typeof s['reason_code'] !== 'string' || !REASON_CODE_RE.test(s['reason_code'])) return false;
+    return true;
+  };
+
+  /**
+   * Claimant-first supersession resolution for the ATTESTED predecessor
+   * (SIR-WP15-P2-B-002). Claimants are discovered by the exact prior
+   * relation ONLY (`prior.subject_type` result-publication + exact
+   * `prior.record_id`) — never prefiltered by the expected successor — and
+   * classified after cardinality:
+   *
+   *   none      → the required predecessor→candidate transition is
+   *               incomplete (partial State B: the predecessor still
+   *               competes);
+   *   exact     → exactly one schema-valid claimant binding the attested
+   *               predecessor to THIS candidate;
+   *   divergent → exactly one schema-valid claimant naming a different
+   *               successor;
+   *   corrupt   → exactly one schema-invalid claimant (never ignored);
+   *   multiple  → more than one claimant (no first/latest/newest/
+   *               enumeration winner).
+   */
+  const supersessionLinkFor = (attestedId: string, candidateId: string): 'none' | 'exact' | 'divergent' | 'corrupt' | 'multiple' => {
+    const claimants: Readonly<Record<string, unknown>>[] = [];
+    for (const x of ctx.records) {
+      if (String(x['record_type']) !== 'SupersessionRecord') continue;
+      const prior = x['prior'];
+      if (!isRecord(prior) || prior['subject_type'] !== 'result-publication') continue;
+      if (String(prior['record_id'] ?? '') !== attestedId) continue;
+      claimants.push(x);
+    }
+    if (claimants.length === 0) return 'none';
+    if (claimants.length > 1) return 'multiple';
+    const claimant = claimants[0]!;
+    if (!supersessionShapeOk(claimant)) return 'corrupt';
+    const successor = claimant['successor'];
+    if (!isRecord(successor) || successor['subject_type'] !== 'result-publication' || String(successor['record_id'] ?? '') !== candidateId) {
+      return 'divergent';
+    }
+    return 'exact';
+  };
+
+  // PUB-005: privileged scopes require EXACT receipt correlation AND exact
+  // currentness (WP-15 Phase 2 fail-closed semantics; contract §12;
+  // SIR-WP15-P2-B-001/B-002). The committed minimum (non-empty
+  // receipt_correlations on an active scoped publication) is preserved, and
+  // the verifier now independently proves the FULL triangle:
+  //
+  //   candidate P2 --receipt_correlations--> R --event_record_id--> attested P1
+  //   P1 --exactly-one schema-valid SupersessionRecord S--> P2
+  //
+  // (a) the correlation resolves within the evaluated record set to an
+  // exact result-publication-correlation TrustedReceipt (committed shape,
+  // producer role, completed disposition) whose bindings match the
+  // candidate AND the ATTESTED predecessor, with the attested publication
+  // DISTINCT from the candidate and carrying the exact same committed
+  // result identity (full result subject: instance/revision/digest/kind/
+  // protocol/workspace) — self-attestation and revision/digest conflation
+  // are impossible; receipt existence elsewhere in storage is
+  // insufficient;
+  // (b) the attested predecessor is made current through EXACTLY ONE
+  // schema-valid supersession binding it to this candidate — claimant-first
+  // (no first/latest/enumeration winner), divergent/multiple/malformed
+  // claimants fail closed;
+  // (c) the candidate itself is not superseded, and no other
+  // non-superseded/non-revoked publication competes for the same result
+  // subject (a successor whose SupersessionRecord is not yet durable never
+  // unlocks privileged consumption).
   const PRIVILEGED = new Set(['completion-status', 'authoritative-reporting', 'downstream-automation']);
+  const supersededBy = (publicationId: string): boolean =>
+    ctx.records.some(
+      (x) =>
+        String(x['record_type']) === 'SupersessionRecord' &&
+        (x['prior'] as Record<string, unknown> | undefined)?.['subject_type'] === 'result-publication' &&
+        String((x['prior'] as Record<string, unknown> | undefined)?.['record_id'] ?? '') === publicationId,
+    );
+  // PUB-004 active-publication semantics: a publication revoked by an
+  // applicable current revocation is not an active competitor for current
+  // consumption (revocation-record is in the WP-15 Phase 2 read allowlist
+  // for exactly this predecessor/currentness check).
+  const revokedAt = (publicationId: string): boolean =>
+    ctx.records.some(
+      (x) =>
+        String(x['record_type']) === 'RevocationRecord' &&
+        (x['target'] as Record<string, unknown> | undefined)?.['record_type'] === 'ResultPublicationRecord' &&
+        String((x['target'] as Record<string, unknown> | undefined)?.['record_id'] ?? '') === publicationId &&
+        String(x['effective_at'] ?? '') !== '' &&
+        String(x['effective_at'] ?? '') <= ctx.currentTime,
+    );
   for (const r of ctx.records) {
     if (!isEntry(r)) continue;
     if (String(r['record_type']) !== 'ResultPublicationRecord') continue;
     const scopes = Array.isArray(r['publication_scopes']) ? (r['publication_scopes'] as string[]) : [];
     const receipts = Array.isArray(r['receipt_correlations']) ? (r['receipt_correlations'] as string[]) : [];
     const hasPrivileged = scopes.some((s) => PRIVILEGED.has(s));
-    if (hasPrivileged && receipts.length === 0) {
+    if (!hasPrivileged) continue;
+    const recordId = String(r['record_id'] ?? '');
+    const subject = r['result_subject'] as Record<string, unknown> | undefined;
+    const instanceId = subject ? String(subject['instance_id'] ?? '') : '';
+    // (a) exact correlation triangle (SIR-WP15-P2-B-001).
+    let attested: Readonly<Record<string, unknown>> | undefined;
+    for (const receiptId of receipts) {
+      const receipt = ctx.records.find((x) => String(x['record_id'] ?? '') === receiptId);
+      if (!receipt || !isRecord(receipt)) continue;
+      if (!receiptCorrelationShapeOk(receipt)) continue;
+      // candidate ↔ receipt: the correlation references this exact receipt
+      // and the receipt bindings match the candidate exactly.
+      if (String(receipt['workspace_id'] ?? '') !== String(r['workspace_id'] ?? '')) continue;
+      if (String(receipt['occurrence_id'] ?? '') !== String(r['occurrence_id'] ?? '')) continue;
+      if (String(receipt['attempt_id'] ?? '') !== String(r['attempt_id'] ?? '')) continue;
+      // distinct predecessor: the receipt MUST attest a DIFFERENT
+      // publication — self-attestation never unlocks privileged use.
+      const attestedCandidate = ctx.records.find((x) => String(x['record_id'] ?? '') === String(receipt['event_record_id'] ?? ''));
+      if (!attestedCandidate || !isRecord(attestedCandidate)) continue;
+      if (String(attestedCandidate['record_type']) !== 'ResultPublicationRecord') continue;
+      if (String(attestedCandidate['record_id'] ?? '') === recordId) continue;
+      // receipt ↔ attested predecessor: the attested publication's OWN
+      // bindings must agree with the receipt (not merely with the
+      // candidate).
+      if (String(attestedCandidate['workspace_id'] ?? '') !== String(receipt['workspace_id'] ?? '')) continue;
+      if (String(attestedCandidate['occurrence_id'] ?? '') !== String(receipt['occurrence_id'] ?? '')) continue;
+      if (String(attestedCandidate['attempt_id'] ?? '') !== String(receipt['attempt_id'] ?? '')) continue;
+      // attested predecessor ↔ candidate result identity: the FULL
+      // committed result subject must be identical (instance, revision,
+      // digest, kind, protocol version, workspace) — same instance with a
+      // different revision/digest is never exact correlation.
+      const attestedSubject = attestedCandidate['result_subject'];
+      if (!isRecord(attestedSubject) || !subject) continue;
+      if (jcsSerialize(attestedSubject) !== jcsSerialize(subject)) continue;
+      attested = attestedCandidate;
+      break;
+    }
+    if (attested === undefined) {
       findings.push(
-        at('RECEIPT-CORRELATION-FAILURE', ['PUB-005'], 'pointofuse.privileged-without-receipt', 'privileged result use requires trusted receipt correlation', String(r['record_id']), '/publication_scopes'),
+        at('RECEIPT-CORRELATION-FAILURE', ['PUB-005'], 'pointofuse.privileged-without-receipt', 'privileged result use requires the exact trusted receipt correlation', recordId, '/publication_scopes'),
+      );
+      continue;
+    }
+    // (b) currentness for the exact result subject.
+    if (supersededBy(recordId)) {
+      findings.push(
+        at('RECEIPT-CORRELATION-FAILURE', ['PUB-005'], 'pointofuse.privileged-superseded', 'privileged result use requires a current (non-superseded) publication', recordId, '/publication_scopes'),
+      );
+      continue;
+    }
+    const attestedId = String(attested['record_id'] ?? '');
+    const link = supersessionLinkFor(attestedId, recordId);
+    if (link === 'none') {
+      // partial State B: the required predecessor→candidate transition is
+      // incomplete — the predecessor still competes and privileged
+      // consumption stays blocked.
+      findings.push(
+        at('RECEIPT-CORRELATION-FAILURE', ['PUB-005'], 'pointofuse.privileged-not-current', 'privileged result use requires the exact supersession of the attested predecessor to this publication', recordId, '/publication_scopes'),
+      );
+      continue;
+    }
+    if (link !== 'exact') {
+      // divergent successor, malformed claimant, or multiple claimants —
+      // fail closed; no first/latest/newest/enumeration winner.
+      findings.push(
+        at('RECEIPT-CORRELATION-FAILURE', ['PUB-005'], 'pointofuse.privileged-supersession-divergent', 'privileged result use requires exactly one schema-valid supersession binding the attested predecessor to this publication', recordId, '/publication_scopes'),
+      );
+      continue;
+    }
+    const otherCurrent = ctx.records.some((x) => {
+      if (String(x['record_id'] ?? '') === recordId) return false;
+      if (String(x['record_type']) !== 'ResultPublicationRecord') return false;
+      if (String(x['workspace_id'] ?? '') !== String(r['workspace_id'] ?? '')) return false;
+      if (String(x['attempt_id'] ?? '') !== String(r['attempt_id'] ?? '')) return false;
+      const xs = x['result_subject'] as Record<string, unknown> | undefined;
+      if (!xs || String(xs['instance_id'] ?? '') !== instanceId) return false;
+      const otherId = String(x['record_id'] ?? '');
+      if (supersededBy(otherId)) return false;
+      if (revokedAt(otherId)) return false;
+      return true;
+    });
+    if (otherCurrent) {
+      findings.push(
+        at('RECEIPT-CORRELATION-FAILURE', ['PUB-005'], 'pointofuse.privileged-not-current', 'privileged result use requires the current publication for the result subject', recordId, '/publication_scopes'),
       );
     }
   }

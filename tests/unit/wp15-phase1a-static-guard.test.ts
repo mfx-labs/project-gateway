@@ -10,8 +10,11 @@
  * Phase 1B (authorized) adds the `trusted-receipt-producer` authority
  * family under `src/receipt-production/**`; this guard now scopes the
  * receipt-producer vocabulary to that family and keeps every other surface
- * clean. The lifecycle verifier stays a pure evaluation surface:
- * `src/lifecycle/**` remains filesystem-free, store-write-free,
+ * clean. Phase 2 (authorized) adds the
+ * `receipt-publication-correlation-producer` family under
+ * `src/receipt-publication-correlation/**`; the correlation vocabulary is
+ * scoped to that family. The lifecycle verifier stays a pure evaluation
+ * surface: `src/lifecycle/**` remains filesystem-free, store-write-free,
  * capability-free, and authority-free. The WP-13 outcome families keep
  * zero receipt vocabulary. Superseded untracked WP-13D debris is NOT
  * walked and is excluded by construction (clean-clone evidence per the
@@ -41,22 +44,24 @@ function rel(file: string): string {
   return file.slice(REPO.length + 1);
 }
 
-// ─── 1. no correlation-producer source family exists; the Phase 1B
-//      receipt-production family is the ONLY receipt authority family ───────
-test('phase1a guard: no correlation-producer source family exists; receipt authority confined to src/receipt-production', () => {
+// ─── 1. no unexpected correlation-producer source family exists; the Phase 1B
+//      receipt-production family and the Phase 2 correlation family are the
+//      ONLY receipt authority families ─────────────────────────────────────
+test('phase1a guard: no unexpected correlation-producer source family exists; receipt authority confined to src/receipt-production and src/receipt-publication-correlation', () => {
   const src = join(REPO, 'src');
   const entries = readdirSync(src).sort();
   for (const name of entries) {
     const full = join(src, name);
     if (!statSync(full).isDirectory()) continue;
     if (name === 'receipt-production') continue; // Phase 1B authorized family
+    if (name === 'receipt-publication-correlation') continue; // Phase 2 authorized family
     assert.ok(
       !/^(trusted-)?receipt|receipt-|correlation/.test(name),
-      `unexpected authority-family directory src/${name} — correlation producers are NOT implemented; receipt authority lives ONLY in src/receipt-production`,
+      `unexpected authority-family directory src/${name} — receipt authority lives ONLY in src/receipt-production and src/receipt-publication-correlation`,
     );
   }
-  // the correlation producer is forbidden EVERYWHERE in src/**; the
-  // receipt-producer role vocabulary is confined to src/receipt-production/**
+  // the correlation-producer vocabulary is confined to the Phase 2 family;
+  // the receipt-producer role vocabulary is confined to the Phase 1B family
   const walk = (dir: string): void => {
     for (const name of readdirSync(dir).sort()) {
       const full = join(dir, name);
@@ -68,10 +73,20 @@ test('phase1a guard: no correlation-producer source family exists; receipt autho
         const content = readFileSync(full, 'utf8')
           .replace(/\/\*[\s\S]*?\*\//g, ' ')
           .replace(/\/\/[^\n]*/g, ' ');
-        assert.ok(!content.includes('receipt-publication-correlation-producer'), `${rel(full)} carries receipt-publication-correlation-producer — Phase 2 is NOT STARTED`);
+        const isCorrelationFamily = full.startsWith(join(src, 'receipt-publication-correlation'));
+        if (!isCorrelationFamily) {
+          assert.ok(!content.includes('receipt-publication-correlation-producer'), `${rel(full)} carries receipt-publication-correlation-producer outside the Phase 2 correlation family`);
+        }
         const isReceiptFamily = full.startsWith(join(src, 'receipt-production'));
-        if (!isReceiptFamily) {
-          assert.ok(!content.includes('trusted-receipt-producer'), `${rel(full)} carries trusted-receipt-producer outside the Phase 1B receipt-production family`);
+        if (!isReceiptFamily && !isCorrelationFamily) {
+          // Consumer-side exception (WP-15 Phase 2, SIR-WP15-P2-B-001): the
+          // point-of-use PUB-005 verifier must NAME the committed receipt
+          // producer role to verify it on the correlation receipt — a
+          // consumer verification surface, never an authority family.
+          const isPub005Consumer = full === join(src, 'pointofuse', 'evaluate.ts');
+          if (!isPub005Consumer) {
+            assert.ok(!content.includes('trusted-receipt-producer'), `${rel(full)} carries trusted-receipt-producer outside the Phase 1B receipt-production family`);
+          }
         }
       }
     }

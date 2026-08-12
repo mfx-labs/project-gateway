@@ -514,7 +514,7 @@ test('static guard: package exports and dependencies unchanged', () => {
     exports?: Record<string, unknown>;
     dependencies?: Record<string, string>;
   };
-  assert.deepEqual(Object.keys(pkg.exports ?? {}).sort(), ['.', './mcp', './pi-adapter']);
+  assert.deepEqual(Object.keys(pkg.exports ?? {}).sort(), ['.', './loading', './mcp', './pi-adapter']);
   // WP-9 Slice 5: the local stdio MCP runtime adds the official MCP server
   // SDK (and its zod schema peer) as the first runtime dependencies.
   assert.deepEqual(pkg.dependencies, { '@modelcontextprotocol/server': '2.0.0', ajv: '8.20.0', zod: '4.4.3' });

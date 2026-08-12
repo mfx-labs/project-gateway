@@ -42,6 +42,8 @@
     "test:pi-adapter": "node --test \"dist-test/tests/pi-adapter/unit/*.test.js\" \"dist-test/tests/pi-adapter/integration/*.test.js\" \"dist-test/tests/pi-adapter/security/*.test.js\" \"dist-test/tests/pi-adapter/compatibility/*.test.js\" \"dist-test/tests/pi-adapter/enforcement/*.test.js\"",
     "test:mcp": "node --test \"dist-test/tests/mcp/unit/*.test.js\"",
     "test:pointofuse-v2": "node --test \"dist-test/tests/pointofuse-v2/*.test.js\"",
+    "test:storage": "node scripts/run-test-surface.mjs dist-test/tests/unit/storage",
+    "test:loading": "node scripts/run-test-surface.mjs dist-test/tests/loading",
     "test:wp7-reader": "node --test \"dist-test/tests/wp7/reader/*.test.js\"",
     "test:wp7-git": "node --test \"dist-test/tests/wp7/git/*.test.js\"",
     "test:wp7-fff": "node --test \"dist-test/tests/wp7/fff/*.test.js\"",

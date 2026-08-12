@@ -11,11 +11,13 @@
  * created lookalikes are not members and fail every verifier. Cross-kind
  * substitution fails every verifier (CAP-014/015).
  *
- * The action-provenance creator has exactly one future production consumer:
- * `src/control-plane/storage-bootstrap-action.ts` (the trusted control-plane
- * bootstrap composition root). That producer does NOT exist in WP-8-C, so no
- * production source module may import the creator (enforced by the static
- * guard); test-only use is permitted from the authorized storage test files.
+ * The action-provenance creator has exactly two production consumers
+ * (guard-pinned): `src/control-plane/storage-bootstrap-action.ts` (the PS-1
+ * operator-bootstrap composition root) and `src/runtime/mcp/compose.ts` (the
+ * pre-existing runtime composition root, which composes trusted
+ * registrations and re-verifies existing stores only). No other production
+ * source module may import the creator (enforced by the static guard);
+ * test-only use is permitted from the authorized storage test files.
  *
  * The trusted-bootstrap-input creator is imported only by
  * `src/storage/initialization/initialize.ts` (enforced by the static guard).
@@ -384,11 +386,12 @@ function sameLimitProfile(a: SelectedLimitProfile, b: SelectedLimitProfile): boo
 }
 
 /**
- * Storage-side action-provenance creator. The sole future production
- * consumer is `src/control-plane/storage-bootstrap-action.ts`; in WP-8-C no
- * production module imports this function (static-guard enforced). Tests may
- * use it as a test-only producer; test-only producers never create a runtime
- * or package export path.
+ * Storage-side action-provenance creator. Its production consumers are
+ * exactly the two guard-pinned trusted composition roots:
+ * `src/control-plane/storage-bootstrap-action.ts` (PS-1 operator bootstrap)
+ * and `src/runtime/mcp/compose.ts` (runtime re-verification composition).
+ * Tests may use it as a test-only producer; test-only producers never
+ * create a runtime or package export path.
  */
 export function createStorageBootstrapActionProvenance(fields: StorageBootstrapActionProvenance): StorageBootstrapActionProvenance {
   if (fields.actionIdentity.length === 0) throw new TypeError('actionIdentity must be non-empty');

@@ -5,11 +5,11 @@
  * which revalidates the still-live genuine one-shot initialization
  * capability at every mutation boundary.
  *
- * Production initialization is UNREACHABLE: the orchestrator requires a
- * genuine `StorageBootstrapActionProvenance`, and the storage-side
- * action-provenance creator has no production importer (its only consumer is
- * the future `src/control-plane/storage-bootstrap-action.ts`, which does not
- * exist). Tests exercise the complete flow through test-only producers.
+ * Production initialization is reachable ONLY through the operator
+ * bootstrap verb (PS-1): the trusted control-plane composition root
+ * `src/control-plane/storage-bootstrap-action.ts` mints the genuine
+ * storage-bootstrap action provenance and invokes this orchestrator.
+ * Tests exercise the complete flow through test-only producers.
  *
  * The capability is disposed on every exit path (success and failure).
  * Namespace identities and StoreMetadata digests are initialization results,

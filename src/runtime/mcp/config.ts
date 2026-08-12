@@ -14,6 +14,13 @@
  * The config path is operator-owned startup input, never an MCP request
  * field.
  *
+ * PS-1: two load profiles share one closed validator — `loadRuntimeConfig`
+ * (runtime startup; `configurationIdentity` REQUIRED, unchanged) and
+ * `loadBootstrapConfig` (operator bootstrap verb; `configurationIdentity`
+ * optional, derived by the control-plane bootstrap action from the
+ * validated canonical trusted configuration; a supplied identity is only
+ * ever compared, never trusted).
+ *
  * Independent-review corrections (F1-F3): the document read is bounded by a
  * runtime-local byte ceiling before parse/allocation; duplicate object keys
  * are rejected at every nesting level through the accepted repository raw-
@@ -94,7 +101,27 @@ export interface RuntimeConfig {
   readonly surfaces: readonly SurfaceConfig[];
 }
 
+/**
+ * PS-1 — bootstrap-profile surface: identical closed schema to
+ * `SurfaceConfig`, except `configurationIdentity` may be ABSENT. In
+ * bootstrap mode the identity is DERIVED by the control-plane bootstrap
+ * action from the validated canonical trusted configuration; a supplied
+ * identity is only ever compared against the derived one (never adopted).
+ * Normal runtime startup keeps REQUIRING a concrete identity — this
+ * profile exists only for the operator bootstrap verb.
+ */
+export interface BootstrapSurfaceConfig extends Omit<SurfaceConfig, 'configurationIdentity'> {
+  readonly configurationIdentity?: string;
+}
+
+/** The closed bootstrap-config document (same shape as the runtime document). */
+export interface BootstrapConfig {
+  readonly surfaces: readonly BootstrapSurfaceConfig[];
+}
+
 export type ConfigLoadResult = { readonly ok: true; readonly config: RuntimeConfig } | { readonly ok: false; readonly message: string };
+
+export type BootstrapConfigLoadResult = { readonly ok: true; readonly config: BootstrapConfig } | { readonly ok: false; readonly message: string };
 
 const SHA256_IDENTITY_RE = /^sha-256:[0-9a-f]{64}$/;
 
@@ -102,8 +129,17 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Closed-field validation of one surface entry (never coerced). */
-function validateSurface(raw: unknown, index: number): { readonly ok: true; readonly surface: SurfaceConfig } | { readonly ok: false; readonly message: string } {
+/**
+ * Closed-field validation of one surface entry (never coerced).
+ *
+ * `requireConfigurationIdentity` selects the profile: the runtime profile
+ * (true) REQUIRES a concrete `sha-256:<64-hex>` identity; the bootstrap
+ * profile (false) accepts an absent identity (derived later by the
+ * control-plane action) while still rejecting a malformed one when
+ * present. Normal startup validation is never weakened: only the operator
+ * bootstrap verb uses the permissive profile.
+ */
+function validateSurface(raw: unknown, index: number, requireConfigurationIdentity: boolean): { readonly ok: true; readonly surface: BootstrapSurfaceConfig } | { readonly ok: false; readonly message: string } {
   const label = `surfaces[${index}]`;
   if (!isRecord(raw)) return { ok: false, message: `${label} must be an object` };
   const keys = Object.keys(raw);
@@ -143,9 +179,17 @@ function validateSurface(raw: unknown, index: number): { readonly ok: true; read
     }
     forbiddenRoots = rawRoots as readonly string[];
   }
-  const configurationIdentity = raw['configurationIdentity'];
-  if (typeof configurationIdentity !== 'string' || !SHA256_IDENTITY_RE.test(configurationIdentity)) {
-    return { ok: false, message: `${label}.configurationIdentity must use sha-256:<64-hex> syntax` };
+  let configurationIdentity: string | undefined;
+  if (raw['configurationIdentity'] === undefined) {
+    if (requireConfigurationIdentity) {
+      return { ok: false, message: `${label}.configurationIdentity is required in runtime startup configuration` };
+    }
+  } else {
+    const rawIdentity = raw['configurationIdentity'];
+    if (typeof rawIdentity !== 'string' || !SHA256_IDENTITY_RE.test(rawIdentity)) {
+      return { ok: false, message: `${label}.configurationIdentity must use sha-256:<64-hex> syntax` };
+    }
+    configurationIdentity = rawIdentity;
   }
   const configurationVersion = raw['configurationVersion'];
   if (typeof configurationVersion !== 'string' || configurationVersion.length === 0) {
@@ -230,7 +274,7 @@ function validateSurface(raw: unknown, index: number): { readonly ok: true; read
     }
     gitTmpdir = rawTmp;
   }
-  return { ok: true, surface: { surfaceId, locator, serviceUid, forbiddenRoots, configurationIdentity, configurationVersion, limitProfile, ...(workspaces !== undefined ? { workspaces } : {}), ...(gitPath !== undefined ? { gitPath } : {}), ...(gitHome !== undefined ? { gitHome } : {}), ...(gitTmpdir !== undefined ? { gitTmpdir } : {}) } };
+  return { ok: true, surface: { surfaceId, locator, serviceUid, forbiddenRoots, ...(configurationIdentity !== undefined ? { configurationIdentity } : {}), configurationVersion, limitProfile, ...(workspaces !== undefined ? { workspaces } : {}), ...(gitPath !== undefined ? { gitPath } : {}), ...(gitHome !== undefined ? { gitHome } : {}), ...(gitTmpdir !== undefined ? { gitTmpdir } : {}) } };
 }
 
 /**
@@ -271,16 +315,12 @@ function readBoundedStartupConfig(configPath: string): { readonly ok: true; read
   }
 }
 
-/** Load and validate the operator startup configuration (closed fields; deterministic). */
-export function loadRuntimeConfig(configPath: string): ConfigLoadResult {
-  let bytes: Uint8Array;
-  try {
-    const read = readBoundedStartupConfig(configPath);
-    if (!read.ok) return { ok: false, message: read.message };
-    bytes = read.bytes;
-  } catch (err) {
-    return { ok: false, message: `startup configuration could not be read: ${(err as NodeJS.ErrnoException).code ?? 'unknown error'}` };
-  }
+/**
+ * Parse and validate one startup-config document against a profile
+ * (runtime: identity required; bootstrap: identity optional). Shared by
+ * both loaders so the two modes can never drift apart structurally.
+ */
+function parseStartupConfigDocument(bytes: Uint8Array, requireConfigurationIdentity: boolean): { readonly ok: true; readonly surfaces: readonly BootstrapSurfaceConfig[] } | { readonly ok: false; readonly message: string } {
   let document: unknown;
   try {
     // F2 correction: the accepted repository raw-JSON intake scans the full
@@ -312,10 +352,10 @@ export function loadRuntimeConfig(configPath: string): ConfigLoadResult {
   const rawSurfaces = document['surfaces'];
   if (rawSurfaces === undefined) return { ok: false, message: 'startup configuration is missing the surfaces field' };
   if (!Array.isArray(rawSurfaces)) return { ok: false, message: 'surfaces must be an array' };
-  const surfaces: SurfaceConfig[] = [];
+  const surfaces: BootstrapSurfaceConfig[] = [];
   const seen = new Set<string>();
   for (let i = 0; i < rawSurfaces.length; i++) {
-    const validated = validateSurface(rawSurfaces[i], i);
+    const validated = validateSurface(rawSurfaces[i], i, requireConfigurationIdentity);
     if (!validated.ok) return { ok: false, message: validated.message };
     if (seen.has(validated.surface.surfaceId)) {
       return { ok: false, message: `surfaceId is registered more than once: ${validated.surface.surfaceId}` };
@@ -323,5 +363,52 @@ export function loadRuntimeConfig(configPath: string): ConfigLoadResult {
     seen.add(validated.surface.surfaceId);
     surfaces.push(validated.surface);
   }
-  return { ok: true, config: { surfaces } };
+  return { ok: true, surfaces };
+}
+
+/** Narrow a bootstrap-profile surface to the runtime profile (identity guaranteed present). */
+function toRuntimeSurface(surface: BootstrapSurfaceConfig): SurfaceConfig {
+  if (surface.configurationIdentity === undefined) {
+    // Unreachable by construction: loadRuntimeConfig enforces the strict
+    // profile before this narrowing; fail closed rather than ever accept
+    // an incomplete runtime surface.
+    throw new Error('internal invariant: runtime surface without configurationIdentity');
+  }
+  return { ...surface, configurationIdentity: surface.configurationIdentity };
+}
+
+/** Load and validate the operator startup configuration (closed fields; deterministic). */
+export function loadRuntimeConfig(configPath: string): ConfigLoadResult {
+  let bytes: Uint8Array;
+  try {
+    const read = readBoundedStartupConfig(configPath);
+    if (!read.ok) return { ok: false, message: read.message };
+    bytes = read.bytes;
+  } catch (err) {
+    return { ok: false, message: `startup configuration could not be read: ${(err as NodeJS.ErrnoException).code ?? 'unknown error'}` };
+  }
+  const parsed = parseStartupConfigDocument(bytes, true);
+  if (!parsed.ok) return { ok: false, message: parsed.message };
+  return { ok: true, config: { surfaces: parsed.surfaces.map(toRuntimeSurface) } };
+}
+
+/**
+ * PS-1 — operator bootstrap configuration loader. Identical closed document
+ * and validation, except `configurationIdentity` may be absent per surface
+ * (the control-plane bootstrap action derives it from the validated
+ * canonical trusted configuration). Normal startup validation is NOT
+ * weakened: this loader is used only by the operator bootstrap verb.
+ */
+export function loadBootstrapConfig(configPath: string): BootstrapConfigLoadResult {
+  let bytes: Uint8Array;
+  try {
+    const read = readBoundedStartupConfig(configPath);
+    if (!read.ok) return { ok: false, message: read.message };
+    bytes = read.bytes;
+  } catch (err) {
+    return { ok: false, message: `startup configuration could not be read: ${(err as NodeJS.ErrnoException).code ?? 'unknown error'}` };
+  }
+  const parsed = parseStartupConfigDocument(bytes, false);
+  if (!parsed.ok) return { ok: false, message: parsed.message };
+  return { ok: true, config: { surfaces: parsed.surfaces } };
 }

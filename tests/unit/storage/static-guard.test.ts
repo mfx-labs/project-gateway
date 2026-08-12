@@ -100,7 +100,7 @@ const BRAND_MODULES = new Set([
 
 /** Exact creator-consumer edges for production sources. */
 const CREATOR_EDGES: Readonly<Record<string, readonly string[]>> = {
-  createStorageBootstrapActionProvenance: ['src/runtime/mcp/compose.ts'], // WP-9 Slice 5 trusted composition root; future consumer: src/control-plane/storage-bootstrap-action.ts (does not exist)
+  createStorageBootstrapActionProvenance: ['src/control-plane/storage-bootstrap-action.ts', 'src/runtime/mcp/compose.ts'], // PS-1 trusted control-plane bootstrap composition root (authorized) + WP-9 Slice 5 trusted composition root
   createTrustedStorageBootstrapInput: ['src/storage/initialization/initialize.ts', 'src/runtime/mcp/compose.ts'],
   createInitializationCapability: ['src/storage/initialization/initialize.ts', 'src/runtime/mcp/compose.ts'],
   // WP-8-D edges (ADR-029 implementation constraints):
@@ -372,12 +372,14 @@ test('static guard: creator-consumer edges hold for production sources', () => {
     }
   }
   // The production action-provenance creator may be imported ONLY by the
-  // WP-9 Slice 5 trusted composition root (the runtime CLI); its future
-  // control-plane consumer does not exist yet.
+  // two authorized trusted composition roots: the PS-1 control-plane
+  // bootstrap action (operator bootstrap verb) and the WP-9 Slice 5 runtime
+  // composition root (re-verification only). No other production module may
+  // mint genuine bootstrap provenance.
   assert.deepEqual(
     [...(consumers.get('createStorageBootstrapActionProvenance') ?? [])].sort(),
-    ['src/runtime/mcp/compose.ts'],
-    'action-provenance creator must be imported only by the runtime composition root',
+    ['src/control-plane/storage-bootstrap-action.ts', 'src/runtime/mcp/compose.ts'],
+    'action-provenance creator must be imported only by the two authorized composition roots',
   );
   // The private storage barrel must not re-export the creators.
   const barrel = readFileSync(join(STORAGE_SRC, 'index.ts'), 'utf8');

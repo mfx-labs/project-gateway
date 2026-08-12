@@ -95,6 +95,18 @@ const STORAGE_IMPORT_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     '../storage/types.js',
   ],
   'src/control-plane/storage-write-action.ts': ['../storage/trusted-input/bootstrap-input.js'],
+  // PS-1: the operator bootstrap action is the PS-1 production consumer of
+  // the bootstrap provenance creator (the pre-existing runtime composition
+  // root is the other guard-pinned consumer, re-verification only) and the
+  // only production consumer of the initialization orchestrator;
+  // verification reuses the committed store-instance pipeline.
+  'src/control-plane/storage-bootstrap-action.ts': [
+    '../storage/trusted-input/bootstrap-input.js',
+    '../storage/initialization/initialize.js',
+    '../storage/read/read-record.js',
+    '../storage/limits/limits.js',
+    '../storage/types.js',
+  ],
   'src/control-plane/records.ts': ['../storage/format/envelope.js'],
   'src/control-plane/types.ts': ['../storage/types.js'],
   'src/control-plane/core.ts': ['../storage/types.js'],
@@ -119,6 +131,11 @@ test('control-plane static guard: exactly one WP-8 store boundary (no second sto
     }
     if (path === 'src/control-plane/storage-write-action.ts') {
       assert.equal(content.includes('createStorageWriteActionProvenance'), true, 'the write-action producer mints the genuine provenance');
+    }
+    if (path === 'src/control-plane/storage-bootstrap-action.ts') {
+      assert.equal(content.includes('createStorageBootstrapActionProvenance'), true, 'the bootstrap action mints the genuine bootstrap provenance');
+      assert.equal(content.includes('initializeTrustedStore'), true, 'the bootstrap action reuses the accepted initialization orchestrator');
+      assert.equal(content.includes('verifyStoreInstance'), true, 'the bootstrap action reuses the committed store-instance verification');
     }
   }
 });

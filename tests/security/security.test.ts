@@ -141,8 +141,15 @@ test('security: production modules perform no hidden filesystem/network/process 
   // ONLY in the narrow result-write executor (writer.ts; exclusive-create
   // discipline) and that every other completion module is I/O-free;
   // excluded here by boundary.
+  // PS-1 operator bootstrap (src/bootstrap): a dedicated operator-CLI
+  // boundary with its own stricter guard
+  // (tests/unit/bootstrap-static-guard.test.ts) proving that node:fs is
+  // restricted to the exact output-write discipline (atomic 0600
+  // no-clobber config publish), that config reads flow through the accepted
+  // loader, and that the boundary composes the trusted control-plane
+  // bootstrap action without minting provenance; excluded here by boundary.
   const prodFiles = walk(DIST)
-    .filter((p) => !p.includes('conformance') && !p.includes('/adapters/') && !p.includes('/reader/') && !p.includes('/git/') && !p.includes('/fff/') && !p.includes('/runtime/') && !p.includes('/writing/') && !p.includes('/completion/'))
+    .filter((p) => !p.includes('conformance') && !p.includes('/adapters/') && !p.includes('/reader/') && !p.includes('/git/') && !p.includes('/fff/') && !p.includes('/runtime/') && !p.includes('/writing/') && !p.includes('/completion/') && !p.includes('/bootstrap/'))
     .filter((p) => !isStorageFsDelegatedModule(p));
   for (const p of prodFiles) {
     if (p.includes('runner.js') || p.includes('corpus-bundle')) continue;

@@ -150,7 +150,8 @@ Use the existing WP-14B onboarding flow
   operator-owned.
 - Store initialization is an explicit control-plane-authorized action
   (WP-8 SRX-012); the runtime reads stores initialized elsewhere
-  (`src/runtime/mcp/compose.ts`). Do not hand-create the layout.
+  (`src/runtime/mcp/compose.ts`). Initialization is reachable ONLY through
+  the operator-only `bootstrap` verb (§2.8). Do not hand-create the layout.
 
 ### 2.6 Pi integration
 
@@ -169,6 +170,59 @@ Use the existing WP-14B onboarding flow
 - Any other pi-guard version is unverified and fails closed at the
   compatibility boundary. Verify the loaded pi-guard extension identity
   and manifest version before operation.
+
+### 2.8 Operator bootstrap (PS-1)
+
+Trusted-store initialization is reachable through ONE operator-only CLI
+verb (ADR-041):
+
+```text
+project-gateway-mcp bootstrap --config <file> [--output <file>]
+```
+
+- **Operator-only.** The verb is a local operator command; it never starts
+  the MCP server, is not an MCP tool, is not reachable through the tunnel
+  or ChatGPT, and grants no model-accessible authority. Bootstrap mode
+  emits no MCP protocol data (stdout carries the resolved runtime
+  configuration only).
+- **Configuration.** The same closed startup document as §2.5, except
+  `configurationIdentity` may be ABSENT per surface: the verb derives it
+  from the validated canonical trusted configuration (WP-6). A supplied
+  identity is never trusted — it must equal the derived identity or the
+  verb fails closed before any storage mutation. Normal `--config` startup
+  still REQUIRES a concrete identity; the permissive profile exists only
+  for the bootstrap verb.
+- **Trusted parent.** The `locator` directory must ALREADY exist as an
+  operator-owned `0700` directory (the storage engine never creates
+  parents). The operator provisions it (e.g. `mkdir -p -m 0700
+  <locator>`); pi-shuttle `project add` does this automatically.
+- **Semantics.** Each surface is initialized through the accepted
+  `initializeTrustedStore()` orchestrator: an absent store is provisioned;
+  an already-initialized store is replayed verification-only (exact
+  idempotent replay, zero writes); partial/foreign/unsupported-version/
+  drifted/wrong-identity/wrong-mode/forbidden-root states fail closed
+  with typed `ERR-STO-*` / `ERR-BOOT-*` codes and are never repaired.
+  After initialization the store is independently re-verified through the
+  same store-instance pipeline the runtime uses at startup.
+- **Output.** `--output <file>` writes the resolved runtime configuration
+  (the exact document normal `--config` startup accepts, including the
+  derived identity) atomically with mode `0600`; an existing file with
+  identical bytes is an idempotent no-op, any other existing content is a
+  typed conflict (`ERR-BOOT-OUTPUT-CONFLICT`) and is never overwritten.
+  When `--output` is omitted, the resolved document is written to stdout
+  as a single JSON document (for `pi-shuttle` composition). No
+  provenance, action identity, capability, or brand is ever serialized.
+- **Exit codes.** `0` success; `1` operational failure (config, store
+  state, output); `2` malformed operands. Malformed/unknown arguments
+  always fail closed.
+
+Typical flow (the `pi-shuttle project add` equivalent):
+
+```text
+mkdir -p -m 0700 <locator>
+project-gateway-mcp bootstrap --config <bootstrap-config.json> --output <runtime-config.json>
+project-gateway-mcp --config <runtime-config.json>
+```
 
 ---
 
@@ -218,9 +272,13 @@ Use the existing WP-14B onboarding flow
 - **Trusted storage location model.** The trusted parent root comes from
   the bootstrap locator only (ADR-028); the two namespaces are derived
   fixed layouts: `<trusted-parent>/store-v1/` (records) and
-  `<trusted-parent>/config-v1/` (configuration) (WP-8 §4–§5). Each
-  namespace contains `metadata/`, `records/`, `index/`, `audit/`, `tmp/`,
-  `locks/`, `quarantine/`. Records are partitioned deterministically by
+  `<trusted-parent>/config-v1/` (configuration) (WP-8 §4–§5).
+  **Initialization creates exactly `metadata/` and `tmp/` per namespace**
+  (WP-8-C bootstrap scope; ADR-028 decision E). `records/`, `audit/`,
+  `locks/` are provisioned lazily (phase-3, capability-gated) as records
+  are written; `index/` and `quarantine/` are contract-reserved (WP-8
+  §5.2) and are **not** created by initialization — their presence is an
+  unknown entry and fails closed. Records are partitioned deterministically by
   class and identifier-derived shard. Ownership/permissions are
   deterministic: directories `0700`, files `0600`, owned by the trusted
   service UID (SRX-006/SRX-007).

@@ -53,7 +53,8 @@ Field notes:
 
 - `locator` is the directory containing the initialized trusted store
   (`store-v1/`, `config-v1/`). `configurationIdentity`/`configurationVersion`
-  must match the store metadata.
+  must match the store metadata. Store creation is operator-only: see the
+  `bootstrap` verb in the operator runbook §2.8 (ADR-041).
 - `workspaces` enables the two WP-14A producer surfaces (`persist-artifact`,
   `inspect-changes`). Version `2` configuration is required for
   `artifactLocation` (a strict descendant of `root`, existing directory).

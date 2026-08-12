@@ -17,6 +17,13 @@
  * STDOUT IS MCP PROTOCOL ONLY — no banners, no stdout logging. All operational
  * diagnostics go to bounded stderr.
  *
+ * PS-1 operator bootstrap verb (`project-gateway-mcp bootstrap`): operator
+ * CLI behavior only, dispatched before the MCP path and never entering the
+ * server; loads the operator bootstrap configuration, provisions or
+ * replay-verifies the trusted store through the trusted control-plane
+ * bootstrap action, and emits the resolved runtime configuration (see
+ * `src/bootstrap/run.ts`). Bootstrap mode emits no MCP protocol data.
+ *
  * The OpenAI Secure MCP Tunnel, ChatGPT connector configuration, and all
  * tunnel protocol work are NOT part of this CLI (WP-14 owns that
  * integration); the local CLI is the command an external tunnel client will launch.
@@ -27,13 +34,20 @@ import { loadRuntimeConfig } from './config.js';
 import { composeTrustedRegistry } from './compose.js';
 import { createMcpServer } from './server.js';
 import { writeDiagnostic } from './diagnostics.js';
+import { runBootstrapCommand } from '../../bootstrap/run.js';
 
-const USAGE = 'usage: project-gateway-mcp --config <file>\n';
+const USAGE = 'usage: project-gateway-mcp --config <file>\n       project-gateway-mcp bootstrap --config <file> [--output <file>]\n';
 
 interface CliArgs {
   readonly configPath: string;
 }
 
+/**
+ * Strict runtime-mode parse: `--config <file>` exactly. The bootstrap verb
+ * is dispatched BEFORE this parser (first argument `bootstrap`), so the two
+ * modes are structurally mutually exclusive: runtime mode can never accept
+ * `bootstrap`, and bootstrap mode can never reach the MCP server path.
+ */
 function parseArgs(argv: readonly string[]): { readonly ok: true; readonly args: CliArgs } | { readonly ok: false; readonly message: string } {
   if (argv.length === 1 && (argv[0] === '--help' || argv[0] === '-h')) {
     process.stderr.write(USAGE);
@@ -57,7 +71,12 @@ function packageIdentity(): { readonly name: string; readonly version: string } 
 }
 
 async function main(): Promise<void> {
-  const parsed = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  // Operator-only bootstrap verb: never enters the MCP server path.
+  if (argv[0] === 'bootstrap') {
+    process.exit(await runBootstrapCommand(argv));
+  }
+  const parsed = parseArgs(argv);
   if (!parsed.ok) {
     process.stderr.write(parsed.message);
     process.exit(2);

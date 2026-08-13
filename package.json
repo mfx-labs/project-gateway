@@ -52,7 +52,7 @@
     "clean:generated": "node scripts/clean-generated.mjs",
     "test:runtime": "node --test \"dist-test/tests/runtime/*.test.js\""
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
     "ajv": "8.20.0",
@@ -65,5 +65,9 @@
   },
   "bin": {
     "project-gateway-mcp": "./dist/runtime/mcp/cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mfx-labs/project-gateway.git"
   }
 }

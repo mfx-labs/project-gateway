@@ -31,6 +31,71 @@ describe('WP-7 Git: host-lane validation', () => {
     }
   });
 
+  it('version policy (PS-6R): 2.29.x rejected, 2.30.0 accepted, newer accepted, malformed rejected', async () => {
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'wp7-version-'));
+    try {
+      const writeFakeGit = (name: string, stdout: string): string => {
+        const bin = path.join(scratch, name);
+        fs.writeFileSync(bin, `#!/bin/sh\necho '${stdout}'\n`);
+        fs.chmodSync(bin, 0o755);
+        return bin;
+      };
+      // Below minimum: 2.29.9 → wrong-version (fail closed).
+      const below = await initializeGitHostLane(writeFakeGit('git-229', 'git version 2.29.9'));
+      assert.equal(below.ok, false);
+      if (!below.ok) assert.equal(below.error.code, 'wrong-version');
+      // Exact minimum: 2.30.0 → accepted, version recorded.
+      const exactMin = await initializeGitHostLane(writeFakeGit('git-230', 'git version 2.30.0'));
+      assert.equal(exactMin.ok, true);
+      if (exactMin.ok) assert.equal(exactMin.descriptor.version, '2.30.0');
+      // Validated CI baseline: 2.45.4 → accepted.
+      const baseline = await initializeGitHostLane(writeFakeGit('git-2454', 'git version 2.45.4'));
+      assert.equal(baseline.ok, true);
+      if (baseline.ok) assert.equal(baseline.descriptor.version, '2.45.4');
+      // Newer version: 2.50.1 → accepted.
+      const newer = await initializeGitHostLane(writeFakeGit('git-250', 'git version 2.50.1'));
+      assert.equal(newer.ok, true);
+      if (newer.ok) assert.equal(newer.descriptor.version, '2.50.1');
+      // Malformed version output → wrong-version (fail closed).
+      const malformed = await initializeGitHostLane(writeFakeGit('git-bad', 'not a git version at all'));
+      assert.equal(malformed.ok, false);
+      if (!malformed.ok) assert.equal(malformed.error.code, 'wrong-version');
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  it('version policy (PS-6R): an accepted newer-version binary still fails closed on fingerprint mutation', async () => {
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'wp7-version-mut-'));
+    try {
+      const bin = path.join(scratch, 'git');
+      fs.writeFileSync(bin, `#!/bin/sh\necho 'git version 2.50.1'\n`);
+      fs.chmodSync(bin, 0o755);
+      const r = await initializeGitHostLane(bin);
+      assert.equal(r.ok, true);
+      if (!r.ok) return;
+      // Same version, mutated bytes (fingerprint drift) → revalidation fails.
+      fs.writeFileSync(bin, `#!/bin/sh\necho 'git version 2.50.1'\n# mutated\n`);
+      assert.notEqual(revalidateGitHostLane(r.descriptor), null, 'same-version binary mutation must be rejected');
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  it('version policy (PS-6R): an unsafe binary is rejected regardless of version', async () => {
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'wp7-version-unsafe-'));
+    try {
+      const bin = path.join(scratch, 'git');
+      fs.writeFileSync(bin, `#!/bin/sh\necho 'git version 2.50.1'\n`);
+      fs.chmodSync(bin, 0o702); // world-writable → unsafe
+      const r = await initializeGitHostLane(bin);
+      assert.equal(r.ok, false);
+      if (!r.ok) assert.equal(r.error.code, 'world-writable');
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
   it('rejects a non-absolute path', async () => {
     const r = await initializeGitHostLane('relative/git');
     assert.equal(r.ok, false);

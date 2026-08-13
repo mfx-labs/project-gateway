@@ -24,9 +24,12 @@
  *
  * The accepted count manifest (must be updated consistently if authorized
  * test-count changes are ever merged):
- *   reader 62, git 38, fff 26, security 39 (total 165).
+ *   reader 62, git 41, fff 26, security 39 (total 168).
  * Security rose from 32 to 39 in the final focused-rereview correction:
  * seven direct fingerprint fail-closed tests (Z-05) were authorized.
+ * Git rose from 38 to 41 with the PS-6R version-policy tests (minimum
+ * 2.30.0 acceptance, same-version fingerprint mutation, unsafe-binary
+ * rejection) — authorized by the PS-6R runtime compatibility gate.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
@@ -36,7 +39,7 @@ import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-export const EXPECTED_COUNTS = Object.freeze({ reader: 62, git: 38, fff: 26, security: 39 });
+export const EXPECTED_COUNTS = Object.freeze({ reader: 62, git: 41, fff: 26, security: 39 });
 
 const MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
 const MAX_DIAGNOSTIC_LINES = 15;

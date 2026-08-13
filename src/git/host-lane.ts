@@ -2,7 +2,12 @@
  * WP-7 — Git host-lane validation.
  *
  * Validates the trusted Git binary at initialization and revalidates
- * its fingerprint before every launch.
+ * its fingerprint before every launch. PS-6R: the runtime requirement is
+ * Git >= 2.30.0 (minimum version, semver-compared); 2.45.4 remains the
+ * validated CI/evidence baseline. All other checks — canonical absolute
+ * path, ownership (root or current uid), mode (not group/world
+ * writable), dev/ino/mode/size/mtime/SHA-256 fingerprint revalidated
+ * before every launch — are security invariants and are unchanged.
  */
 import { statSync, lstatSync } from 'node:fs';
 import type { Stats } from 'node:fs';
@@ -113,8 +118,38 @@ function revalidateFingerprint(path: string, fingerprint: GitBinaryFingerprint):
 }
 
 /**
- * Initialize the Git host lane: validate the binary, verify version,
- * and record the initial fingerprint.
+ * PS-6R Git minimum runtime version. Exact 2.45.4 remains the validated
+ * CI/evidence baseline; versions at/above this minimum are accepted.
+ */
+export const GIT_MINIMUM_VERSION = '2.30.0';
+
+const GIT_VERSION_RE = /^git version (\d+)\.(\d+)\.(\d+)/;
+
+/**
+ * Parse `git version x.y.z(...)` output into a numeric triple. Returns
+ * null when the output is unparseable (fail closed). Prerelease/build
+ * suffixes are ignored for the minimum comparison; a missing triple is
+ * malformed.
+ */
+export function parseGitVersion(output: string): { readonly major: number; readonly minor: number; readonly patch: number } | null {
+  const match = output.trim().match(GIT_VERSION_RE);
+  if (match === null) return null;
+  return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]) };
+}
+
+/** True when the parsed version is at/above the minimum 2.30.0. */
+export function satisfiesGitMinimum(version: { readonly major: number; readonly minor: number; readonly patch: number } | null): boolean {
+  if (version === null) return false;
+  if (version.major > 2) return true;
+  if (version.major < 2) return false;
+  if (version.minor > 30) return true;
+  if (version.minor < 30) return false;
+  return version.patch >= 0;
+}
+
+/**
+ * Initialize the Git host lane: validate the binary, verify the minimum
+ * version, and record the initial fingerprint.
  */
 export async function initializeGitHostLane(
   absolutePath: string,
@@ -143,17 +178,24 @@ export async function initializeGitHostLane(
   const permErr = validatePermissions(st);
   if (permErr) return { ok: false, error: permErr };
 
-  // 5. Version check
+  // 5. Version check (PS-6R): minimum >= 2.30.0, semver-compared.
+  //    Malformed/unreadable version output fails closed (wrong-version).
+  //    The exact validated CI baseline remains 2.45.4, recorded in the
+  //    descriptor for reporting.
   let version: string;
+  let parsedVersion: { readonly major: number; readonly minor: number; readonly patch: number } | null = null;
   try {
     const { stdout } = await execFileAsync(absolutePath, ['--version'], {
       timeout: 5000,
       env: { LC_ALL: 'C', LANG: 'C', PATH: '' },
     });
     version = stdout.trim();
-    // Expect git version 2.45.4
-    if (!version.includes('2.45.4')) {
-      return { ok: false, error: { code: 'wrong-version', message: `Expected Git 2.45.4, got: ${version}` } };
+    parsedVersion = parseGitVersion(version);
+    if (parsedVersion === null) {
+      return { ok: false, error: { code: 'wrong-version', message: `Git version could not be parsed from: ${version}` } };
+    }
+    if (!satisfiesGitMinimum(parsedVersion)) {
+      return { ok: false, error: { code: 'wrong-version', message: `Expected Git >= ${GIT_MINIMUM_VERSION}, got: ${version}` } };
     }
   } catch {
     return { ok: false, error: { code: 'version-check-failed', message: 'Failed to check Git version' } };
@@ -173,7 +215,7 @@ export async function initializeGitHostLane(
     ok: true,
     descriptor: Object.freeze({
       absolutePath,
-      version: '2.45.4',
+      version: `${parsedVersion.major}.${parsedVersion.minor}.${parsedVersion.patch}`,
       initialFingerprint: Object.freeze(fingerprint),
     }),
   };

@@ -41,20 +41,24 @@ The exact supported/tested release lane is pinned by the WP-15 contract
 
 | Component | Supported lane |
 |---|---|
-| OS/arch | Linux x86_64 (POSIX filesystem semantics) |
+| OS/arch | Linux x86_64 (POSIX filesystem semantics); macOS arm64 / Apple Silicon (PS-6, ADR-042) |
 | Node.js | **v22.23.2** — the tested/supported lane |
 | Git | 2.45.4 (pinned binary; WP-14B §2) |
 | Pi | 0.83.0 — `SUPPORTED_PI_LANE = 'pi-0.83.0-extension-api-v1'` (`src/adapters/pi/types.ts`) |
 | pi-guard | v0.1.2 verified lane (commit `7a7580cc4cbd7926797564c72269394fc29a860a`, annotated tag `v0.1.2`) |
-| Host lane | `TRUSTED_HOST_LANE = 'linux-x86_64-posix-utf8-node22'` (`src/trusted/host-lane.ts`) |
+| Host lane | closed accepted set `TRUSTED_HOST_LANE = 'linux-x86_64-posix-utf8-node22'` + `DARWIN_ARM64_HOST_LANE = 'darwin-arm64-posix-utf8-node22'` (`src/trusted/host-lane.ts`; ADR-042) |
 | Locale | UTF-8 |
 
 **Package floor vs supported lane.** `package.json` declares
 `"engines": { "node": ">=22.0.0" }`. That is a **package floor**, not the
 tested/supported release lane. The supported lane is Node **v22.23.2**
-exactly (contract §16). Running on any other Node version, Windows, macOS,
-case-insensitive filesystems, or non-UTF-8 locales is unverified and
-unsupported; unknown host lanes fail compatibility eligibility closed.
+exactly (contract §16). Running on any other Node version, macOS Intel,
+Windows, or non-UTF-8 locales is unverified and unsupported; unknown host
+lanes fail compatibility eligibility closed. macOS arm64 is an accepted
+host lane (ADR-042): default case-insensitive APFS is supported (fixed
+lowercase store layout; the compatibility probe records the volume's case
+profile as metadata evidence, and `caseSensitive:false` alone is not a
+probe failure), and cross-lane store replay fails closed.
 
 **Pi 0.84.x is NOT release-verified.** The current local harness may run
 Pi 0.84.1; that mismatch MUST NOT be used as substitute evidence for the
@@ -404,8 +408,9 @@ write protocol):
   process-local (committed coordinator contract FSCR-W12-001);
   multi-process composition relies on WP-8's per-record publication lock.
   One operator process per store is the supported operating posture.
-- **Exact supported environment.** Linux x86_64 / Node v22.23.2 / Git
-  2.45.4 / Pi 0.83.0 / pi-guard v0.1.2 / UTF-8 only (contract §16).
+- **Exact supported environment.** Linux x86_64 / macOS arm64 (ADR-042) /
+  Node v22.23.2 / Git 2.45.4 / Pi 0.83.0 / pi-guard v0.1.2 / UTF-8 only
+  (contract §16; macOS Intel and Windows remain unsupported).
 - **Pi 0.84.x not release-verified.** The local Pi 0.84.1 mismatch must
   not silently expand support.
 - **F-R1 is optional / not implemented** (Approved Decision 3; nonblocking,

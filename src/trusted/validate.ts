@@ -72,7 +72,6 @@ import {
   type ValidatedTrustedConfigurationProvenance,
 } from './provenance.js';
 import {
-  TRUSTED_HOST_LANE,
   isSupportedHostLane,
 } from './host-lane.js';
 import { compareStrings } from './ordering.js';
@@ -728,7 +727,7 @@ export function validateTrustedWorkspaceConfiguration(
   const configuration: ValidatedTrustedWorkspaceConfiguration = Object.freeze({
     configurationVersion,
     capabilityVocabularyVersion: CAPABILITY_VOCABULARY_VERSION,
-    hostLane: TRUSTED_HOST_LANE,
+    hostLane,
     provenance,
     ...(globalCapabilityCeiling !== undefined ? { globalCapabilityCeiling } : {}),
     ...(globalActionCeiling !== undefined ? { globalActionCeiling } : {}),

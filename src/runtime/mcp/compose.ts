@@ -57,6 +57,8 @@ import {
 } from '../../adapters/mcp/index.js';
 import { buildWorkspaceLanes } from './lanes.js';
 import type { RuntimeConfig } from './config.js';
+import { TRUSTED_HOST_LANE } from '../../trusted/index.js';
+import type { TrustedHostLane } from '../../trusted/index.js';
 
 const BOOTSTRAP_ACTION_IDENTITY = 'project-gateway-mcp-bootstrap';
 
@@ -77,8 +79,16 @@ export type ComposeResult =
   | { readonly ok: true; readonly registry: McpInspectionRegistry; readonly draftingRegistry: McpDraftingRegistry; readonly persistRegistry: McpPersistRegistry; readonly changesRegistry: McpChangesRegistry }
   | { readonly ok: false; readonly code: string; readonly message: string };
 
-/** Build the trusted registries (inspection + drafting + WP-14A persist/changes) from the validated operator startup configuration. */
-export async function composeTrustedRegistry(config: RuntimeConfig, deps: ComposeDependencies = {}): Promise<ComposeResult> {
+/**
+ * Build the trusted registries (inspection + drafting + WP-14A
+ * persist/changes) from the validated operator startup configuration.
+ *
+ * `hostLane` is the trusted host lane operand (PS-6), derived once at the
+ * CLI boundary and shared with the bootstrap path; the default is the
+ * Linux lane for existing direct callers/tests. It is never an
+ * operator-config-controlled field.
+ */
+export async function composeTrustedRegistry(config: RuntimeConfig, deps: ComposeDependencies = {}, hostLane: TrustedHostLane = TRUSTED_HOST_LANE): Promise<ComposeResult> {
   const createRegistry = deps.createSchemaRegistry ?? createSchemaRegistry;
   const inspectionRegistrations: McpStoreRegistrationInput[] = [];
   const draftingRegistrations: McpDraftingRegistration[] = [];
@@ -171,6 +181,7 @@ export async function composeTrustedRegistry(config: RuntimeConfig, deps: Compos
         gitPath: surface.gitPath ?? DEFAULT_GIT_PATH,
         home: surface.gitHome,
         tmpdir: surface.gitTmpdir,
+        hostLane,
       });
       if (!lanesResult.ok) {
         return { ok: false, code: 'ERR-LANE-COMPOSITION', message: `surface ${surface.surfaceId} workspace lanes failed: ${lanesResult.message}` };

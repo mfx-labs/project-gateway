@@ -13,7 +13,8 @@ import { ConformanceRunner, manifestStats } from '../../src/index.js';
 import { CONFORMANCE_MANIFEST, CORPUS_INPUTS } from '../../src/generated/corpus-bundle.js';
 import { ruleIds } from '../../src/semantic/rules.js';
 import { jcsSerialize } from '../../src/canonical/jcs.js';
-import { validateTrustedWorkspaceConfiguration, TRUSTED_HOST_LANE } from '../../src/trusted/index.js';
+import { validateTrustedWorkspaceConfiguration, TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE } from '../../src/trusted/index.js';
+import type { TrustedHostLane } from '../../src/trusted/index.js';
 import { brandRecordWrapper } from '../../src/internal/snapshot.js';
 import { runRegistrySnapshotPipeline } from '../../src/engine/pipeline.js';
 import { SchemaRegistry } from '../../src/schema/registry.js';
@@ -72,6 +73,22 @@ test('integration: full conformance manifest executes 648/648 including the Poin
   assert.equal(summary.passed, 648);
   assert.equal(summary.failed, 0);
   assert.deepEqual(summary.mismatches, []);
+});
+
+test('PS6: the darwin-arm64 lane PASSES the authoritative conformance corpus 648/648 (lane-keyed identity oracles)', () => {
+  // SIR-PS6-001 correction: the darwin lane must pass every authoritative
+  // vector via the lane-keyed expected static identities (ADR-016 addendum,
+  // ADR-042) — never a blessed expected-failure allowance.
+  const darwinSummary = new ConformanceRunner({ hostLane: DARWIN_ARM64_HOST_LANE }).run();
+  assert.equal(darwinSummary.total, 648);
+  assert.equal(darwinSummary.executed, 648);
+  assert.equal(darwinSummary.passed, 648);
+  assert.equal(darwinSummary.failed, 0);
+  assert.deepEqual(darwinSummary.mismatches, []);
+  // The linux lane remains the authoritative green baseline.
+  const linuxSummary = new ConformanceRunner().run();
+  assert.equal(linuxSummary.passed, 648);
+  assert.deepEqual(linuxSummary.mismatches, []);
 });
 
 test('integration: runner is deterministic across instances', () => {
@@ -219,6 +236,7 @@ test('integration: POUV2-only branch coverage — AUT-000 global, AUT-000 worksp
 test('integration: fixture static identities are independently derivable from literal oracle projections (MODERATE-2)', () => {
   const DOMAIN = 'PGAP-POINT-OF-USE-INPUT-v2\u0000';
   let oracleFixtures = 0;
+  const laneKeys: TrustedHostLane[] = [TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE];
   for (const f of POUV2_ENTRIES) {
     const descriptor = JSON.parse(new TextDecoder().decode(Buffer.from(corpus[f.paths[0]!]!, 'base64'))) as Record<string, unknown>;
     const oracle = descriptor['oracle'] as Record<string, unknown> | undefined;
@@ -226,6 +244,7 @@ test('integration: fixture static identities are independently derivable from li
     if (oracle === undefined) {
       // Boundary and v1 fixtures never assert a static identity.
       assert.equal(expect['static_identity'], undefined, `${f.fixture_id} asserts a static identity without an oracle`);
+      assert.equal(expect['staticIdentityByLane'], undefined, `${f.fixture_id} carries a lane-keyed identity map without an oracle`);
       continue;
     }
     oracleFixtures += 1;
@@ -238,21 +257,41 @@ test('integration: fixture static identities are independently derivable from li
     // 5. assert equality with the fixture's expected static identity
     assert.equal(digest, expect['static_identity'], `${f.fixture_id} oracle digest mismatch`);
     assert.match(digest, /^sha-256:[0-9a-f]{64}$/);
+    // SIR-PS6-001 lane-keyed oracle (ADR-016 addendum, ADR-042): the
+    // static-identity expectation is keyed by the accepted trusted host
+    // lane. The shared projection + the lane's configuration-identity
+    // literal must independently derive each lane's expected value, and
+    // the Linux entry must equal the preserved committed single-lane
+    // value.
+    const byLane = expect['staticIdentityByLane'] as Record<string, unknown> | undefined;
+    assert.ok(byLane !== undefined, `${f.fixture_id} oracle fixture lacks staticIdentityByLane`);
+    assert.deepEqual(Object.keys(byLane).sort(), [...laneKeys].sort(), `${f.fixture_id} lane map keys`);
+    assert.equal(byLane[TRUSTED_HOST_LANE], expect['static_identity'], `${f.fixture_id} linux lane entry must preserve the committed oracle`);
+    const darwinConfigurationIdentity = oracle['darwinConfigurationIdentity'];
+    assert.equal(typeof darwinConfigurationIdentity, 'string', `${f.fixture_id} darwinConfigurationIdentity missing`);
+    const darwinProjection = { ...(projection as Record<string, unknown>), configurationIdentity: darwinConfigurationIdentity };
+    const darwinCanonical = jcsSerialize(darwinProjection);
+    const darwinDigest = 'sha-256:' + createHash('sha256').update(DOMAIN + darwinCanonical, 'utf8').digest('hex');
+    assert.equal(darwinDigest, byLane[DARWIN_ARM64_HOST_LANE], `${f.fixture_id} darwin lane oracle digest mismatch`);
   }
   assert.ok(oracleFixtures >= 9, `expected at least 9 oracle fixtures, got ${oracleFixtures}`);
   // 7. production equality: the runner compares production identities against
-  // the same literals; assert every oracle fixture executed without mismatch.
-  const summary = new ConformanceRunner().run();
-  const oracleIds = new Set(
-    POUV2_ENTRIES
-      .filter((f) => {
-        const d = JSON.parse(new TextDecoder().decode(Buffer.from(corpus[f.paths[0]!]!, 'base64'))) as Record<string, unknown>;
-        return d['oracle'] !== undefined;
-      })
-      .map((f) => f.fixture_id),
-  );
-  for (const m of summary.mismatches) {
-    assert.ok(!oracleIds.has(m.fixtureId), `oracle fixture ${m.fixtureId} mismatch: ${m.reason} ${m.detail}`);
+  // the same literals; assert every oracle fixture executed without mismatch
+  // under BOTH accepted lanes.
+  for (const lane of laneKeys) {
+    const summary = new ConformanceRunner({ hostLane: lane }).run();
+    const oracleIds = new Set(
+      POUV2_ENTRIES
+        .filter((f) => {
+          const d = JSON.parse(new TextDecoder().decode(Buffer.from(corpus[f.paths[0]!]!, 'base64'))) as Record<string, unknown>;
+          return d['oracle'] !== undefined;
+        })
+        .map((f) => f.fixture_id),
+    );
+    for (const m of summary.mismatches) {
+      assert.ok(!oracleIds.has(m.fixtureId), `oracle fixture ${m.fixtureId} mismatch under ${lane}: ${m.reason} ${m.detail}`);
+    }
+    assert.equal(summary.passed, 648, `lane ${lane} full corpus must be green`);
   }
 });
 

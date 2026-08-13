@@ -25,7 +25,8 @@ import { structuralRuleIds, rawRuleIds, canonicalRuleIds, selectionRuleIds, refe
 import { schemaResourceForFixture, assertSchemaResourceMapIntegrity } from '../internal/schema-resource-map.js';
 import { checkProposedRegistration } from '../engine/identity.js';
 import { mk } from '../internal/report.js';
-import { validateTrustedWorkspaceConfiguration, TRUSTED_HOST_LANE } from '../trusted/index.js';
+import { validateTrustedWorkspaceConfiguration, TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE } from '../trusted/index.js';
+import type { TrustedHostLane } from '../trusted/index.js';
 import { brandRecordWrapper } from '../internal/snapshot.js';
 import { evaluatePointOfUseEligibilityForConfiguration, type PointOfUseRoutingResult } from '../pointofuse/index.js';
 
@@ -69,6 +70,12 @@ export class ConformanceRunner {
   private readonly validRecordModels: Readonly<Record<string, unknown>>[];
   private readonly resultsByAttempt: Map<string, Readonly<Record<string, unknown>>[]>;
   private readonly acceptedRegistry: AcceptedRegistryContext;
+  /**
+   * Trusted host lane operand (PS-6): explicit, never ambiently probed.
+   * Defaults to the Linux lane for existing callers; a darwin-arm64 lane
+   * can be supplied explicitly for the macOS evidence lane.
+   */
+  private readonly hostLane: TrustedHostLane;
   private readonly consumerSupport = {
     consumerId: 'project-gateway.fixture-consumer',
     supportedProtocolFeatures: [
@@ -85,7 +92,8 @@ export class ConformanceRunner {
   };
   readonly currentTime = '2026-08-04T06:10:00.000Z';
 
-  constructor() {
+  constructor(options: { readonly hostLane?: TrustedHostLane } = {}) {
+    this.hostLane = options.hostLane ?? TRUSTED_HOST_LANE;
     assertSchemaResourceMapIntegrity();
     this.schemaRegistry = new SchemaRegistry();
     this.entries = (CONFORMANCE_MANIFEST as { fixtures: ConformanceManifestEntry[] }).fixtures;
@@ -871,7 +879,7 @@ export class ConformanceRunner {
       return { ok: false, detail: 'descriptor config missing' };
     }
     const report = validateTrustedWorkspaceConfiguration(configInput, {
-      hostLane: TRUSTED_HOST_LANE,
+      hostLane: this.hostLane,
       resolveRootPath: (p: string) => p,
     });
     if (!report.ok) {
@@ -1028,11 +1036,31 @@ export class ConformanceRunner {
         }
       }
     }
-    const staticIdentity = expect['static_identity'];
-    if (staticIdentity !== undefined) {
+    // Static identity oracle, lane-keyed (SIR-PS6-001 correction; ADR-016
+    // addendum + ADR-042): when the fixture carries `staticIdentityByLane`,
+    // the expected value is selected ONLY by this runner's validated
+    // TrustedHostLane, and both accepted lanes must be present (an
+    // incomplete map fails closed as a protocol error). The legacy
+    // single-lane `static_identity` field remains authoritative for
+    // fixtures without the map; every existing Linux value is preserved.
+    const staticIdentityByLane = expect['staticIdentityByLane'];
+    let expectedStaticIdentity: string | undefined;
+    if (staticIdentityByLane !== undefined) {
+      if (typeof staticIdentityByLane !== 'object' || staticIdentityByLane === null || Array.isArray(staticIdentityByLane)) {
+        return { ok: false, reason: 'static-identity-oracle-malformed', detail: `${fixtureId} staticIdentityByLane is not an object` };
+      }
+      const laneMap = staticIdentityByLane as Record<string, unknown>;
+      if (typeof laneMap[TRUSTED_HOST_LANE] !== 'string' || typeof laneMap[DARWIN_ARM64_HOST_LANE] !== 'string') {
+        return { ok: false, reason: 'static-identity-oracle-incomplete', detail: `${fixtureId} staticIdentityByLane lacks an accepted-lane entry` };
+      }
+      expectedStaticIdentity = String(laneMap[this.hostLane]);
+    } else if (expect['static_identity'] !== undefined) {
+      expectedStaticIdentity = String(expect['static_identity']);
+    }
+    if (expectedStaticIdentity !== undefined) {
       const actual = (eligibility as unknown as { staticInputCorrelationIdentity: string }).staticInputCorrelationIdentity;
-      if (String(staticIdentity) !== actual) {
-        return { ok: false, reason: 'static-identity-mismatch', detail: `${fixtureId} expected ${staticIdentity} got ${actual}` };
+      if (expectedStaticIdentity !== actual) {
+        return { ok: false, reason: 'static-identity-mismatch', detail: `${fixtureId} expected ${expectedStaticIdentity} got ${actual}` };
       }
     }
     const ruleIds = Array.isArray(expect['rule_ids']) ? (expect['rule_ids'] as string[]) : [];

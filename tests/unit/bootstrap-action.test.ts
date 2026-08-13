@@ -22,6 +22,7 @@ import { mkdtempSync, chmodSync, rmSync, mkdirSync, writeFileSync, readFileSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bootstrapStore } from '../../src/control-plane/storage-bootstrap-action.js';
+import { TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE } from '../../src/trusted/index.js';
 import { createRootPathResolver, createArtifactLocationResolver } from '../../src/runtime/mcp/lanes.js';
 import { loadRuntimeConfig } from '../../src/runtime/mcp/config.js';
 
@@ -54,6 +55,7 @@ function baseInput(locator: string, overrides: Record<string, unknown> = {}): Pa
     serviceUid: UID,
     forbiddenRoots: [],
     configurationVersion: '2',
+    hostLane: TRUSTED_HOST_LANE,
     limitProfile: {},
     workspaces: [],
     resolvers: { resolveRootPath: createRootPathResolver() },
@@ -299,4 +301,100 @@ test('bootstrap action: producer is not publicly exported through package surfac
   const mcp = readFileSync(join(repo, 'src', 'adapters', 'mcp', 'index.ts'), 'utf8');
   assert.equal(root.includes('storage-bootstrap-action'), false, 'src/index.ts must not export the bootstrap action');
   assert.equal(mcp.includes('storage-bootstrap-action'), false, './mcp must not export the bootstrap action');
+});
+
+// ─── PS-6 cross-lane replay invariant ─────────────────────────────────────
+
+test('PS6: linux-lane store identity differs from darwin-arm64 identity for identical inputs', () => {
+  const env = makeEnv();
+  const env2 = makeEnv();
+  const linux = bootstrapStore(baseInput(makeLocator(env)));
+  const darwin = bootstrapStore(baseInput(makeLocator(env2), { hostLane: DARWIN_ARM64_HOST_LANE }));
+  assert.equal(linux.ok, true);
+  assert.equal(darwin.ok, true);
+  if (!linux.ok || !darwin.ok) return;
+  assert.notEqual(linux.configurationIdentity, darwin.configurationIdentity, 'host lane is identity-bound: lanes must produce different identities');
+  rmSync(env, { recursive: true, force: true });
+  rmSync(env2, { recursive: true, force: true });
+});
+
+test('PS6: a store created under one accepted lane cannot be replayed under the other lane (fail closed, no repair)', () => {
+  const env = makeEnv();
+  const locator = makeLocator(env);
+
+  // 1. Initialize under the Linux lane.
+  const created = bootstrapStore(baseInput(locator));
+  assert.equal(created.ok, true, JSON.stringify(created));
+  if (!created.ok) return;
+  assert.equal(created.state, 'INITIALIZED');
+  const metadataBytesAfterCreate = [
+    readFileSync(join(locator, 'store-v1', 'metadata', 'metadata.json')),
+    readFileSync(join(locator, 'config-v1', 'metadata', 'metadata.json')),
+  ];
+
+  // 2. Cross-lane replay attempt under the darwin-arm64 lane: the derived
+  //    configuration identity differs, so the recorded metadata binding
+  //    cannot match — the existing storage classification fails closed
+  //    (FOREIGN aggregate → ERR-STO-INTEGRITY), and nothing is repaired,
+  //    migrated, or rewritten.
+  const replayed = bootstrapStore(baseInput(locator, { hostLane: DARWIN_ARM64_HOST_LANE }));
+  assert.equal(replayed.ok, false, 'cross-lane replay must fail closed');
+  if (replayed.ok) return;
+  assert.equal(replayed.code, 'ERR-STO-INTEGRITY', `unexpected failure classification: ${replayed.code}`);
+
+  // 3. The Linux-bound store is untouched (no rewrite, no migration).
+  const metadataBytesAfterReplay = [
+    readFileSync(join(locator, 'store-v1', 'metadata', 'metadata.json')),
+    readFileSync(join(locator, 'config-v1', 'metadata', 'metadata.json')),
+  ];
+  assert.deepEqual(metadataBytesAfterReplay, metadataBytesAfterCreate, 'cross-lane replay must never mutate the store');
+
+  // 4. Replaying under the ORIGINAL lane still succeeds (verification-only
+  //    replay) — the store remains fully usable under its own lane.
+  const replayedOwnLane = bootstrapStore(baseInput(locator));
+  assert.equal(replayedOwnLane.ok, true, JSON.stringify(replayedOwnLane));
+  if (!replayedOwnLane.ok) return;
+  assert.equal(replayedOwnLane.state, 'INITIALIZED');
+  assert.equal(replayedOwnLane.configurationIdentity, created.configurationIdentity);
+  rmSync(env, { recursive: true, force: true });
+});
+
+test('PS6: mirrored direction — a store created under darwin-arm64 cannot be replayed under the linux lane (fail closed, no repair)', () => {
+  const env = makeEnv();
+  const locator = makeLocator(env);
+
+  // 1. Initialize under the darwin-arm64 lane.
+  const created = bootstrapStore(baseInput(locator, { hostLane: DARWIN_ARM64_HOST_LANE }));
+  assert.equal(created.ok, true, JSON.stringify(created));
+  if (!created.ok) return;
+  assert.equal(created.state, 'INITIALIZED');
+  const metadataBytesAfterCreate = [
+    readFileSync(join(locator, 'store-v1', 'metadata', 'metadata.json')),
+    readFileSync(join(locator, 'config-v1', 'metadata', 'metadata.json')),
+  ];
+
+  // 2. Cross-lane replay attempt under the linux lane: the derived
+  //    configuration identity differs, so the existing metadata binding
+  //    cannot match — the same storage classification fails closed
+  //    (FOREIGN aggregate → ERR-STO-INTEGRITY); nothing is repaired,
+  //    migrated, or rewritten.
+  const replayed = bootstrapStore(baseInput(locator));
+  assert.equal(replayed.ok, false, 'cross-lane replay must fail closed');
+  if (replayed.ok) return;
+  assert.equal(replayed.code, 'ERR-STO-INTEGRITY', `unexpected failure classification: ${replayed.code}`);
+
+  // 3. The darwin-bound store is untouched (no rewrite, no migration).
+  const metadataBytesAfterReplay = [
+    readFileSync(join(locator, 'store-v1', 'metadata', 'metadata.json')),
+    readFileSync(join(locator, 'config-v1', 'metadata', 'metadata.json')),
+  ];
+  assert.deepEqual(metadataBytesAfterReplay, metadataBytesAfterCreate, 'cross-lane replay must never mutate the store');
+
+  // 4. Replaying under the ORIGINAL (darwin-arm64) lane still succeeds.
+  const replayedOwnLane = bootstrapStore(baseInput(locator, { hostLane: DARWIN_ARM64_HOST_LANE }));
+  assert.equal(replayedOwnLane.ok, true, JSON.stringify(replayedOwnLane));
+  if (!replayedOwnLane.ok) return;
+  assert.equal(replayedOwnLane.state, 'INITIALIZED');
+  assert.equal(replayedOwnLane.configurationIdentity, created.configurationIdentity);
+  rmSync(env, { recursive: true, force: true });
 });

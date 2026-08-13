@@ -35,6 +35,8 @@ import { composeTrustedRegistry } from './compose.js';
 import { createMcpServer } from './server.js';
 import { writeDiagnostic } from './diagnostics.js';
 import { runBootstrapCommand } from '../../bootstrap/run.js';
+import { trustedHostLaneForPlatformArch } from '../../trusted/index.js';
+import type { TrustedHostLane } from '../../trusted/index.js';
 
 const USAGE = 'usage: project-gateway-mcp --config <file>\n       project-gateway-mcp bootstrap --config <file> [--output <file>]\n';
 
@@ -72,9 +74,25 @@ function packageIdentity(): { readonly name: string; readonly version: string } 
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
+  // Hygiene first: usage/help work on any platform.
+  if (argv.length === 1 && (argv[0] === '--help' || argv[0] === '-h')) {
+    process.stderr.write(USAGE);
+    process.exit(0);
+  }
+  // Trusted host lane — the ONE derivation at the operator CLI boundary,
+  // shared by the bootstrap path and the runtime/start path (PS-6). The
+  // I/O-free trusted core never probes the host itself; the pure mapping
+  // consumes this boundary's single host observation. Unsupported hosts
+  // (macOS Intel, Windows, unknown) fail closed with exit 2 before any
+  // validation or composition.
+  const hostLane = trustedHostLaneForPlatformArch(process.platform, process.arch);
+  if (hostLane === null) {
+    process.stderr.write(`project-gateway-mcp: unsupported host lane (${process.platform} ${process.arch}); supported: linux-x86_64, darwin-arm64\n`);
+    process.exit(2);
+  }
   // Operator-only bootstrap verb: never enters the MCP server path.
   if (argv[0] === 'bootstrap') {
-    process.exit(await runBootstrapCommand(argv));
+    process.exit(await runBootstrapCommand(argv, hostLane));
   }
   const parsed = parseArgs(argv);
   if (!parsed.ok) {
@@ -86,7 +104,7 @@ async function main(): Promise<void> {
     writeDiagnostic(loaded.message);
     process.exit(1);
   }
-  const composed = await composeTrustedRegistry(loaded.config);
+  const composed = await composeTrustedRegistry(loaded.config, {}, hostLane);
   if (!composed.ok) {
     writeDiagnostic(composed.message);
     process.exit(1);

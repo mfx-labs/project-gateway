@@ -25,7 +25,7 @@ import type {
 } from './extension-set.js';
 import type { RootPathResolver } from './roots.js';
 import type { ArtifactLocationResolver } from './artifact-location.js';
-import type { TRUSTED_HOST_LANE } from './host-lane.js';
+import type { TrustedHostLane } from './host-lane.js';
 
 /** Accepted trusted-configuration version 1 (canonical, single representation). */
 export const TRUSTED_CONFIGURATION_VERSION = '1';
@@ -151,8 +151,8 @@ export interface ValidatedGlobalCapabilityCeiling {
 export interface ValidatedTrustedWorkspaceConfiguration {
   readonly configurationVersion: TrustedConfigurationVersion;
   readonly capabilityVocabularyVersion: string;
-  /** Accepted trusted host-lane operand (identity-bound). */
-  readonly hostLane: typeof TRUSTED_HOST_LANE;
+  /** Accepted trusted host-lane operand (identity-bound; closed two-lane set). */
+  readonly hostLane: TrustedHostLane;
   readonly provenance: ValidatedTrustedConfigurationProvenance;
   /** Present only when declared (omission vs explicit empty is preserved). */
   readonly globalCapabilityCeiling?: ValidatedGlobalCapabilityCeiling;

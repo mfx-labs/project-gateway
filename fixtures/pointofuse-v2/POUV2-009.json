@@ -991,7 +991,8 @@
           }
         }
       ]
-    }
+    },
+    "darwinConfigurationIdentity": "sha-256:8c009e012030fee24fc628a5d83a9e24b7b07878fbdec5d86cb2cb73a2d5276e"
   },
   "expect": {
     "kind": "eligibility-v2",
@@ -1006,7 +1007,11 @@
     ],
     "message_keys": [
       "pou2.global-capability-ceiling-denial"
-    ]
+    ],
+    "staticIdentityByLane": {
+      "linux-x86_64-posix-utf8-node22": "sha-256:68159d2f2b515a981e730c90e645fca26d7012eff9f2f5d3174d8d0a06393556",
+      "darwin-arm64-posix-utf8-node22": "sha-256:99d3ae92012ec343579a69b8230246d9e0ebeb2be7757e50c4c1e95f757fd6c8"
+    }
   },
   "notes": "global ceiling denies -> AUT-000 semantic denial (global branch)"
 }

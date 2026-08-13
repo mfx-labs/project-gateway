@@ -34,9 +34,11 @@
  */
 import { realpathSync, lstatSync, statSync } from 'node:fs';
 import {
-  TRUSTED_HOST_LANE,
   CAPABILITY_VOCABULARY_VERSION,
   validateTrustedWorkspaceConfiguration,
+} from '../../trusted/index.js';
+import type {
+  TrustedHostLane,
 } from '../../trusted/index.js';
 import type {
   ArtifactLocationResolution,
@@ -236,6 +238,8 @@ export async function buildWorkspaceLanes(input: {
   readonly gitPath: string;
   readonly home: string;
   readonly tmpdir: string;
+  /** Trusted host lane operand (PS-6): derived once at the CLI boundary; never operator-config-controlled. */
+  readonly hostLane: TrustedHostLane;
 }): Promise<WorkspaceLanesResult> {
   const configurationReport = validateTrustedWorkspaceConfiguration(
     {
@@ -249,7 +253,7 @@ export async function buildWorkspaceLanes(input: {
       })),
     },
     {
-      hostLane: TRUSTED_HOST_LANE,
+      hostLane: input.hostLane,
       resolveRootPath: createRootPathResolver(),
       ...(input.workspaces.some((w) => w.artifactLocation !== undefined)
         ? { resolveArtifactLocation: createArtifactLocationResolver() }

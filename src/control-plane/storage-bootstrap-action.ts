@@ -45,7 +45,8 @@
  */
 import { validateTrustedWorkspaceConfiguration } from '../trusted/validate.js';
 import { computeTrustedConfigurationIdentity } from '../trusted/identity.js';
-import { CAPABILITY_VOCABULARY_VERSION, TRUSTED_HOST_LANE, TRUSTED_SOURCE_KIND } from '../trusted/index.js';
+import { CAPABILITY_VOCABULARY_VERSION, TRUSTED_SOURCE_KIND } from '../trusted/index.js';
+import type { TrustedHostLane } from '../trusted/index.js';
 import type { ArtifactLocationResolver, RootPathResolver, ValidatedWorkspaceRecord } from '../trusted/index.js';
 import { createStorageBootstrapActionProvenance } from '../storage/trusted-input/bootstrap-input.js';
 import { initializeTrustedStore } from '../storage/initialization/initialize.js';
@@ -90,6 +91,13 @@ export interface StorageBootstrapActionInput {
   readonly limitProfile: Readonly<Record<string, number>>;
   /** Workspace entries (validated through the WP-6 Phase-1 pipeline). */
   readonly workspaces: readonly BootstrapWorkspaceInput[];
+  /**
+   * Trusted host lane operand (PS-6): the lane derived once at the operator
+   * CLI boundary from the actual host observation. Never an
+   * operator-config-controlled field; the lane participates in configuration
+   * identity, so stores are lane-bound (cross-lane replay fails closed).
+   */
+  readonly hostLane: TrustedHostLane;
   /** Host observation seam (real resolvers supplied by the operator CLI). */
   readonly resolvers: BootstrapResolvers;
   /** Optional operator-owned Git lane facts, passed through to the runtime config unchanged. */
@@ -168,7 +176,7 @@ export function bootstrapStore(input: StorageBootstrapActionInput): StorageBoots
       })),
     },
     {
-      hostLane: TRUSTED_HOST_LANE,
+      hostLane: input.hostLane,
       resolveRootPath: input.resolvers.resolveRootPath,
       ...(input.resolvers.resolveArtifactLocation !== undefined ? { resolveArtifactLocation: input.resolvers.resolveArtifactLocation } : {}),
     },

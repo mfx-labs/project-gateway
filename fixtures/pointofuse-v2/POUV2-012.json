@@ -989,7 +989,8 @@
           }
         }
       ]
-    }
+    },
+    "darwinConfigurationIdentity": "sha-256:70ae59444d829a5524b4194c9d57b01d1de925a90961b66715d249711d1ed9f1"
   },
   "expect": {
     "kind": "eligibility-v2",
@@ -1004,7 +1005,11 @@
     ],
     "message_keys": [
       "pou2.workspace-capability-ceiling-denial"
-    ]
+    ],
+    "staticIdentityByLane": {
+      "linux-x86_64-posix-utf8-node22": "sha-256:cdda6b7d9626925e4fd7d060d2008991cdccdd76e30326e5a452430b194770f3",
+      "darwin-arm64-posix-utf8-node22": "sha-256:7c1e01e3e03e74ba9bb0fd9d8dd4a042e6e1b055eb91dfb4651b25ca68a7d42c"
+    }
   },
   "notes": "workspace ceiling denies -> AUT-000 semantic denial (workspace branch)"
 }

@@ -65,6 +65,13 @@ export {
 export type { ValidatedTrustedConfigurationProvenance } from './provenance.js';
 export {
   TRUSTED_HOST_LANE,
+  DARWIN_ARM64_HOST_LANE,
+  ACCEPTED_HOST_LANES,
+  trustedHostLaneForPlatformArch,
+  isSupportedHostLane,
+} from './host-lane.js';
+export type {
+  TrustedHostLane,
 } from './host-lane.js';
 export {
   EXTENSION_SCOPES,

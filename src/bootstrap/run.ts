@@ -31,6 +31,7 @@ import { loadBootstrapConfig, type BootstrapSurfaceConfig } from '../runtime/mcp
 import { writeDiagnostic } from '../runtime/mcp/diagnostics.js';
 import { createArtifactLocationResolver, createRootPathResolver } from '../runtime/mcp/lanes.js';
 import { bootstrapStore, type StorageBootstrapActionInput } from '../control-plane/storage-bootstrap-action.js';
+import type { TrustedHostLane } from '../trusted/index.js';
 
 const BOOTSTRAP_USAGE =
   'usage: project-gateway-mcp bootstrap --config <file> [--output <file>]\n';
@@ -84,13 +85,14 @@ function parseBootstrapArgs(argv: readonly string[]): { readonly ok: true; reado
   return { ok: false, message: BOOTSTRAP_USAGE };
 }
 
-function buildActionInputs(surfaces: readonly BootstrapSurfaceConfig[]): StorageBootstrapActionInput[] {
+function buildActionInputs(surfaces: readonly BootstrapSurfaceConfig[], hostLane: TrustedHostLane): StorageBootstrapActionInput[] {
   return surfaces.map((surface) => ({
     surfaceId: surface.surfaceId,
     locator: surface.locator,
     serviceUid: surface.serviceUid,
     forbiddenRoots: surface.forbiddenRoots,
     configurationVersion: surface.configurationVersion,
+    hostLane,
     ...(surface.configurationIdentity !== undefined ? { configurationIdentity: surface.configurationIdentity } : {}),
     limitProfile: surface.limitProfile,
     workspaces: (surface.workspaces ?? []).map((w) => ({
@@ -199,8 +201,12 @@ export function writeOutputFile(
  * Run the bootstrap command. Returns the process exit code:
  * 0 = success; 1 = operational failure (config/init/verify/output);
  * 2 = malformed operands. Never starts the MCP server.
+ *
+ * `hostLane` is the trusted host lane operand derived ONCE at the operator
+ * CLI boundary (`src/runtime/mcp/cli.ts`) — the same derivation the runtime
+ * start path uses, so bootstrap identity == start identity on one machine.
  */
-export async function runBootstrapCommand(argv: readonly string[]): Promise<number> {
+export async function runBootstrapCommand(argv: readonly string[], hostLane: TrustedHostLane): Promise<number> {
   if (argv.length === 2 && (argv[1] === '--help' || argv[1] === '-h')) {
     process.stderr.write(BOOTSTRAP_USAGE);
     return 0;
@@ -219,7 +225,7 @@ export async function runBootstrapCommand(argv: readonly string[]): Promise<numb
     writeDiagnostic('bootstrap: the configuration declares no surfaces');
     return 1;
   }
-  const inputs = buildActionInputs(loaded.config.surfaces);
+  const inputs = buildActionInputs(loaded.config.surfaces, hostLane);
   const resolvedSurfaces = [];
   for (const input of inputs) {
     const result = bootstrapStore(input);

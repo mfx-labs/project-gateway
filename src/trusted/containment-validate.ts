@@ -75,7 +75,7 @@ import {
   CONTAINMENT_DECISION_DIGEST_RE,
 } from './containment-identity.js';
 import { lookupValidatedWorkspace } from './validate.js';
-import { TRUSTED_HOST_LANE } from './host-lane.js';
+import { isSupportedHostLane } from './host-lane.js';
 import { canonicalizeRootLexically, isRootAncestorOrEqual } from './roots.js';
 import { isGenuineValidatedTrustedWorkspaceConfiguration } from './configuration-brand.js';
 
@@ -168,8 +168,10 @@ export function evaluateExistingPathContainment(
     return failContainmentReport(findings);
   }
 
-  // 1. Trusted operands first (host lane, resolver).
-  if (configuration.hostLane !== TRUSTED_HOST_LANE) {
+  // 1. Trusted operands first (host lane, resolver). Any accepted lane
+  //    (linux x86_64 or darwin arm64) passes the same containment contract;
+  //    unknown/macOS-Intel lanes fail closed here.
+  if (!isSupportedHostLane(configuration.hostLane)) {
     findings.push(finding('TCP-011', 'containment.host-lane-unsupported', 'trusted host lane is not the accepted supported lane', '/options/configuration'));
     return failContainmentReport(findings);
   }

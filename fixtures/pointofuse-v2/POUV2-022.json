@@ -946,7 +946,8 @@
           }
         }
       ]
-    }
+    },
+    "darwinConfigurationIdentity": "sha-256:6b7c7de0943cad893208c6af6dd64754bc438f30280b3a9b7e74dfffd5434673"
   },
   "expect": {
     "kind": "eligibility-v2",
@@ -963,7 +964,11 @@
     ],
     "message_keys": [
       "pou.missing-issuance"
-    ]
+    ],
+    "staticIdentityByLane": {
+      "linux-x86_64-posix-utf8-node22": "sha-256:7204e33c3dfa00efb25a159e177fde4bf7b845c17786578a98ab80f641aeb0d5",
+      "darwin-arm64-posix-utf8-node22": "sha-256:d007c1ef7b84eb12af90eb14494eb7a7db114c40c94da205a6038c538f36ff0e"
+    }
   },
   "notes": "missing lifecycle correlation record -> pou.missing-issuance"
 }

@@ -989,7 +989,8 @@
           }
         }
       ]
-    }
+    },
+    "darwinConfigurationIdentity": "sha-256:6b7c7de0943cad893208c6af6dd64754bc438f30280b3a9b7e74dfffd5434673"
   },
   "expect": {
     "kind": "eligibility-v2",
@@ -1005,7 +1006,11 @@
     ],
     "message_keys": [
       "pou.grant-revoked"
-    ]
+    ],
+    "staticIdentityByLane": {
+      "linux-x86_64-posix-utf8-node22": "sha-256:2a2a40fba1f9dfa85963fc3135676b2ba1f2c3927260c5dc765bdfa6faac81c7",
+      "darwin-arm64-posix-utf8-node22": "sha-256:a2c8f5d31b3bb916d8c30f93cd290c6bdc25974488aad837b18626cff5f44849"
+    }
   },
   "notes": "grant revoked -> pou.grant-revoked; static identity equals the baseline (live view excluded)"
 }

@@ -987,7 +987,8 @@
         }
       ]
     },
-    "darwinConfigurationIdentity": "sha-256:6b7c7de0943cad893208c6af6dd64754bc438f30280b3a9b7e74dfffd5434673"
+    "darwinConfigurationIdentity": "sha-256:6b7c7de0943cad893208c6af6dd64754bc438f30280b3a9b7e74dfffd5434673",
+    "intelConfigurationIdentity": "sha-256:e1c91351cb0563b570a2efb564a8f90b289fa03ffb6782c0bd411efe6d3dbafe"
   },
   "expect": {
     "kind": "eligibility-v2",
@@ -1006,7 +1007,8 @@
     ],
     "staticIdentityByLane": {
       "linux-x86_64-posix-utf8-node22": "sha-256:a70aa93cde1dbfb8578bb6a87b50345654ce1a4afb6cbf04d5d8b8a38dbf3b74",
-      "darwin-arm64-posix-utf8-node22": "sha-256:748529b5b857ef18eb2d534831bade012aec404da44c0093403defd942a29022"
+      "darwin-arm64-posix-utf8-node22": "sha-256:748529b5b857ef18eb2d534831bade012aec404da44c0093403defd942a29022",
+      "darwin-x86_64-posix-utf8-node22": "sha-256:0496755699e273d97db5a27946c3792cec9943a717995ad33587a492a110d627"
     }
   },
   "notes": "grant wrong record type -> LFC-012 semantic denial"

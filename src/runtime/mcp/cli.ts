@@ -87,7 +87,7 @@ async function main(): Promise<void> {
   // validation or composition.
   const hostLane = trustedHostLaneForPlatformArch(process.platform, process.arch);
   if (hostLane === null) {
-    process.stderr.write(`project-gateway-mcp: unsupported host lane (${process.platform} ${process.arch}); supported: linux-x86_64, darwin-arm64\n`);
+    process.stderr.write(`project-gateway-mcp: unsupported host lane (${process.platform} ${process.arch}); supported: linux-x86_64, darwin-arm64, darwin-x86_64\n`);
     process.exit(2);
   }
   // Operator-only bootstrap verb: never enters the MCP server path.

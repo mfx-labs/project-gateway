@@ -25,7 +25,7 @@ import { structuralRuleIds, rawRuleIds, canonicalRuleIds, selectionRuleIds, refe
 import { schemaResourceForFixture, assertSchemaResourceMapIntegrity } from '../internal/schema-resource-map.js';
 import { checkProposedRegistration } from '../engine/identity.js';
 import { mk } from '../internal/report.js';
-import { validateTrustedWorkspaceConfiguration, TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE } from '../trusted/index.js';
+import { validateTrustedWorkspaceConfiguration, TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE, DARWIN_X86_64_HOST_LANE } from '../trusted/index.js';
 import type { TrustedHostLane } from '../trusted/index.js';
 import { brandRecordWrapper } from '../internal/snapshot.js';
 import { evaluatePointOfUseEligibilityForConfiguration, type PointOfUseRoutingResult } from '../pointofuse/index.js';
@@ -1050,7 +1050,7 @@ export class ConformanceRunner {
         return { ok: false, reason: 'static-identity-oracle-malformed', detail: `${fixtureId} staticIdentityByLane is not an object` };
       }
       const laneMap = staticIdentityByLane as Record<string, unknown>;
-      if (typeof laneMap[TRUSTED_HOST_LANE] !== 'string' || typeof laneMap[DARWIN_ARM64_HOST_LANE] !== 'string') {
+      if (typeof laneMap[TRUSTED_HOST_LANE] !== 'string' || typeof laneMap[DARWIN_ARM64_HOST_LANE] !== 'string' || typeof laneMap[DARWIN_X86_64_HOST_LANE] !== 'string') {
         return { ok: false, reason: 'static-identity-oracle-incomplete', detail: `${fixtureId} staticIdentityByLane lacks an accepted-lane entry` };
       }
       expectedStaticIdentity = String(laneMap[this.hostLane]);

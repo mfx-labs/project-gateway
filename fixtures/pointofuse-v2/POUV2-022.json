@@ -947,7 +947,8 @@
         }
       ]
     },
-    "darwinConfigurationIdentity": "sha-256:6b7c7de0943cad893208c6af6dd64754bc438f30280b3a9b7e74dfffd5434673"
+    "darwinConfigurationIdentity": "sha-256:6b7c7de0943cad893208c6af6dd64754bc438f30280b3a9b7e74dfffd5434673",
+    "intelConfigurationIdentity": "sha-256:e1c91351cb0563b570a2efb564a8f90b289fa03ffb6782c0bd411efe6d3dbafe"
   },
   "expect": {
     "kind": "eligibility-v2",
@@ -967,7 +968,8 @@
     ],
     "staticIdentityByLane": {
       "linux-x86_64-posix-utf8-node22": "sha-256:7204e33c3dfa00efb25a159e177fde4bf7b845c17786578a98ab80f641aeb0d5",
-      "darwin-arm64-posix-utf8-node22": "sha-256:d007c1ef7b84eb12af90eb14494eb7a7db114c40c94da205a6038c538f36ff0e"
+      "darwin-arm64-posix-utf8-node22": "sha-256:d007c1ef7b84eb12af90eb14494eb7a7db114c40c94da205a6038c538f36ff0e",
+      "darwin-x86_64-posix-utf8-node22": "sha-256:3572dc2daf2ff580e7bee18c06a5d5e9e6954191b905b60bd63111cbfd52d1a8"
     }
   },
   "notes": "missing lifecycle correlation record -> pou.missing-issuance"

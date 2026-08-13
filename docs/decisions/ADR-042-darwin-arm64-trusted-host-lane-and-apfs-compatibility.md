@@ -129,3 +129,19 @@ evolution is recorded in the ADR-016 addendum
 (`ADR-016-addendum-lane-specific-identity-oracles.md`). Both accepted
 lanes pass the authoritative corpus 648/648 with no expected-failure
 allowance.
+
+## Addendum — PS-6I: macOS Intel promoted (ADR-043)
+
+Decision 1 of this ADR closed the accepted set to exactly two lanes and
+decision 2 declared macOS Intel unsupported. The PS-6I human
+authorization promotes macOS Intel / darwin x64 to a supported platform;
+ADR-043 is the reviewed protocol change that adds
+`darwin-x86_64-posix-utf8-node22` as the third accepted lane. Nothing in
+this ADR's APFS analysis (decisions 3–12) is altered: APFS object
+identity is architecture-independent, and the Intel lane inherits the
+same POSIX/UTF-8 semantics, canonical-spelling identity, fixed-lowercase
+layout, dev/inode namespace identity, lane-bound configuration identity,
+and fail-closed cross-lane replay — including between the two darwin
+lanes. The darwin-arm64 native-arm64 Node requirement (ADR-042/PS-6R)
+is unchanged; the Intel lane requires no arch probe beyond the running
+interpreter.

@@ -990,7 +990,8 @@
         }
       ]
     },
-    "darwinConfigurationIdentity": "sha-256:6b7c7de0943cad893208c6af6dd64754bc438f30280b3a9b7e74dfffd5434673"
+    "darwinConfigurationIdentity": "sha-256:6b7c7de0943cad893208c6af6dd64754bc438f30280b3a9b7e74dfffd5434673",
+    "intelConfigurationIdentity": "sha-256:e1c91351cb0563b570a2efb564a8f90b289fa03ffb6782c0bd411efe6d3dbafe"
   },
   "expect": {
     "kind": "eligibility-v2",
@@ -1009,7 +1010,8 @@
     ],
     "staticIdentityByLane": {
       "linux-x86_64-posix-utf8-node22": "sha-256:2a2a40fba1f9dfa85963fc3135676b2ba1f2c3927260c5dc765bdfa6faac81c7",
-      "darwin-arm64-posix-utf8-node22": "sha-256:a2c8f5d31b3bb916d8c30f93cd290c6bdc25974488aad837b18626cff5f44849"
+      "darwin-arm64-posix-utf8-node22": "sha-256:a2c8f5d31b3bb916d8c30f93cd290c6bdc25974488aad837b18626cff5f44849",
+      "darwin-x86_64-posix-utf8-node22": "sha-256:20c53d1a520069686d60b6c8c5f2ab429f8705efbdba81cb6bdf2ce781e458fd"
     }
   },
   "notes": "grant revoked -> pou.grant-revoked; static identity equals the baseline (live view excluded)"

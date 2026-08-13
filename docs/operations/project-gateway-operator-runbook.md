@@ -46,7 +46,7 @@ The exact supported/tested release lane is pinned by the WP-15 contract
 | Git | 2.45.4 (pinned binary; WP-14B §2) |
 | Pi | 0.83.0 — `SUPPORTED_PI_LANE = 'pi-0.83.0-extension-api-v1'` (`src/adapters/pi/types.ts`) |
 | pi-guard | v0.1.2 verified lane (commit `7a7580cc4cbd7926797564c72269394fc29a860a`, annotated tag `v0.1.2`) |
-| Host lane | closed accepted set `TRUSTED_HOST_LANE = 'linux-x86_64-posix-utf8-node22'` + `DARWIN_ARM64_HOST_LANE = 'darwin-arm64-posix-utf8-node22'` (`src/trusted/host-lane.ts`; ADR-042) |
+| Host lane | closed accepted set `TRUSTED_HOST_LANE = 'linux-x86_64-posix-utf8-node22'` + `DARWIN_ARM64_HOST_LANE = 'darwin-arm64-posix-utf8-node22'` + `DARWIN_X86_64_HOST_LANE = 'darwin-x86_64-posix-utf8-node22'` (`src/trusted/host-lane.ts`; ADR-042, ADR-043) |
 | Locale | UTF-8 |
 
 **Package floor vs supported lane.** `package.json` declares

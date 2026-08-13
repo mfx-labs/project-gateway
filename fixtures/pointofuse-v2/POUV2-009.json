@@ -992,7 +992,8 @@
         }
       ]
     },
-    "darwinConfigurationIdentity": "sha-256:8c009e012030fee24fc628a5d83a9e24b7b07878fbdec5d86cb2cb73a2d5276e"
+    "darwinConfigurationIdentity": "sha-256:8c009e012030fee24fc628a5d83a9e24b7b07878fbdec5d86cb2cb73a2d5276e",
+    "intelConfigurationIdentity": "sha-256:72d58e6eaa0fdc97ae5ed7f218e1d19d561d385ee2f66326145e58b13e5c328c"
   },
   "expect": {
     "kind": "eligibility-v2",
@@ -1010,7 +1011,8 @@
     ],
     "staticIdentityByLane": {
       "linux-x86_64-posix-utf8-node22": "sha-256:68159d2f2b515a981e730c90e645fca26d7012eff9f2f5d3174d8d0a06393556",
-      "darwin-arm64-posix-utf8-node22": "sha-256:99d3ae92012ec343579a69b8230246d9e0ebeb2be7757e50c4c1e95f757fd6c8"
+      "darwin-arm64-posix-utf8-node22": "sha-256:99d3ae92012ec343579a69b8230246d9e0ebeb2be7757e50c4c1e95f757fd6c8",
+      "darwin-x86_64-posix-utf8-node22": "sha-256:baa6de24ca706021d6c41f5192f2ab4b7e632c19666df09309577b1d93fe1033"
     }
   },
   "notes": "global ceiling denies -> AUT-000 semantic denial (global branch)"

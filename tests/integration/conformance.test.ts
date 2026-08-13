@@ -13,7 +13,7 @@ import { ConformanceRunner, manifestStats } from '../../src/index.js';
 import { CONFORMANCE_MANIFEST, CORPUS_INPUTS } from '../../src/generated/corpus-bundle.js';
 import { ruleIds } from '../../src/semantic/rules.js';
 import { jcsSerialize } from '../../src/canonical/jcs.js';
-import { validateTrustedWorkspaceConfiguration, TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE } from '../../src/trusted/index.js';
+import { validateTrustedWorkspaceConfiguration, TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE, DARWIN_X86_64_HOST_LANE } from '../../src/trusted/index.js';
 import type { TrustedHostLane } from '../../src/trusted/index.js';
 import { brandRecordWrapper } from '../../src/internal/snapshot.js';
 import { runRegistrySnapshotPipeline } from '../../src/engine/pipeline.js';
@@ -89,6 +89,25 @@ test('PS6: the darwin-arm64 lane PASSES the authoritative conformance corpus 648
   const linuxSummary = new ConformanceRunner().run();
   assert.equal(linuxSummary.passed, 648);
   assert.deepEqual(linuxSummary.mismatches, []);
+});
+
+test('PS6I: the darwin-intel lane PASSES the authoritative conformance corpus 648/648 (lane-keyed identity oracles)', () => {
+  // ADR-043: the intel lane must pass every authoritative vector via its
+  // lane-keyed expected static identities — never a blessed
+  // expected-failure allowance.
+  const intelSummary = new ConformanceRunner({ hostLane: DARWIN_X86_64_HOST_LANE }).run();
+  assert.equal(intelSummary.total, 648);
+  assert.equal(intelSummary.executed, 648);
+  assert.equal(intelSummary.passed, 648);
+  assert.equal(intelSummary.failed, 0);
+  assert.deepEqual(intelSummary.mismatches, []);
+  // The linux and darwin-arm64 lanes remain the authoritative green baselines.
+  const linuxSummary = new ConformanceRunner().run();
+  assert.equal(linuxSummary.passed, 648);
+  assert.deepEqual(linuxSummary.mismatches, []);
+  const darwinSummary = new ConformanceRunner({ hostLane: DARWIN_ARM64_HOST_LANE }).run();
+  assert.equal(darwinSummary.passed, 648);
+  assert.deepEqual(darwinSummary.mismatches, []);
 });
 
 test('integration: runner is deterministic across instances', () => {
@@ -236,7 +255,7 @@ test('integration: POUV2-only branch coverage — AUT-000 global, AUT-000 worksp
 test('integration: fixture static identities are independently derivable from literal oracle projections (MODERATE-2)', () => {
   const DOMAIN = 'PGAP-POINT-OF-USE-INPUT-v2\u0000';
   let oracleFixtures = 0;
-  const laneKeys: TrustedHostLane[] = [TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE];
+  const laneKeys: TrustedHostLane[] = [TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE, DARWIN_X86_64_HOST_LANE];
   for (const f of POUV2_ENTRIES) {
     const descriptor = JSON.parse(new TextDecoder().decode(Buffer.from(corpus[f.paths[0]!]!, 'base64'))) as Record<string, unknown>;
     const oracle = descriptor['oracle'] as Record<string, unknown> | undefined;
@@ -273,6 +292,17 @@ test('integration: fixture static identities are independently derivable from li
     const darwinCanonical = jcsSerialize(darwinProjection);
     const darwinDigest = 'sha-256:' + createHash('sha256').update(DOMAIN + darwinCanonical, 'utf8').digest('hex');
     assert.equal(darwinDigest, byLane[DARWIN_ARM64_HOST_LANE], `${f.fixture_id} darwin lane oracle digest mismatch`);
+    // PS-6I (ADR-043): the intel entry is independently derivable the same
+    // way from the fixture's intel configuration-identity literal, and the
+    // intel digest must differ from the darwin digest (lanes never share
+    // an identity vector).
+    const intelConfigurationIdentity = oracle['intelConfigurationIdentity'];
+    assert.equal(typeof intelConfigurationIdentity, 'string', `${f.fixture_id} intelConfigurationIdentity missing`);
+    const intelProjection = { ...(projection as Record<string, unknown>), configurationIdentity: intelConfigurationIdentity };
+    const intelCanonical = jcsSerialize(intelProjection);
+    const intelDigest = 'sha-256:' + createHash('sha256').update(DOMAIN + intelCanonical, 'utf8').digest('hex');
+    assert.equal(intelDigest, byLane[DARWIN_X86_64_HOST_LANE], `${f.fixture_id} intel lane oracle digest mismatch`);
+    assert.notEqual(intelDigest, darwinDigest, `${f.fixture_id} intel and darwin lane identity vectors must differ`);
   }
   assert.ok(oracleFixtures >= 9, `expected at least 9 oracle fixtures, got ${oracleFixtures}`);
   // 7. production equality: the runner compares production identities against

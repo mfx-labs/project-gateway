@@ -992,7 +992,8 @@
         }
       ]
     },
-    "darwinConfigurationIdentity": "sha-256:52104013e576c4929888dec4ec764659d3e54537a21c38be44535c9e257a8970"
+    "darwinConfigurationIdentity": "sha-256:52104013e576c4929888dec4ec764659d3e54537a21c38be44535c9e257a8970",
+    "intelConfigurationIdentity": "sha-256:775dfae835e25073939d7b0ba12e3e030f560d8bb75f9029451314c1af1cb6ea"
   },
   "expect": {
     "kind": "eligibility-v2",
@@ -1004,7 +1005,8 @@
     "message_keys": [],
     "staticIdentityByLane": {
       "linux-x86_64-posix-utf8-node22": "sha-256:6a592b902a12db895d12317ad42c0d9f63b6df6b00c89797005d3723907f9fee",
-      "darwin-arm64-posix-utf8-node22": "sha-256:060d141157379cc7019d9ab15d23b406310d7b3d5dd33fdbbf3b5c3764edced3"
+      "darwin-arm64-posix-utf8-node22": "sha-256:060d141157379cc7019d9ab15d23b406310d7b3d5dd33fdbbf3b5c3764edced3",
+      "darwin-x86_64-posix-utf8-node22": "sha-256:23f0fd513b3fab230e6b3c5eb7427db154f69ad30fa559d4bbf2500d1a2d2cde"
     }
   },
   "notes": "v2 with permitting global capability ceiling"

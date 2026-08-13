@@ -986,7 +986,8 @@
         }
       ]
     },
-    "darwinConfigurationIdentity": "sha-256:685530800323074f72df9ea6b4a5a0cb588f1f7e864724ad8434f8fbf2f8e489"
+    "darwinConfigurationIdentity": "sha-256:685530800323074f72df9ea6b4a5a0cb588f1f7e864724ad8434f8fbf2f8e489",
+    "intelConfigurationIdentity": "sha-256:3585ed281a447f5819e88ff3c7eb93a978e8ce4a4aa3adfc70d33e007d45cc29"
   },
   "expect": {
     "kind": "eligibility-v2",
@@ -1005,7 +1006,8 @@
     ],
     "staticIdentityByLane": {
       "linux-x86_64-posix-utf8-node22": "sha-256:40b29e14979e2de2d29cb5cb87b6a746fd2a447d04f53b4a12c7adc429fddf90",
-      "darwin-arm64-posix-utf8-node22": "sha-256:8a902d60b2a3b3368220db2c89c17ead3206146740c6033a0b309633652856a1"
+      "darwin-arm64-posix-utf8-node22": "sha-256:8a902d60b2a3b3368220db2c89c17ead3206146740c6033a0b309633652856a1",
+      "darwin-x86_64-posix-utf8-node22": "sha-256:308ea9e2d4279641008d9faec91a6020e5f377fc0e1c82d6e4deedc88fd7bb93"
     }
   },
   "notes": "global numeric below grant limit -> pou.grant-ceiling (minimum wins)"

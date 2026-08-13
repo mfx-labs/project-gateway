@@ -66,6 +66,7 @@ export type { ValidatedTrustedConfigurationProvenance } from './provenance.js';
 export {
   TRUSTED_HOST_LANE,
   DARWIN_ARM64_HOST_LANE,
+  DARWIN_X86_64_HOST_LANE,
   ACCEPTED_HOST_LANES,
   trustedHostLaneForPlatformArch,
   isSupportedHostLane,

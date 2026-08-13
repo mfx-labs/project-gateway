@@ -22,7 +22,7 @@ import { mkdtempSync, chmodSync, rmSync, mkdirSync, writeFileSync, readFileSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bootstrapStore } from '../../src/control-plane/storage-bootstrap-action.js';
-import { TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE } from '../../src/trusted/index.js';
+import { TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE, DARWIN_X86_64_HOST_LANE } from '../../src/trusted/index.js';
 import { createRootPathResolver, createArtifactLocationResolver } from '../../src/runtime/mcp/lanes.js';
 import { loadRuntimeConfig } from '../../src/runtime/mcp/config.js';
 
@@ -304,6 +304,80 @@ test('bootstrap action: producer is not publicly exported through package surfac
 });
 
 // ─── PS-6 cross-lane replay invariant ─────────────────────────────────────
+
+test('PS6I: darwin-intel-lane store identity differs from darwin-arm64 and linux identities for identical inputs', () => {
+  const env = makeEnv();
+  const env2 = makeEnv();
+  const env3 = makeEnv();
+  const linux = bootstrapStore(baseInput(makeLocator(env)));
+  const darwin = bootstrapStore(baseInput(makeLocator(env2), { hostLane: DARWIN_ARM64_HOST_LANE }));
+  const intel = bootstrapStore(baseInput(makeLocator(env3), { hostLane: DARWIN_X86_64_HOST_LANE }));
+  assert.equal(linux.ok, true);
+  assert.equal(darwin.ok, true);
+  assert.equal(intel.ok, true);
+  if (!linux.ok || !darwin.ok || !intel.ok) return;
+  assert.notEqual(linux.configurationIdentity, darwin.configurationIdentity, 'host lane is identity-bound: lanes must produce different identities');
+  assert.notEqual(linux.configurationIdentity, intel.configurationIdentity, 'host lane is identity-bound: lanes must produce different identities');
+  assert.notEqual(darwin.configurationIdentity, intel.configurationIdentity, 'darwin-arm64 and darwin-Intel must never share an identity');
+  rmSync(env, { recursive: true, force: true });
+  rmSync(env2, { recursive: true, force: true });
+  rmSync(env3, { recursive: true, force: true });
+});
+
+test('PS6I: a store created under darwin-arm64 cannot be replayed under darwin-intel (fail closed, no repair)', () => {
+  const env = makeEnv();
+  const locator = makeLocator(env);
+
+  // 1. Initialize under the darwin-arm64 lane.
+  const created = bootstrapStore(baseInput(locator, { hostLane: DARWIN_ARM64_HOST_LANE }));
+  assert.equal(created.ok, true, JSON.stringify(created));
+  if (!created.ok) return;
+  assert.equal(created.state, 'INITIALIZED');
+
+  // 2. Cross-lane replay attempt under the darwin-intel lane: the derived
+  //    configuration identity differs, so the recorded metadata binding
+  //    cannot match — fail closed (FOREIGN aggregate → ERR-STO-INTEGRITY),
+  //    nothing repaired, migrated, or rewritten.
+  const replayed = bootstrapStore(baseInput(locator, { hostLane: DARWIN_X86_64_HOST_LANE }));
+  assert.equal(replayed.ok, false, 'cross-lane replay must fail closed');
+  if (replayed.ok) return;
+  assert.equal(replayed.code, 'ERR-STO-INTEGRITY', `unexpected failure classification: ${replayed.code}`);
+
+  // 3. Replaying under the ORIGINAL (darwin-arm64) lane still succeeds.
+  const replayedOwnLane = bootstrapStore(baseInput(locator, { hostLane: DARWIN_ARM64_HOST_LANE }));
+  assert.equal(replayedOwnLane.ok, true, JSON.stringify(replayedOwnLane));
+  if (!replayedOwnLane.ok) return;
+  assert.equal(replayedOwnLane.state, 'INITIALIZED');
+  assert.equal(replayedOwnLane.configurationIdentity, created.configurationIdentity);
+  rmSync(env, { recursive: true, force: true });
+});
+
+test('PS6I: mirrored direction — a store created under darwin-intel cannot be replayed under the darwin-arm64 or linux lanes (fail closed, no repair)', () => {
+  const env = makeEnv();
+  const locator = makeLocator(env);
+
+  // 1. Initialize under the darwin-intel lane.
+  const created = bootstrapStore(baseInput(locator, { hostLane: DARWIN_X86_64_HOST_LANE }));
+  assert.equal(created.ok, true, JSON.stringify(created));
+  if (!created.ok) return;
+  assert.equal(created.state, 'INITIALIZED');
+
+  // 2. Cross-lane replay attempts under the other accepted lanes.
+  for (const foreignLane of [DARWIN_ARM64_HOST_LANE, TRUSTED_HOST_LANE]) {
+    const replayed = bootstrapStore(baseInput(locator, { hostLane: foreignLane }));
+    assert.equal(replayed.ok, false, `cross-lane replay under ${foreignLane} must fail closed`);
+    if (replayed.ok) return;
+    assert.equal(replayed.code, 'ERR-STO-INTEGRITY', `unexpected failure classification under ${foreignLane}: ${replayed.code}`);
+  }
+
+  // 3. The intel-bound store is untouched (no rewrite, no migration).
+  const replayedOwnLane = bootstrapStore(baseInput(locator, { hostLane: DARWIN_X86_64_HOST_LANE }));
+  assert.equal(replayedOwnLane.ok, true, JSON.stringify(replayedOwnLane));
+  if (!replayedOwnLane.ok) return;
+  assert.equal(replayedOwnLane.state, 'INITIALIZED');
+  assert.equal(replayedOwnLane.configurationIdentity, created.configurationIdentity);
+  rmSync(env, { recursive: true, force: true });
+});
 
 test('PS6: linux-lane store identity differs from darwin-arm64 identity for identical inputs', () => {
   const env = makeEnv();

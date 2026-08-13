@@ -8,8 +8,9 @@
  * validated configuration, and the accepted lane is bound into the
  * configuration identity. PS-6 closes the accepted set to exactly
  * `linux-x86_64-posix-utf8-node22` and `darwin-arm64-posix-utf8-node22`;
- * macOS Intel, any `macos-*` spelling, Windows, and unknown lanes fail
- * closed (ADR-042).
+ * PS-6I adds `darwin-x86_64-posix-utf8-node22` (macOS Intel) as the
+ * third accepted member. Any `macos-*` spelling, Windows, and unknown
+ * lanes fail closed (ADR-042, ADR-043).
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,19 +19,21 @@ import {
   computeTrustedConfigurationIdentity,
   TRUSTED_HOST_LANE,
   DARWIN_ARM64_HOST_LANE,
+  DARWIN_X86_64_HOST_LANE,
   ACCEPTED_HOST_LANES,
   isSupportedHostLane,
   trustedHostLaneForPlatformArch,
 } from '../../src/trusted/index.js';
 import { validConfig, fakeResolver, validOptions } from './helpers.js';
 
-test('PS6/F7: the closed accepted-lane set is exactly linux x86_64 + darwin arm64', () => {
-  assert.deepEqual([...ACCEPTED_HOST_LANES], [TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE]);
+test('PS6I: the closed accepted-lane set is exactly linux x86_64 + darwin arm64 + darwin Intel', () => {
+  assert.deepEqual([...ACCEPTED_HOST_LANES], [TRUSTED_HOST_LANE, DARWIN_ARM64_HOST_LANE, DARWIN_X86_64_HOST_LANE]);
   assert.equal(isSupportedHostLane(TRUSTED_HOST_LANE), true);
   assert.equal(isSupportedHostLane(DARWIN_ARM64_HOST_LANE), true);
+  assert.equal(isSupportedHostLane(DARWIN_X86_64_HOST_LANE), true);
 });
 
-test('PS6/F7: both accepted lanes validate and the validated configuration retains the ACTUAL lane operand', () => {
+test('PS6I: all three accepted lanes validate and the validated configuration retains the ACTUAL lane operand', () => {
   for (const lane of ACCEPTED_HOST_LANES) {
     const report = validateTrustedWorkspaceConfiguration(validConfig(), validOptions({ hostLane: lane }));
     assert.equal(report.ok, true, lane);
@@ -68,12 +71,13 @@ test('F7: empty host lane fails closed (TCF-027)', () => {
   assert.equal(report.findings[0]!.code, 'TCF-027');
 });
 
-test('PS6/F7: unsupported host lanes fail closed before identity (TCF-028)', () => {
-  // macOS Intel, the rejected `macos-*` spelling, Windows, wrong arch /
-  // node / non-POSIX, future, and malformed lanes.
+test('PS6I/F7: unsupported host lanes fail closed before identity (TCF-028)', () => {
+  // The rejected `macos-*` spelling, Windows, wrong arch / node /
+  // non-POSIX, future, and malformed lanes. (darwin-x86_64-posix-utf8-node22
+  // is an accepted PS-6I lane and is NOT rejected.)
   for (const lane of [
     'macos-arm64-posix-utf8-node22',
-    'darwin-x86_64-posix-utf8-node22',
+    'macos-x86_64-posix-utf8-node22',
     'darwin-arm64-posix-utf8-node20',
     'darwin-arm64-nonposix-utf8-node22',
     'linux-arm64-posix-utf8-node22',
@@ -105,7 +109,7 @@ test('F7: no host-lane inference from input fields', () => {
   assert.equal(report.findings[0]!.code, 'TCF-025');
 });
 
-test('PS6/F7: the accepted lane is bound into identity bytes (both lanes)', () => {
+test('PS6I/F7: the accepted lane is bound into identity bytes (all three lanes)', () => {
   for (const lane of ACCEPTED_HOST_LANES) {
     const cfg = validateTrustedWorkspaceConfiguration(validConfig(), validOptions({ hostLane: lane })).configuration!;
     const utf8 = computeTrustedConfigurationIdentity(cfg).canonicalUtf8;
@@ -116,24 +120,35 @@ test('PS6/F7: the accepted lane is bound into identity bytes (both lanes)', () =
   }
 });
 
-test('PS6/F7: identity differs across the linux and darwin-arm64 lanes for otherwise identical inputs', () => {
+test('PS6I: identity differs across all three lanes for otherwise identical inputs', () => {
   const linux = validateTrustedWorkspaceConfiguration(validConfig(), validOptions({ hostLane: TRUSTED_HOST_LANE })).configuration!;
   const darwin = validateTrustedWorkspaceConfiguration(validConfig(), validOptions({ hostLane: DARWIN_ARM64_HOST_LANE })).configuration!;
+  const intel = validateTrustedWorkspaceConfiguration(validConfig(), validOptions({ hostLane: DARWIN_X86_64_HOST_LANE })).configuration!;
   const linuxIdentity = computeTrustedConfigurationIdentity(linux);
   const darwinIdentity = computeTrustedConfigurationIdentity(darwin);
+  const intelIdentity = computeTrustedConfigurationIdentity(intel);
   assert.notEqual(linuxIdentity.digest, darwinIdentity.digest);
+  assert.notEqual(linuxIdentity.digest, intelIdentity.digest);
+  assert.notEqual(darwinIdentity.digest, intelIdentity.digest, 'darwin-arm64 and darwin-Intel must never share an identity');
   assert.equal(linux.identity, linuxIdentity.digest);
   assert.equal(darwin.identity, darwinIdentity.digest);
+  assert.equal(intel.identity, intelIdentity.digest);
 });
 
-test('PS6: the shared platform/arch → lane mapping is the one derivation for bootstrap AND runtime', () => {
+test('PS6I: Intel-lane identity is deterministic (identical inputs, identical digest)', () => {
+  const a = validateTrustedWorkspaceConfiguration(validConfig(), validOptions({ hostLane: DARWIN_X86_64_HOST_LANE })).configuration!;
+  const b = validateTrustedWorkspaceConfiguration(validConfig(), validOptions({ hostLane: DARWIN_X86_64_HOST_LANE })).configuration!;
+  assert.equal(computeTrustedConfigurationIdentity(a).digest, computeTrustedConfigurationIdentity(b).digest);
+});
+
+test('PS6I: the shared platform/arch → lane mapping is the one derivation for bootstrap AND runtime', () => {
   // The mapping is pure and shared; the CLI boundary supplies the observed
   // platform/arch exactly once. Supported mappings only.
   assert.equal(trustedHostLaneForPlatformArch('linux', 'x64'), TRUSTED_HOST_LANE);
   assert.equal(trustedHostLaneForPlatformArch('darwin', 'arm64'), DARWIN_ARM64_HOST_LANE);
-  // Everything else fails closed as unsupported: macOS Intel, Windows,
-  // unknown platforms/arches.
-  assert.equal(trustedHostLaneForPlatformArch('darwin', 'x64'), null);
+  assert.equal(trustedHostLaneForPlatformArch('darwin', 'x64'), DARWIN_X86_64_HOST_LANE);
+  // Everything else fails closed as unsupported: Windows, unknown
+  // platforms/arches.
   assert.equal(trustedHostLaneForPlatformArch('linux', 'arm64'), null);
   assert.equal(trustedHostLaneForPlatformArch('win32', 'x64'), null);
   assert.equal(trustedHostLaneForPlatformArch('darwin', ''), null);

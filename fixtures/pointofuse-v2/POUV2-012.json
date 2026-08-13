@@ -990,7 +990,8 @@
         }
       ]
     },
-    "darwinConfigurationIdentity": "sha-256:70ae59444d829a5524b4194c9d57b01d1de925a90961b66715d249711d1ed9f1"
+    "darwinConfigurationIdentity": "sha-256:70ae59444d829a5524b4194c9d57b01d1de925a90961b66715d249711d1ed9f1",
+    "intelConfigurationIdentity": "sha-256:3130f8fde6165bbe8c5fc4e6d298ae4c061a2cbf953262b2e1e021d6df5c8ada"
   },
   "expect": {
     "kind": "eligibility-v2",
@@ -1008,7 +1009,8 @@
     ],
     "staticIdentityByLane": {
       "linux-x86_64-posix-utf8-node22": "sha-256:cdda6b7d9626925e4fd7d060d2008991cdccdd76e30326e5a452430b194770f3",
-      "darwin-arm64-posix-utf8-node22": "sha-256:7c1e01e3e03e74ba9bb0fd9d8dd4a042e6e1b055eb91dfb4651b25ca68a7d42c"
+      "darwin-arm64-posix-utf8-node22": "sha-256:7c1e01e3e03e74ba9bb0fd9d8dd4a042e6e1b055eb91dfb4651b25ca68a7d42c",
+      "darwin-x86_64-posix-utf8-node22": "sha-256:0544c2d81453dd33f7d60b1647110d5e8d5442d12f92abcd0fd02b848a19d1e8"
     }
   },
   "notes": "workspace ceiling denies -> AUT-000 semantic denial (workspace branch)"
